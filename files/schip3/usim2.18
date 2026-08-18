@@ -1,0 +1,1238 @@
+;;; -*-LISP-*-
+;;; SCHEME microcode simulator by HANSON, GJS
+
+;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                  ;;;
+;;; THE DECLARATIONS ;;;
+;;;                  ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;
+
+(declare (fixsw t))
+
+(declare (macros t))
+
+(declare (mapex t))
+
+(declare (/@define defrop |register operation|)
+	 (/@define defpctrop |push-counter operation|)
+	 (/@define defpoptop |push-optimizer operation|)
+	 (/@define defregister |scheme register|)
+	 (/@define defconstant |scheme constant|)
+	 (/@define defrack |scheme rack|))
+
+(declare (/@define defmacro |maclisp macro|)
+	 (/@define defstruct |maclisp structure|))
+
+(declare (fixnum *reg-ctr* *state-bit-mask* *ptr-type-ctr* *non-ptr-type-ctr*
+		 (ip0 fixnum notype) (ip1 fixnum notype)
+		 (get-ptr-type-code) (get-non-ptr-type-code)
+		 (pcons fixnum) (pcons fixnum fixnum) (left fixnum) (right fixnum)
+		 (set-left fixnum fixnum) (set-right fixnum fixnum)
+		 (mark-in-use fixnum) (unmark-in-use fixnum)
+		 (mark-car-trace fixnum) (unmark-car-trace fixnum)
+		 (get-input) (make-pointer notype fixnum)))
+
+(eval-when (eval compile)
+  (defmacro *memory-size* () 1_16)
+  (defmacro *register-size* () 40)
+  (defmacro *dispatch-size* () 200))
+
+(declare (array* (fixnum (the-cars)
+			 (the-cdrs)
+			 (the-registers))
+		 (notype (micro-dispatch-table))))
+
+
+(declare (special translate))
+
+(declare (special register push-counter push-optimizer))
+
+(declare (special *ptr-type-ctr* *non-ptr-type-ctr* *reg-ctr*
+		  *state-bit-mask* *pc* *input-reg* *gc-needed*
+		  *trace-all-switch* *trace-hooks*
+		  *entry-hooker-switch* *exit-hooker-switch*
+		  *single-step-switch* *debug-setup-switch*
+		  *global-interned-symbols* *the-arglists*))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                     ;;;
+;;; COMPILE-TIME MACROS ;;;
+;;;                     ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(eval-when (eval compile)
+
+;;;
+;;; Masks and position info for various fields
+;;;
+
+(defmacro mark-mask () 1_37)
+(defmacro mark-pos () -37)
+
+(defmacro ptr-mask () 1_36)
+(defmacro ptr-pos () -36)
+
+(defmacro type-mask () 177_30)
+(defmacro type-pos () -30)
+
+(defmacro address-mask () 77777777)
+(defmacro address-pos () 0)
+
+(defmacro delta () 1)
+
+;;;
+;;; Field Extractors
+;;;
+
+(defmacro extract-mark (p) `(lsh (logand (mark-mask) ,p) (mark-pos)))
+(defmacro extract-ptr (p) `(lsh (logand (ptr-mask) ,p) (ptr-pos)))
+(defmacro extract-type (p) `(lsh (logand (type-mask) ,p) (type-pos)))
+(defmacro extract-address (p) `(lsh (logand (address-mask) ,p) (address-pos)))
+
+;;;
+;;; Boolean Operations
+;;;
+
+(defmacro logand (x y) `(boole 1 ,x ,y))
+(defmacro logandn1 (x y) `(boole 2 ,x ,y))	 ;clears what logand doesn't
+(defmacro logior (x y) `(boole 7 ,x ,y))
+
+;;;
+;;; Various Special Functions
+;;;
+
+(defmacro set-field (mask old new)
+  `(let ((the-field-mask ,mask))
+	(logior (logandn1 the-field-mask ,old)
+		(logand the-field-mask ,new))))
+
+(defmacro modify-address-part (f r)
+  `(assign-reg ,r
+	       (set-field (address-mask)
+			  (fetch-reg ,r)
+			  (funcall ,f
+				   (logand (address-mask)
+					   (fetch-reg ,r))))))
+
+(defmacro concat x
+  `(implode (append ,@(mapcar (function (lambda (x) `(explodec ,x))) x))))
+
+(defmacro typed-cons (x y z) `(make-pointer ,x (pcons ,y ,z)))
+
+(defmacro ucall (target-pc save-slot return-pc)
+  `(block (set-type ,save-slot ,return-pc)
+	  (goto ,target-pc)))
+
+(defmacro display (x)
+  `(let ((the-cell ,x))
+	(cons (type-of the-cell)
+	      (extract-address the-cell))))
+
+(defmacro type-of (x) `(micro-dispatch-table (extract-type ,x)))
+
+;;;
+;;; UCODE Compound Statements
+;;;
+
+(defmacro if (x y z) `(cond (,x ,y) (t ,z)))
+
+(defmacro block x `(progn ,@x))
+
+(defmacro goto (pc) `(setq *pc* ',pc))
+
+)							;end compile-time macros
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                     ;;;
+;;; REGISTERS AND RACKS ;;;
+;;;                     ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(eval-when (eval compile)
+
+;;;
+;;; Register Definitions
+;;;
+
+(defmacro defregister (name)
+  `(progn 'compile
+	  (declare (special ,name))
+	  (set ',name (make-register ob-type 'register
+				     reg-name ',name
+				     rack-type 'reg
+				     reg-statistic 0
+				     reg-index *reg-ctr*))
+	  (setq *reg-ctr* (1+ *reg-ctr*))))
+
+(defmacro defconstant (name) `(defregister ,name))
+
+;;;
+;;; Rack Definitions
+;;;
+
+(defmacro defrack (name type)
+  (let ((buffer-name (concat name '-buffer))
+	(stack-name (concat name '-stack)))
+       `(progn 'compile
+	       (declare (special ,name))
+	       (defregister ,buffer-name)
+	       (defregister ,stack-name)
+	       (set ',name
+		    (make-rack
+		     ob-type 'rack
+		     rack-name ',name
+		     rack-type ',type
+		     rack-buffer ,buffer-name
+		     rack-stack ,stack-name
+		     rack-state-rep
+		     ',(cond ((eq type 'push-optimizer)
+			      (prog1 *state-bit-mask*
+				     (setq *state-bit-mask*
+					   (lsh *state-bit-mask* -1))))
+			      
+			     ; this works because there's only one!!!
+			      
+			     ((eq type 'push-counter)
+			      (make-field ob-type 'field
+					  field-name
+					  (concat name '-state)
+					  field-mask 7777777
+					  field-delta 1
+					  field-pos 0))
+			     (t (error '|unknown rack type| type))))))))
+
+)							;end register/rack definitions
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                          ;;;
+;;; REGISTER/RACK PRIMITIVES ;;;
+;;;                          ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(eval-when (eval compile)
+
+;;;
+;;; The high-level register primitives are implemented
+;;; as macros which expand into rack type-specific
+;;; primitive operations.
+;;;
+
+(defmacro fetch the-args (rack-expand 'fetch the-args))
+(defmacro assign the-args (rack-expand  'assign the-args))
+(defmacro set-type the-args (rack-expand 'set-type the-args))
+(defmacro assign-extra-type the-args (rack-expand 'assign-extra-type the-args))
+(defmacro dispatch (the-rack tag) (rack-expand 'dispatch (list the-rack)))
+(defmacro dispatch-extra-type (the-rack tag)
+	  (rack-expand 'dispatch-extra-type (list the-rack)))
+(defmacro save the-args (rack-expand 'save the-args))
+(defmacro duplicate the-args (rack-expand 'duplicate the-args))
+(defmacro restore the-args (rack-expand 'restore the-args))
+(defmacro get-state the-args (rack-expand 'get-state the-args))
+(defmacro set-state the-args (rack-expand 'set-state the-args))
+(defmacro reset the-args (rack-expand 'reset the-args))
+
+(defun rack-expand (operation-name arguments)
+  (let ((rack (symeval (car arguments)))
+	(the-arg (cdr arguments)))
+       (let ((newname (concat operation-name '- (rack-type rack))))
+	    `(,newname
+	      ,@(cond ((register? rack) `(,(reg-name rack) ,@the-arg))
+		      ((rack? rack)
+		       (let ((arglist (append (get '*the-arglists* newname) nil)))
+			    (sublis `((r-buffer . ,(reg-name (rack-buffer rack)))
+				      (r-stack . ,(reg-name (rack-stack rack)))
+				      (r-state . ',(rack-state-rep rack))
+				      (r-argument . ,(car the-arg)))
+				    arglist)))
+		      (t (error '|unrecognizeable rack -- RACK-EXPAND| rack)))))))
+
+(defun register? (x)
+  (and (objectp x)
+       (eq 'register (ob-type x))))
+
+(defun rack? (x)
+  (and (objectp x)
+       (eq 'rack (ob-type x))))
+
+(defmacro objectp (x) `(hunkp ,x))
+
+)							;end of rack primitives
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                            ;;;
+;;; UCODE Function Definitions ;;;
+;;;                            ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(eval-when (eval compile load)
+
+(defmacro defpc (names machine . statements)
+  (cons-pcs names () statements -1))
+
+(defmacro defdispatch (names descriptor machine . statements)
+  (cond ((memq descriptor '(lookup-return
+			    make-control-point-return
+			    restore-control-point-return))
+	 (cons-pcs names descriptor statements 0))
+	((atom descriptor)
+	 (cons-pcs names descriptor statements -1))
+	((memq (car descriptor) '(type-exp extra-type-cont type-val))
+	 (cond ((eq (cadr descriptor) 'pointer)
+		(cons-pcs names (car descriptor) statements 1))
+	       ((eq (cadr descriptor) 'non-pointer)
+		(cons-pcs names (car descriptor) statements 0))
+	       (t (error '|bad type-exp qualifier -- DEFDISPATCH|
+			 (cadr descriptor)))))
+	(t (error '|unrecognizable dispatch descriptor -- DEFDISPATCH|
+		  `(,names ,descriptor ,@statements)))))
+
+(defun cons-pcs (names tag statements selector)
+  `(progn 'compile
+	  ,@(cond ((atom names) (cons-pc names tag statements selector))
+		  (t (mapcan (function
+			      (lambda (*name*)
+				 (cons-pc *name* tag statements selector)))
+			     names)))))
+
+(defun cons-pc (name tag statements selector)
+  (let ((newname (concat '*pc- name '*)))
+       `((declare (special ,name))
+	 (set ',name
+	      (make-pc ob-type 'pc
+			      pc-name ',name
+			      pc-tag ',tag
+			      pc-function-name ',newname
+			      pc-type (intern-pc ',name ',selector)))
+	 (defun ,newname ()
+		,@(cond (*debug-setup-switch*
+			 `((entry-hooker ',name)
+			   ,@(mapcan (function
+				      (lambda (statement)
+					      `((step-hooker ',statement)
+						,statement)))
+				     statements)
+			   (exit-hooker ',name)))
+			(t statements))))))
+
+)							;end pc definitions
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                        ;;;
+;;; THE GLOBAL ENVIRONMENT ;;;
+;;;                        ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(eval-when (eval compile load)
+
+;;;
+;;; Define the structures used everywhere
+;;;
+
+(defstruct (register) ob-type rack-type reg-name reg-statistic reg-index)
+(defstruct (rack)
+	   ob-type rack-type rack-name
+	   rack-buffer rack-stack rack-state-rep)
+(defstruct (field) ob-type field-name field-mask field-delta field-pos)
+
+;;;
+;;; Setup the global variables
+;;;
+
+(cond ((not (boundp '*debug-setup-switch*))
+       (setq *debug-setup-switch* t)))
+(setq *trace-all-switch* nil)
+(setq *state-bit-mask* 1_30)
+(setq *reg-ctr* 0)
+
+;;;
+;;; Define the registers and racks
+;;;
+
+(defregister exp)
+(defregister val)
+(defregister vcell)
+(defregister micropc)
+(defregister intvector)
+(defregister leader)
+(defregister node)
+(defregister trailer)
+(defregister newcell)
+(defregister scan-down)
+(defregister scan-up)
+(defregister temp)
+(defregister rack-state)
+
+(defconstant empty-list)
+(defconstant memory-root)
+
+(defrack env push-counter)
+(defrack cont push-optimizer)
+(defrack thargs push-optimizer)
+
+)							;end of global environment
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                            ;;;
+;;; PC INTERN/CREATE FUNCTIONS ;;;
+;;;                            ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defstruct (pc) ob-type pc-name pc-tag pc-function-name pc-type)
+
+(array the-cars fixnum (*memory-size*))
+(array the-cdrs fixnum (*memory-size*))
+(array the-registers fixnum (*register-size*))
+(array micro-dispatch-table t (*dispatch-size*))
+
+(defun intern-pc (pc-name selector)
+  (cond ((= selector -1) selector)
+	((= selector 0) (let ((type (ip0 0 pc-name)))
+			     (store (micro-dispatch-table type) pc-name)
+			     type))
+	((= selector 1) (let ((type (ip1 177 pc-name)))
+			     (store (micro-dispatch-table type) pc-name)
+			     type))
+	(t (error '|bad selector -- INTERN-PC-TYPE| selector))))
+(defun ip0 (i pc-name)
+  (cond ((not (< i *non-ptr-type-ctr*))
+	 (funcall 'get-non-ptr-type-code))
+	((eq pc-name (micro-dispatch-table i)) i)
+	(t (ip0 (1+ i) pc-name))))
+(defun ip1 (i pc-name)
+  (cond ((not (> i *ptr-type-ctr*))
+	 (funcall 'get-ptr-type-code))
+	((eq pc-name (micro-dispatch-table i)) i)
+	(t (ip1 (1- i) pc-name))))
+
+(defun get-ptr-type-code ()
+  (cond ((< *ptr-type-ctr* 100)
+	 (error '|run out of pointer types|))
+	(t (prog1 *ptr-type-ctr*
+		  (setq *ptr-type-ctr* (1- *ptr-type-ctr*))))))
+
+(defun get-non-ptr-type-code ()
+  (cond ((not (< *non-ptr-type-ctr* 100))
+	 (error '|run out of non-pointer types|))
+	(t (prog1 *non-ptr-type-ctr*
+		  (setq *non-ptr-type-ctr* (1+ *non-ptr-type-ctr*))))))
+
+(setq *ptr-type-ctr* 177)
+(setq *non-ptr-type-ctr* 0)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                                ;;;
+;;; Register operation definitions ;;;
+;;;                                ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;
+;;; Note the different definitions; eval-time definition is easy to
+;;; debug (macros lose!), but compile-time definition is faster.
+;;;
+
+(eval-when (eval)
+
+(defun fetch-reg (r) (the-registers (reg-index r)))
+
+(defun assign-reg (r x) (store (the-registers (reg-index r)) x))
+
+(defun set-type-reg (r x) 
+  (let ((rindex (reg-index r)))
+       (store (the-registers rindex)
+	      (make-pointer x (the-registers rindex)))))
+
+(defun dispatch-reg (r)
+  (setq *pc* (micro-dispatch-table
+	      (extract-type (the-registers (reg-index r))))))
+
+)							;end eval register ops
+
+(eval-when (compile)
+
+(defmacro fetch-reg (r)
+  `(the-registers ,(dereference-reg-name r)))
+
+(defmacro assign-reg (r x)
+  `(store (the-registers ,(dereference-reg-name r)) ,x))
+
+(defmacro set-type-reg (r x) 
+  (let ((rindex (dereference-reg-name r)))
+       `(store (the-registers ,rindex)
+	       (make-pointer ,x (the-registers ,rindex)))))
+
+(defmacro dispatch-reg (r)
+  `(setq *pc* (micro-dispatch-table
+	       (extract-type (the-registers ,(dereference-reg-name r))))))
+
+(defun dereference-reg-name (reg-name)
+  (cond ((and (symbolp reg-name)
+	      (boundp reg-name)
+	      (register? (symeval reg-name)))
+	 (reg-index (symeval reg-name)))
+	(t `(reg-index ,reg-name))))
+
+)							;end register compile ops
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                               ;;;
+;;; RACK/REGISTER IMPLEMENTATIONS ;;;
+;;;                               ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;
+;;; Push-Counter Operation Definitions
+;;;
+
+(eval-when (eval compile)
+  (defmacro defpctrop (name arglist . body)
+    (let ((newname (concat name '-push-counter)))
+	 (putprop '*the-arglists* arglist newname)
+	 `(defun ,newname ,arglist ,@body))))
+
+(defpctrop fetch (r-buffer) (fetch-reg r-buffer))
+
+(defpctrop dispatch (r-buffer) (dispatch-reg r-buffer))
+
+(defpctrop assign (r-buffer r-stack r-state r-argument)
+  (cond ((not (rack-ctr=0? r-state))
+	 (rack-push r-stack (fetch-reg r-buffer))
+	 (decr-rack-ctr r-state)
+	 (rack-push r-stack (get-rack-ctr r-state))
+	 (reset-rack-ctr r-state)))
+  (assign-reg r-buffer r-argument))
+
+(defpctrop set-type (r-buffer r-stack r-state r-argument)
+  (cond ((not (rack-ctr=0? r-state))
+	 (rack-push r-stack (fetch-reg r-buffer))
+	 (decr-rack-ctr r-state)
+	 (rack-push r-stack (get-rack-ctr r-state))
+	 (reset-rack-ctr r-state)))
+  (set-type-reg r-buffer r-argument))
+
+(defpctrop save (r-state) (incr-rack-ctr r-state))
+
+(defpctrop duplicate (r-state) (incr-rack-ctr r-state))
+
+(defpctrop restore (r-buffer r-stack r-state)
+  (cond ((rack-ctr=0? r-state)
+	 (set-rack-ctr r-state (rack-pop r-stack))
+	 (assign-reg r-buffer (rack-pop r-stack)))
+	(t (decr-rack-ctr r-state))))
+
+(defpctrop get-state (r-buffer r-stack r-state)
+  (pcons (pcons (fetch-reg r-buffer) (get-rack-ctr r-state))
+	 (fetch-reg r-stack)))
+
+(defpctrop set-state (r-buffer r-stack r-state r-argument)
+  (assign-reg r-stack (left r-argument))
+  (assign-reg r-buffer (left (fetch-reg r-stack)))
+  (set-rack-ctr r-state (right (fetch-reg r-stack)))
+  (assign-reg r-stack (right r-argument)))
+
+(defpctrop reset (r-buffer r-stack r-state)
+  (reset-rack-ctr r-state)
+  (assign-reg r-buffer (fetch-reg empty-list))
+  (assign-reg r-stack (fetch-reg empty-list)))
+
+;;;
+;;; Push-Optimizer Operation Definitions
+;;;
+
+(eval-when (eval compile)
+  (defmacro defpoptop (name arglist . body)
+    (let ((newname (concat name '-push-optimizer)))
+	 (putprop '*the-arglists* arglist newname)
+	 `(defun ,newname ,arglist ,@body))))
+
+(defpoptop fetch (r-buffer) (fetch-reg r-buffer))
+
+(defpoptop dispatch (r-buffer) (dispatch-reg r-buffer))
+
+(defpoptop dispatch-extra-type (r-stack) (dispatch-reg r-stack))
+
+(defpoptop assign (r-buffer r-stack r-state r-argument)
+  (cond ((rack-in-use? r-state)
+	 (rack-push r-stack (fetch-reg r-buffer))
+	 (mark-rack-available r-state)))
+  (assign-reg r-buffer r-argument))
+
+(defpoptop set-type (r-buffer r-stack r-state r-argument)
+  (cond ((rack-in-use? r-state)
+	 (rack-push r-stack (fetch-reg r-buffer))
+	 (mark-rack-available r-state)))
+  (set-type-reg r-buffer r-argument))
+
+(defpoptop assign-extra-type (r-buffer r-stack r-state r-argument)
+  (cond ((rack-in-use? r-state)
+	 (rack-push r-stack (fetch-reg r-buffer))
+	 (mark-rack-available r-state)))
+  (set-type-reg r-stack r-argument))
+
+(defpoptop save (r-buffer r-stack r-state)
+  (cond ((rack-in-use? r-state)
+	 (rack-push r-stack (fetch-reg r-buffer)))
+	(t (mark-rack-in-use r-state))))
+
+(defpoptop duplicate (r-buffer r-stack r-state)
+  (cond ((rack-in-use? r-state)
+	 (rack-push r-stack (fetch-reg r-buffer)))
+	(t (mark-rack-in-use r-state))))
+
+(defpoptop restore (r-buffer r-stack r-state)
+  (cond ((rack-in-use? r-state)
+	 (mark-rack-available r-state))
+	(t (assign-reg r-buffer (rack-pop r-stack)))))
+
+(defpoptop get-state (r-buffer r-stack r-state)
+  (cond ((rack-in-use? r-state)
+	 (rack-push r-stack (fetch-reg r-buffer))
+	 (mark-rack-available r-state)))
+  (pcons (fetch-reg r-buffer)
+	 (fetch-reg r-stack)))
+
+(defpoptop set-state (r-buffer r-stack r-state r-argument)
+  (assign-reg r-stack r-argument)
+  (assign-reg r-buffer (left (fetch-reg r-stack)))
+  (assign-reg r-stack (right (fetch-reg r-stack)))
+  (mark-rack-available r-state))
+
+(defpoptop reset (r-buffer r-stack r-state)
+  (mark-rack-available r-state)
+  (assign-reg r-buffer (fetch-reg empty-list))
+  (assign-reg r-stack (fetch-reg empty-list)))
+
+;;;
+;;; Special operations for rack implementations
+;;;
+
+(defun rack-in-use? (b)
+  (not (zerop (logand b (fetch-reg rack-state)))))
+(defun mark-rack-in-use (b)
+  (assign-reg rack-state
+	      (logior b (fetch-reg rack-state))))
+(defun mark-rack-available (b)
+  (assign-reg rack-state
+	      (logandn1 b (fetch-reg rack-state))))
+
+(defun reset-rack-ctr (f)
+  (assign-reg rack-state
+	      (logandn1 (field-mask f)
+			(fetch-reg rack-state))))
+(defun set-rack-ctr (f x)
+  (assign-reg rack-state
+	      (set-field (field-mask f)
+			 (fetch-reg rack-state)
+			 (lsh (extract-address x)
+			      (- (field-pos f))))))
+(defun get-rack-ctr (f)
+  (make-pointer fixnum
+		(lsh (lsh (logand (field-mask f)
+				  (fetch-reg rack-state))
+			  (field-pos f))
+		     (- (address-pos)))))
+(defun rack-ctr=0? (f)
+  (zerop (logand (field-mask f)
+		 (fetch-reg rack-state))))
+(defun incr-rack-ctr (f)
+  (let ((mask (field-mask f)))
+       (assign-reg rack-state
+		   (set-field mask
+			      (fetch-reg rack-state)
+			      (+ (logand mask
+					 (fetch-reg rack-state))
+				 (field-delta f))))))
+(defun decr-rack-ctr (f)
+  (let ((mask (field-mask f)))
+       (assign-reg rack-state
+		   (set-field mask
+			      (fetch-reg rack-state)
+			      (- (logand mask
+					 (fetch-reg rack-state))
+				 (field-delta f))))))
+
+;;; Hanson: Why in the world was this formerly keeping a stack
+;;; as a "list" threaded through CAR pointers, with items in the CDR slots,
+;;; rather than the normal way??? -- GJS/GLS
+
+(defun rack-push (r x)
+       (setf (reg-statistic r) (1+ (reg-statistic r)))
+       (assign-reg r (pcons x (fetch-reg r))))
+
+(defun rack-pop (r)
+  (prog1 (left (fetch-reg r))
+	 (assign-reg r (right (fetch-reg r)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                          ;;;
+;;; THE PRIMITIVE OPERATIONS ;;;
+;;;                          ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;
+;;; Primitive List Operators
+;;;
+
+(defun pncons (x) (pcons x (fetch-reg empty-list)))
+
+(defun pcons (x y)
+       (let ((returned-value (fetch-reg newcell)))
+	    (let ((addr (extract-address returned-value)))
+		 (store (the-cars addr) x)
+		 (store (the-cdrs addr) y)
+		 (assign-reg newcell (1+ returned-value))
+		 (setq *gc-needed* (not (< addr *memtop*)))
+		 returned-value)))
+(setq *memtop* (- (*memory-size*) 20))
+
+(defun left (p) (the-cars (extract-address p)))
+(defun right (p) (the-cdrs (extract-address p)))
+(defun set-left (p x)
+  (let ((addr (extract-address p)))
+       (store (the-cars addr)
+	      (set-field (mark-mask) x (the-cars addr)))))
+(defun set-right (p x)
+  (let ((addr (extract-address p)))
+       (store (the-cdrs addr)
+	      (set-field (mark-mask) x (the-cdrs addr)))))
+
+(defun mark-in-use (p)
+  (let ((addr (extract-address p)))
+       (store (the-cars addr)
+	      (logior (mark-mask) (the-cars addr)))))
+(defun unmark-in-use (p)
+  (let ((addr (extract-address p)))
+       (store (the-cars addr)
+	      (logandn1 (mark-mask) (the-cars addr)))))
+(defun in-use? (p)
+  (not (zerop (extract-mark (the-cars (extract-address p))))))
+
+(defun mark-car-trace (p)
+  (let ((addr (extract-address p)))
+       (store (the-cdrs addr)
+	      (logior (mark-mask) (the-cdrs addr)))))
+(defun unmark-car-trace (p)
+  (let ((addr (extract-address p)))
+       (store (the-cdrs addr)
+	      (logandn1 (mark-mask) (the-cdrs addr)))))
+(defun car-trace? (p)
+  (not (zerop (extract-mark (the-cdrs (extract-address p))))))
+
+;;;
+;;; Basic I/O Operators
+;;;
+
+(defun interrupt? () *input-reg*)
+(defun get-input ()
+  (prog1 *input-reg*
+	 (setq *input-reg* nil)))
+
+;;;
+;;; Special operations on VAL
+;;;
+
+(defun val-address=0? () (zerop (extract-address (fetch-reg val))))
+(defun val=thargs? () (= (fetch-reg val) (fetch-reg thargs-buffer)))
+(defun increment-val ()
+  (modify-address-part (function (lambda (n) (+ n (delta)))) val))
+(defun decrement-val ()
+  (modify-address-part (function (lambda (n) (- n (delta)))) val))
+(defun leftshift-val-0 ()
+       (modify-address-part (function (lambda (n) (lsh n 1))) exp))
+(defun leftshift-val-1 ()
+       (modify-address-part (function (lambda (n) (logior (lsh n 1) 1))) exp))
+
+;;;
+;;; Special operations on EXP
+;;;
+
+(defun exp=0-except-low-bit? () (zerop (logandn1 1 (extract-address (fetch-reg exp)))))
+(defun exp-low-bit-set? () (not (zerop (logand 1 (extract-address (fetch-reg exp))))))
+(defun rightshift-exp () (modify-address-part (function (lambda (n) (lsh n -1))) exp))
+
+;;;
+;;; Special operations for SWEEP
+;;;
+
+(defun scan-up=scan-down? ()
+  (= (extract-address (fetch-reg scan-up))
+     (extract-address (fetch-reg scan-down))))
+(defun scan-down=memory-root? ()
+  (= (extract-address (fetch-reg scan-down))
+     (extract-address (fetch-reg memory-root))))
+(defun increment-scan-up ()
+  (modify-address-part (function (lambda (n) (+ n (delta)))) scan-up))
+(defun decrement-scan-down ()
+  (modify-address-part (function (lambda (n) (- n (delta)))) scan-down))
+
+;;;
+;;; random pointer operators
+;;;
+
+(defun make-pointer (x y)
+  (logior (logand (type-mask)
+		  (cond ((fixp x) x)
+			((symbolp x) (make-pointer (symeval x) y))
+			((typed-function? x)
+			 (lsh (pc-type x) (- (type-pos))))
+			(t (error '|bad type -- make-pointer| x))))
+	  (logand (address-mask) y)))
+(defun typed-function? (x)
+  (and (objectp x)
+       (eq 'pc (ob-type x))))
+(defun pointer? (p) (not (zerop (extract-ptr p))))
+(defun valid-function? (p) (or (= (extract-type p) (pc-type closure))
+			       (= (extract-type p) (pc-type control-point))))
+(defun istype? (ptr type) (= (extract-type ptr) (pc-type type)))
+(defun type-to-address (ptr) (make-pointer fixnum (extract-type ptr)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                      ;;;
+;;; THE DEBUGGING SYSTEM ;;;
+;;;                      ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;
+;;; SCHEME's Debugger:
+;;;
+;;; The functions on the following pages comprise the SCHEME debugging system.
+;;; When UCODE functions are created, they can (optionally) have special
+;;; links placed in them to facilitate debugging and just plain watching
+;;; the interpreter run.  For example if one has a function
+;;;
+;;; (defpc <name> <statement1> ... <statementN>)
+;;;
+;;; then the generated code without the debugger is
+;;;
+;;; (defun <newname> () <statement1> ... <statementN>)
+;;;
+;;; but with the debugger it turns into
+;;;
+;;; (defun <newname> ()
+;;;        (entry-hooker '<name>)
+;;;        (step-hooker '<statement1>)
+;;;        <statement1>
+;;;        ...
+;;;        (step-hooker '<statementN>)
+;;;        <statementN>
+;;;        (exit-hooker '<name>))
+;;;
+;;; thus allowing the user to break either on function entry or exit,
+;;; or immediately before each statement.  The functions entry-hooker,
+;;; exit-hooker, and step-hooker all receive the pertinent information
+;;; which can be displayed on the user's terminal.  The debugger can
+;;; be included using a special switch (see the function cons-pc); the
+;;; default state is that debuggable code is produced.
+;;;
+;;; The functions enter-hook, exit-hook, thooks, unthooks, and sstep
+;;; control the action of the debugger's breakpoints.
+;;;
+;;; In addition to the break functions, there are a number of functions
+;;; to allow the user to look at various parts of the interpreter
+;;; environment.  In general, SCHEME pointers are displayed as
+;;;
+;;; (<type> . <address>)
+;;;
+;;; where <type> is the [printed] name of the type field, and <address>
+;;; is a 24 bit octal fixnum.  The most commonly used functions are:
+;;;
+;;; (rstate)        prints out the contents of all the registers/racks
+;;;                 that are used during the normal interpreter process.
+;;; (mstate)        like rstate, except also displays all of memory.
+;;; (marks)         prints out the contents of the marker's registers.
+;;; (sweeps)        prints out the contents of the sweeper's registers.
+;;; (print-mem n)   prints out the contents of the cons stored at location n.
+;;; (print-reg <name>)  prints out the contents of the register named.
+;;; (print-rack <name>) prints out the contents of the rack named.
+;;; (print-types)   prints a map from all type names to codes.
+;;; (print-type n)  prints the name of the type code n.
+;;; (memory-contents)   prints out the contents of memory.
+;;; (print-mmem n m)    prints out the locations between n and m inclusive.
+;;;
+;;; An extremely useful debugging tool is the function
+;;;
+;;; (rep-of <object>)
+;;;
+;;; which will return a fairly-normal lisp representation of a scheme object,
+;;; where <object> is any fixnum representing a scheme object.
+;;;
+
+;;;
+;;; The Hookers
+;;;
+
+(defun entry-hooker (pc-name)
+  (cond ((and *entry-hooker-switch*
+	      (or *trace-all-switch*
+		  (memq pc-name *trace-hooks*)))
+	 (print pc-name)
+	 (break entry-hooker))))
+
+(defun exit-hooker (pc-name)
+  (cond ((and *exit-hooker-switch*
+	      (or *trace-all-switch*
+		  (memq pc-name *trace-hooks*)))
+	 (print pc-name)
+	 (break exit-hooker))))
+
+(defun step-hooker (statement)
+  (cond (*single-step-switch*
+	 (print statement)
+	 (break step-hooker))))
+
+;;;
+;;; Control for the various switches
+;;;
+
+(defun enter-hook (x) (setq *entry-hooker-switch* x))
+
+(defun exit-hook (x) (setq *exit-hooker-switch* x))
+
+(defmacro thooks pc-names
+  (cond ((null pc-names) `(setq *trace-all-switch* t))
+	(t `(setq *trace-hooks* (append ',pc-names *trace-hooks*)))))
+
+(defmacro unthooks pc-names
+  (cond ((null pc-names)
+	 (cond (*trace-all-switch* `(setq *trace-all-switch* nil))
+	       (t `(setq *trace-hooks* nil))))
+	(t `(setq *trace-hooks* (unhook ',pc-names *trace-hooks*)))))
+(defun unhook (pc-names hook-list)
+  (cond ((null hook-list) nil)
+	((atom hook-list) (error '|bad hook-list -- UNTHOOKS| hook-list))
+	((memq (car hook-list) pc-names) (unhook pc-names (cdr hook-list)))
+	(t (rplacd hook-list (unhook pc-names (cdr hook-list))))))
+
+(defun sstep (x) (setq *single-step-switch* x))
+
+;;;
+;;; The default state of the debugger
+;;;
+
+(enter-hook nil)
+(exit-hook nil)
+
+(thooks)
+(unthooks)
+(unthooks)
+
+(sstep nil)
+
+;;;
+;;; Printers for Debugging
+;;;
+
+(defun marks ()						;mark-alg state
+       (print-regs `(,leader ,node ,trailer)))
+(defun sweeps ()					;sweep-alg state
+       (print-regs `(,scan-up ,scan-down ,temp)))
+(defun mstate ()					;machine state
+       (funcall 'rstate)
+       (memory-contents))
+
+(defun rstate ()		                        ;register state
+       (print-racks `(,cont ,thargs ,env))
+       (print-regs `(,intvector ,exp ,val ,vcell ,micropc ,newcell)))
+
+(defun print-regs (r)
+       (do ((s r (cdr s)))
+	   ((null s) nil)
+	   (print-reg (car s))))
+(defun print-reg (r)
+  (print `(,(reg-name r) ,(display (fetch-reg r)))))
+
+(defun print-racks (r)
+       (do ((s r (cdr s)))
+	   ((null s) nil)
+	   (print-rack (car s))))
+
+(defun print-rack (r)
+  (print `(,(rack-name r)
+	   ,((lambda (type)
+	       (cond ((eq type 'push-optimizer)
+		      (if (rack-in-use? (rack-state-rep r))
+			  'in-use 'available))
+		     ((eq type 'push-counter)
+		      ((lambda (ctr)
+			 (lsh (logand (field-mask ctr)
+				      (fetch-reg rack-state))
+			      (field-pos ctr)))
+		       (rack-state-rep r)))))
+	     (rack-type r))
+	   ,(display (fetch-reg (rack-buffer r)))
+	   ,(display (fetch-reg (rack-stack r))))))
+
+(defun memory-contents ()
+  (print-mmem 0 (1- (extract-address (fetch-reg newcell)))))
+(defun print-mmem (n m)
+  (do ((k n (1+ k)))
+      ((> k m))
+      (print-mem k)))
+(defun print-mem (k)
+  (print `(,k ,(cond ((car-trace? k) 'car-trace)
+		     ((in-use? k) 'in-use)
+		     (t '()))
+	      ,(display (left k))
+	      ,(display (right k)))))
+
+(defun print-types ()
+  (do ((i 0 (1+ i)))
+      ((not (< i *non-ptr-type-ctr*)) nil)
+      (print `(,(print-type i) ,i)))
+  (do ((i 177 (1- i)))
+      ((not (> i *ptr-type-ctr*)) nil)
+      (print `(,(print-type i) ,i)))))
+(defmacro print-type (type-code) `(micro-dispatch-table ,type-code))
+
+;;;
+;;; The representation converter
+;;;
+
+(eval-when (eval compile)
+
+(defmacro caseq (exp . cases)
+  (let ((exp-name (gensym)))
+       `(let ((,exp-name ,exp))
+	     (cond ,@(mapcar '(lambda (case)
+				(cond ((null (car case))
+				       `(t ,@(cdr case)))
+				      ((null (cdar case))
+				       `((eq ,exp-name ',(car case))
+					 ,@(cdr case)))
+				      (t `((memq ,exp-name ',(car case))
+					   ,@(cdr case)))))
+			     cases)))))
+
+)							;end macros
+
+(defun rep-of (the-object)
+  (caseq (type-of the-object)
+	 ((*nil) nil)
+	 ((*t) t)
+	 ((unbound) 'unbound)
+	 ((list) (cons (rep-of (left the-object))
+		       (rep-of (right the-object))))
+	 ((fixnum) (extract-address the-object))
+	 ((symbol) (rep-of (right (left the-object))))    ;the print-name
+	 ((character-string)
+	  (maknam (nconc (rep-of (left the-object))
+			 (rep-of (right the-object)))))
+	 ((character)
+	  (list (logand 177 (lsh the-object -20))
+		(logand 177 (lsh the-object -10))
+		(logand 177 the-object)))
+	 (nil (display the-object))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;                    ;;;
+;;; THE INITIAL LOADER ;;;
+;;;                    ;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;
+;;; This thing takes the pseudo-SCODE generated by translate
+;;; and conses it into the memory of the chip.
+;;;
+
+(defun init-load ()
+  (setq *global-interned-symbols* nil)
+  (assign-reg empty-list (make-pointer *nil 0))
+  (set-left (fetch-reg empty-list) (fetch-reg empty-list))
+  (set-right (fetch-reg empty-list) (fetch-reg empty-list))
+  (assign-reg memory-root (make-pointer list 1))
+  (assign-reg newcell (fetch-reg memory-root))
+  (assign-reg scan-up (pcons (fetch-reg empty-list) (fetch-reg empty-list)))
+  (assign-reg scan-down (pcons (fetch-reg empty-list) (fetch-reg empty-list)))
+  (set-right (fetch-reg scan-up) (fetch-reg scan-down))
+  (assign-reg scan-up (pcons (fetch-reg empty-list) (fetch-reg empty-list)))
+  (set-right (fetch-reg scan-down) (fetch-reg scan-up))
+  (assign-reg scan-down (pcons (fetch-reg empty-list) (fetch-reg empty-list)))
+  (set-right (fetch-reg scan-up) (fetch-reg scan-down)))
+
+(defun iload-iter (x)
+  (cond ((null x) (make-pointer *nil 0))
+	((eq x 't) (make-pointer *t -1))
+	((atom x) (error '|non PSCODE input -- ILOAD-ITER| x))
+	((eq (car x) 'symbol) (global-intern (cadr x)))
+	((global-ref? (car x))
+	 (make-pointer (car x)
+		       (left (global-intern (cadr x)))))
+	((local-ref? (car x))
+	 (make-pointer (car x) (cadr x)))
+	((immediate-object? (car x)) (make-pointer (car x) (cadr x)))
+	((primitive-object? (car x))
+	 (make-pointer (car x) (or (cadr x) (iload-iter nil))))
+
+	;procedure has arglist in cadr for debugging only
+	((eq (car x) 'procedure)
+	 (typed-cons (car x)
+		     (iload-iter (caddr x))
+		     (iload-iter nil)))
+	((single-pointer-arg? (car x))
+	 (typed-cons (car x)
+		     (iload-iter (cadr x))
+		     (iload-iter nil)))
+	((double-pointer-arg? (car x))
+	 (typed-cons (car x)
+		     (iload-iter (cadr x))
+		     (iload-iter (caddr x))))
+	(t (error '|unknown PSCODE operator -- ILOAD-ITER| x))))
+
+;;;
+;;; These functions intern and build the global symbols.
+;;;
+
+(defun global-intern (the-symbol)
+  (let ((value-pair (assoc the-symbol *global-interned-symbols*)))
+       (cond ((null value-pair)
+	      (let ((value-pair
+		     (cons the-symbol
+			   (typed-cons symbol
+				       (typed-cons list
+						   (make-pointer unbound 0)
+						   (create-pname the-symbol))
+				       (iload-iter nil)))))
+		   (setq *global-interned-symbols*
+			 (cons value-pair *global-interned-symbols*))
+		   (cdr value-pair)))
+	     (t (cdr value-pair)))))
+
+(defun create-pname (the-symbol) (cp1 the-symbol 0 0 1))
+(defun cp1 (the-symbol shift-index char-buffer char-index)
+  (let ((the-char (getcharn the-symbol char-index)))
+       (cond ((zerop the-char)
+	      (cond ((zerop shift-index) (iload-iter nil))
+		    (t (cons-string (lsh char-buffer
+					 (cond ((= 1 shift-index) 20)
+					       (t 10)))
+				    (iload-iter nil)))))
+	     ((= 2 shift-index)
+	      (cons-string (new-buffer the-char char-buffer)
+			   (cp1 the-symbol 0 0 (1+ char-index))))
+	     (t (cp1 the-symbol
+		     (1+ shift-index)
+		     (new-buffer the-char char-buffer)
+		     (1+ char-index))))))
+
+(defun cons-string (the-value the-link)
+  (typed-cons character-string
+	      (make-pointer character the-value)
+	      the-link))
+
+(defun new-buffer (insert-char old-buffer)
+  (logior (logand 177 insert-char)
+	  (lsh old-buffer 10)))
+
+;;;
+;;; These functions are used to determine the type of a pseudo-SCODE expression
+;;; based on the atom in its car.
+;;;
+
+(defun global-ref? (x)
+       (memq x '(global set-global makunbound-global unbound-global?)))
+
+(defun local-ref? (x)
+  (memq x '(local set-car-local set-cdr-local
+	    unbound-local? makunbound-car-local makunbound-cdr-local)))
+
+(defun immediate-object? (x)
+  (memq x '(fixnum character unbound)))
+
+(defun primitive-object? (x)
+  (memq x '(primitive-car primitive-cdr
+			  primitive-general-car-cdr
+			  primitive-array-cons
+			  primitive-array-ref-immediate
+			  primitive-type
+			  primitive-pointer-type?
+			  primitive-lsh-0
+			  primitive-lsh-1
+			  primitive-zerop
+			  primitive-sub1
+			  primitive-add1
+			  primitive-cons
+			  primitive-rplaca
+			  primitive-rplacd
+			  primitive-general-rplaca
+			  primitive-general-rplacd
+			  primitive-eq
+			  primitive-set-type
+			  primitive-array-ref
+			  primitive-array-set
+			  primitive-array-set-immediate)))
+
+(defun single-pointer-arg? (x)
+  (memq x '(apply-no-args)))
+
+(defun double-pointer-arg? (x)
+  (memq x '(list character-string
+		 conditional
+		 sequence
+		 get-control-point
+		 first-argument
+		 next-argument
+		 last-argument
+		 spread-argument
+		 spread-partial-argument
+		 apply-no-args
+		 apply-1-arg
+		 primitive-apply-1
+		 primitive-apply-2)))
+
+;;;;;;;;;;;;;;;;;;;;;
+;;;               ;;;
+;;; THE TOP LEVEL ;;;
+;;;               ;;;
+;;;;;;;;;;;;;;;;;;;;;
+
+;;;
+;;; Two top levels are provided:  DRIVER is for use when the
+;;; translator package is loaded - it allows the user to
+;;; directly use SCHEME; SCODE-DRIVER works without the
+;;; translator, and accepts SCODE.  Both drivers provide
+;;; a MacLISP front-end, so expressions must be quoted,
+;;; or stored in variables.
+;;;
+
+(defun driver ()
+  (setq *gc-needed* nil)
+  (funcall 'init-load)
+  (princ '|îexpressions evaluated - while U waitî|)
+  (do () (nil)
+      (princ '|î*Scheme*î|)
+      (setq *input-reg*
+	    (typed-cons 'list 
+			(iload-iter (translate (eval (read))))
+			(make-pointer *nil 0)))		;should be intvector
+      (goto boot-load)
+      (do () ((eq *pc* 'done)
+	      (print (rep-of (fetch-reg val))))
+	  (funcall 'inner-loop (symeval *pc*)))))
+
+(defun scode-driver ()
+  (setq *gc-needed* nil)
+  (funcall 'init-load)
+  (princ '|îexpressions evaluated - while U waitî|)
+  (do () (nil)
+      (princ '|î*Scheme*î|)
+      (setq *input-reg*
+	    (typed-cons 'list 
+			(iload-iter (eval (read)))
+			(make-pointer *nil 0)))		;should be intvector
+      (goto boot-load)
+      (do () ((eq *pc* 'done)
+	      (print (rep-of (fetch-reg val))))
+	  (funcall 'inner-loop (symeval *pc*)))))
+
+(defun inner-loop (pc)
+  (funcall (pc-function-name pc))
+  (cond (*gc-needed*
+	 (setq *input-reg*
+	       (make-pointer mark (fetch-reg memory-root)))
+	 (setq *gc-needed* nil))))
+
+;;;
+;;; Get the microcode
+;;;
+
+(include |ai:schip3;newin2 >|)

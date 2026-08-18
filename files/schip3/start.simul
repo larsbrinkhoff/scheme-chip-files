@@ -1,0 +1,19 @@
+;;;-*-mode:LISP-*-
+
+;;; To load the appropriate files to simulate schip microcode
+
+(progn
+  #Q(load "ai:schip3;pkg dcl")
+  #Q(pkg-goto 'schip)
+  #Q(load "ai:rms;cwalk" 'schip)
+  #Q(load "ai:schip3;lmhunk")
+  #M(load "cwalk")
+  (load "xlang")
+  (load "grndpc")
+  (load "fields")
+  (load "simul")
+  (load "pass1")
+  (load "ucode")
+  (load "simlod")
+  (load "trans"))
+

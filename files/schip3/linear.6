@@ -1,0 +1,21 @@
+;;; -*-lisp-*-
+
+(defvar *linear-code*)
+
+(defvar *pc-number* 0)
+
+(defun linear ()
+  (mapcar #'linearize-a-chain (get '*start-statement* 'right-neighbors)))
+
+(defun linearize-a-chain (ep)
+  (let ((entry-point (car ep)))
+    (if (not-already-visited entry-point)
+	(progn (assign-a-pc entry-point)
+	       (mapcar #'linearize-a-chain (get entry-point 'right-neighbors))))))
+
+(defun not-already-visited (statement)
+  (null (get statement 'pc-number)))
+
+(defun assign-a-pc (statement)
+  (putprop statement *pc-number* 'pc-number)
+  (setq *pc-number* (+ 1 *pc-number*)))

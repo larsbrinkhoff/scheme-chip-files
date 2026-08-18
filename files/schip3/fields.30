@@ -1,0 +1,284 @@
+;;; -*- mode: LISP; package:SCHIP -*-
+;;; Field Package -- RMS, GJS, BATALI, HANSON
+
+;;; these are machine independent definitions to do what we want.
+
+(eval-when (compile) (load "xlang"))
+
+#Q(eval-when (eval compile) (defmacro 2mask (length) `(1- (^ 2 ,length))))
+#Q(defun fetch-byte (from-value position width)
+    (logand (2mask width) (ash from-value (- 0 position))))
+#Q(defun store-byte (into-value position width byte-value)
+    (let ((mask (ash (2mask width) position)))
+      (logior
+	(boole 2 mask into-value)
+	(logand mask (ash byte-value position)))))
+
+
+#M
+(eval-when (eval compile load)
+  (defmacro fetch-byte (&rest stuff) `(load-byte ,@stuff))
+  (defmacro store-byte (&rest stuff) `(deposit-byte ,@stuff)))
+
+#M(declare (*expr butlast))
+
+;;; Functions to extract field information.
+
+(defun width-of-field (fieldpath)
+  (let ((exp (cadr (assq 'width (find-fieldpath fieldpath)))))
+       (cond (exp
+	      (do ((exp exp (eval exp)))
+		  ((numberp exp) exp)))
+	     (t (apply 'max
+		       (mapcar
+			#'(lambda (spec)
+				  (cond ((eq (car spec) 'subfield)
+					 (+ (width-of-field
+					     (cons (cadr spec) fieldpath))
+					    (position-of-direct-subfield
+					     (cons (cadr spec) fieldpath))))
+					(t 0)))
+			(find-fieldpath fieldpath)))))))
+
+(defun max-width-mask (subfield field)
+  (1- (left-shift 1 (width-of-field (append subfield field)))))
+
+;get relative position of a subfield one or more levels from a field.
+;for example, (position-of-subfield '(class type) 'word)
+;gets the relative position of the (class type word) within the word.
+
+(defun position-of-subfield (subfieldpath fieldpath)
+  (cond ((and subfieldpath (symbolp subfieldpath))
+	 (setq subfieldpath (list subfieldpath))))
+  (do ((pos 0)
+       (totalfp (append subfieldpath fieldpath) (cdr totalfp))
+       (sfp subfieldpath (cdr sfp)))
+      ((null sfp) pos)
+    (setq pos (+ pos (position-of-direct-subfield totalfp)))))
+
+(defun position-of-direct-subfield (fieldpath)
+  (do ((exp (cadr (assq 'position (find-fieldpath fieldpath))) (eval exp)))
+      ((numberp exp) exp)))
+
+(defun find-fieldpath (fieldpath)
+  (let (tem)
+    (cond ((and fieldpath (symbolp fieldpath))
+	   (setq fieldpath (list fieldpath))))
+    (cond ((null (cdr fieldpath))
+	   (setq tem (get (car fieldpath) 'field-def)))
+	  (t (let ((superfield (find-fieldpath (cdr fieldpath))))
+	       (dolist (sf superfield)
+		 (and (eq (car sf) 'subfield)
+		      (eq (cadr sf) (car fieldpath))
+		      (return (setq tem (cddr sf)))))
+	       (and (eq (caar tem) 'same-field)
+		    (setq tem (append (cdr tem)
+				      (find-fieldpath (cdar tem))))))))
+    (or tem (error "Undefined fieldpath" fieldpath))))
+
+;;; Functions that do field reference and side-effect.
+
+;given a number representing the value in a field,
+;extract the number which is the value of a subfield.
+
+(defun extract-variable-field (subfield field value)
+  (let ((width (width-of-field (append subfield field)))
+	(position (position-of-subfield subfield field)))
+    (fetch-byte value position width)))
+
+(defun modify-variable-field (subfield field field-value subfield-value)
+  (let ((width (width-of-field (append subfield field)))
+	(position (position-of-subfield subfield field)))
+    (store-byte field-value position width subfield-value)))
+
+(eval-when (eval load compile)
+
+(defmacro extract-field (subfield field value)
+  (let ((width (width-of-field (append subfield field)))
+	(position (position-of-subfield subfield field)))
+    `(fetch-byte ,value ,position ,width)))
+
+(defmacro modify-field (subfield field field-value subfield-value)
+  (let ((width (width-of-field (append subfield field)))
+	(position (position-of-subfield subfield field)))
+    `(store-byte ,field-value ,position ,width ,subfield-value)))
+)
+
+;;; Functions to process definitions.
+
+(defvar *top-fields*)
+(defvar *dispatch-tables*)
+
+(eval-when (eval load)
+
+(defmacro deffield (name &rest props)
+  #Q(setq props (copylist props))
+  (or (memq name *top-fields*)
+      (push name *top-fields*))
+  `(defprop ,name ,props field-def))
+
+(defmacro def-dispatch-class (name field specified-subfields)
+  (let ((subclass-name-alist
+	  (mapcan #'(lambda (subfield)
+		      (mapcar #'(lambda (subclass-spec)
+				  (cons (car subclass-spec)
+					(cons subfield (cdr subclass-spec))))
+			      (cdr (assq 'values
+					 (find-fieldpath
+					   (cons subfield field))))))
+		  specified-subfields)))
+    `(progn 'compile
+	    (defprop ,name ,field dispatch-field)
+	    (defprop ,name ,subclass-name-alist dispatch-subclasses))))
+
+(defmacro def-dispatch-table (name dispatch-class)
+  `(progn 'compile
+     (or (memq ',name *dispatch-tables*)
+	 (push ',name *dispatch-tables*))
+     (defprop ,name ,dispatch-class dispatch-class)
+     (build-dispatch-table ',name)))
+)
+
+(defun build-dispatch-table (name)
+  (set name
+       (*array nil t
+	       (left-shift 1 (width-of-field (get (get name 'dispatch-class)
+						  'dispatch-field))))))
+
+;;; this function resets the fields package.  it should be called
+;;; from the beginning of the definitions package.
+
+(defun reset-defs ()
+  (setq *top-fields* nil)
+  (setq *dispatch-tables* nil))
+
+(defun reset-dispatch-tables ()
+  (mapc #'build-dispatch-table *dispatch-tables*))
+	    
+
+;;; Fields are stored in a highly-interlinked structure which can be
+;;; accessed from the two global varables *FIELD-LIST* and *TOP-FIELDS*.
+;;; These two lists contain, respectively, all of the field objects, and
+;;; all of the top-level field objects.  It is probably not advisable to
+;;; try to print out the values of these variables as the structures have
+;;; cycles in them.  The objects are built using DEFSTRUCT, and each
+;;; object has this definition:
+
+(defvar *field-list* nil)
+
+(eval-when (eval compile load) (defmacro field? (x) `(get ,x 'field-obj)))
+
+(eval-when (eval compile)
+
+#M (defprop defstruct (struct fasl dsk liblsp) autoload)
+
+(defstruct (field)
+	   fname	;the name of the field, a symbol.
+	   fwidth	;the width of the field, a fixnum.
+	   fpos		;the position of the field, a fixnum or nil.
+	   fvals	;the values, a list of values expressions.
+	   fsuper	;the superfield, a field object or nil.
+	   fsub		;the subfields, a list of field objects.
+	   fsame)	;the link, a field object or nil.
+)
+
+;;; Every field object has a name and a width.  Every field that is
+;;; on the list *TOP-FIELDS* has no superfield, but the remaining
+;;; objects all do.  Objects with superfields also have a position,
+;;; which is relative to the superfield.  The link is an "equivalent
+;;; field"; this can be used in testing for field-equality.  Fields
+;;; that are related by a link are for all purposes equal.
+
+;;; The other information that is available about fields is that
+;;; for every field object, the name has a 'CTYPE property of 'FIELD,
+;;; and a 'FIELD-DEF property which contains the original definition
+;;; of the field.  For every top-level field, it additionally has a
+;;; 'FIELD-OBJ property which is the object itself.
+
+;;; this code builds the field definitions into the complex structure.
+;;; it should be called after all of the field defs are completely read in,
+;;; by placing a hook (AFTER-DEFS-LOADED) in the source code.
+
+(defun after-defs-loaded ()
+  (setq *field-list* nil)
+  (mapc #'redefine-field *top-fields*)
+  (mapc #'build-field *field-list*)
+  `done)
+
+(defun redefine-field (name)
+  (let ((xx (df1 name (get name 'field-def) nil)))
+    (putprop name xx 'field-obj)
+    xx))
+
+(defun df1 (name props super)
+  (let ((field (make-field fname name fsuper super)))
+       (push field *field-list*)
+       (mapc #'(lambda (argu)
+		 (selectq (car argu)
+		   (width (setf (fwidth field) (cadr argu)))
+		   (position (setf (fpos field) (cadr argu)))
+		   (same-field (setf (fsame field) (cdr argu)))
+		   (values (setf (fvals field) (cdr argu)))
+		   (subfield (push (df1 (cadr argu) (cddr argu) field)
+				   (fsub field)))
+		   (otherwise (error "illegal DEFFIELD argument" argu))))
+	     props)
+       field))
+
+;;; BUILD-FIELDS goes through all of the fields and processes them;
+;;; it removes the expressions for width and position, replacing
+;;; them with fixnums, it dereferences name specifications for
+;;; same-field links, and it transfers the shared information
+;;; across the links.  This should be called after the entire
+;;; field environment is loaded, since it requires that everything
+;;; be in place so as to be able to resolve forward references
+
+(defun build-field (obj)
+  (setf (fwidth obj) (eval (fwidth obj)))
+  (setf (fpos obj) (eval (fpos obj)))
+  (let ((sf (fsame obj)))
+    (if (null sf) nil
+	(let ((xsf (find-field sf)))
+	  (setf (fsame obj) xsf)
+	  (setf (fvals obj) (fvals xsf))
+	  (setf (fsub obj) (fsub xsf))
+	  (setf (fwidth obj) (eval (fwidth xsf)))))))
+
+;;; FIND-FIELD is used to translate from bitvec specs to field objects.
+
+(defvar spec)
+
+(defun find-field (spec)
+  (let ((top-field (car (last spec)))
+	(subpath (butlast spec)))
+    (or (field? top-field) (error "illegal field specifier" spec))
+    (ff1 (get top-field 'field-obj) (reverse subpath))))
+
+(defun ff1 (obj tail)
+  (if (null tail) obj (ff2 (fsub obj) tail)))
+
+(defun ff2 (olist tail)
+  (cond ((null olist) (error "illegal field specifier" spec))
+	((eq (fname (car olist)) (car tail)) (ff1 (car olist) (cdr tail)))
+	(t (ff2 (cdr olist) tail))))
+
+;;; SAME-FIELD? is true iff its args are equivalent fields.
+
+(defun same-field? (x y) (same-field?-1 (find-field x) (find-field y)))
+
+(defun same-field?-1 (xx yy)
+  (or (eq xx yy) (eq xx (fsame yy)) (eq (fsame xx) yy)))
+
+;;; SUBFIELD? is true iff its first argument is a subfield of its second.
+;;; it is true of equivalent fields as well as proper subfields.
+
+(defun subfield? (sf f) (subfield?-1 (find-field sf) (find-field f)))
+
+(defun subfield?-1 (sf f)
+  (cond ((null sf) nil)
+	((same-field?-1 sf f) t)
+	((let-mem (fsf (fsub f)) (subfield?-1 sf fsf)) t)
+	(t (subfield?-1 (fsuper sf) f))))
+
+(defun get-field-spec (obj)
+  (and obj (cons (fname obj) (get-field-spec (fsuper obj)))))

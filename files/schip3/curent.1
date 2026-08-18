@@ -1,0 +1,48 @@
+;;; -*- Mode: Lisp; Package: Dpl; BASE: 10. -*-
+
+(defconst *ohms-per-square* 10000.0)
+(defconst *supply-voltage* 5.0)
+
+(defun (prototype current) (ignore thing &aux cell amps current-computer)
+  (cond ((rectangle? thing) 0)
+	(t (setq cell (find-local-bind 'current thing))
+	   (cond
+	     ((assigned? cell))
+	     ((setq current-computer
+		   (der 'current-computer (the 'type thing)))
+	      (assign cell
+		      (apply (car current-computer)
+			     (mapcar #'(lambda (param-name) (the param-name thing))
+				     (cdr current-computer)))))
+	     (t (setq amps 0)
+		(dolist (part (the-list-of (the 'parts thing)))
+		  (setq amps (+ amps (the 'current part))))
+		(assign cell amps)))
+	   (contents cell))))
+
+
+(defun standard-current-computer (channel-length channel-width &aux)
+  (// *supply-voltage*
+      (* *ohms-per-square* (// (float channel-length) (float channel-width)))))
+
+(defmacro define-current-computer (type-name function &rest params)
+  `(assign-to-the 'current-computer
+		  (type-from-type-name ',type-name)
+		  '(,function ,@params)))
+
+(define-current-computer standard-pullup
+			 standard-current-computer channel-length channel-width)
+
+(define-current-computer inline-pullup
+			 standard-current-computer channel-length channel-width)
+
+(define-current-computer rect-d-fet
+			 standard-current-computer channel-length channel-width)
+
+(defun (*rectangle* current) (ignore ignore) 0)
+
+(defun basic-inverting-sb-current (pullup-size)
+  (+ (// *supply-voltage* (* *ohms-per-square* (// 2.0 (float pullup-size))))
+     (// *supply-voltage* (* *ohms-per-square* (// 4.0 2.0 )))))
+
+(define-current-computer basic-inverting-sb basic-inverting-sb-current pullup-size)

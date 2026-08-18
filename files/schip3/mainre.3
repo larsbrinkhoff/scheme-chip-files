@@ -1,0 +1,316 @@
+;;; -*- Mode: Lisp; Base: 10.; package:dpl -*-
+
+(defvar doing-it-for-real t)  ; if this is nil we will make a smaller test array
+
+(defconst datum-start 1.)
+(defconst datum-size (if doing-it-for-real 29. 8))
+(defconst datum-end (+ datum-size datum-start))
+
+(defconst type-size 7.)	
+(defconst type-start (+ datum-start datum-size))
+(defconst type-end (+ type-size type-start))
+
+(defconst word-start 1.)       (defconst word-size (+ type-size datum-size))
+(defconst full-word-start 0.)  (defconst full-word-size (+ type-size datum-size 1))
+
+(defconst count-size 5.)	(defconst count-start type-start)
+(defconst class-size 4.)	(defconst class-start (- type-end class-size))
+(defconst pointer-bit-size 1.)  (defconst pointer-bit-start (- type-end pointer-bit-size))
+(defconst sign-bit-size 1.) 	(defconst sign-bit-start (- datum-end sign-bit-size))
+(defconst low-bit-size 1.)	(defconst low-bit-start datum-start)
+
+(defconst high-bits-size (- datum-size low-bit-size))
+(defconst high-bits-start (+ low-bit-start low-bit-size))
+
+(defconst machine-number-size 5)
+(defconst machine-number-start (- datum-end machine-number-size))
+
+(defconst local-pointer-start word-start)
+(defconst local-pointer-size (- datum-size machine-number-size))
+
+(defconst memory-address-start 0) (defconst memory-address-size (1+ datum-size))
+(defconst cdr-bit-size 1.)	  (defconst cdr-bit-start memory-address-start)
+
+(defconst external-interrupt-position (+ datum-start 0))
+(defconst dma-interrupt-position (+ datum-start 1))
+(defconst cons-server-interrupt-position (+ datum-start 2))
+(defconst gc-interrupt-position (+ datum-start 3))
+
+(defconst constant-0 0)
+(defconst type-constant-1 #o100)			;type LIST
+(defconst datum-constant-1 #o-1)			;datum -1
+(defconst type-constant-2 #o4)				;type UNBOUND
+(defconst datum-constant-2 #o0)
+
+(defconst main-regs
+  `((cont normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (thargs normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (env normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (env-stack normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start))
+	  (associates
+	   (zero-count? bit-tester
+			(size ,count-size) (starting-position ,count-start)
+			(bit-pattern #o0))
+	   (rack-count-full? bit-tester
+			(size ,count-size) (starting-position ,count-start)
+			(bit-pattern ,(- (lsh 1 count-size) 2)))
+	   (increment-count incrementer
+		      (size ,word-size) (starting-position ,word-start)
+		      (field-size ,count-size) (field-start ,count-start))
+	   (decrement-count decrementer
+		      (size ,word-size) (starting-position ,word-start)
+		      (field-size ,count-size) (field-start ,count-start))))    
+    (cont-stack normal-register
+	  (size ,full-word-size) (starting-position ,full-word-start)
+	  (shadowed (size ,full-word-size) (starting-position ,full-word-start))
+	  (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size))
+	   (cdr-bit nil (starting-position ,cdr-bit-start) (size ,cdr-bit-size)))
+	  (associates
+	   (rack-flag ungated-output-bits
+		      (size ,full-word-size) (starting-position ,full-word-start)
+		      (field-start ,cdr-bit-start) (bus-size 1))))
+    (thargs-stack normal-register
+	  (size ,full-word-size) (starting-position ,full-word-start)
+	  (shadowed (size ,full-word-size) (starting-position ,full-word-start))
+	  (subfields
+	   (word nil (size ,word-size) (starting-position ,word-start))
+	   (cdr-bit nil (starting-position ,cdr-bit-start) (size ,cdr-bit-size)))
+	  (associates
+	   (rack-flag ungated-output-bits
+		      (size ,full-word-size) (starting-position ,full-word-start)
+		      (field-start ,cdr-bit-start) (bus-size 1))))
+    (exp normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start))
+	  (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size)))
+	  (associates
+	   (low-bit? ungated-output-bits
+		     (size ,word-size) (starting-position ,word-start)	;*
+		     (bus-size 1) (field-start ,word-start))
+	   (zero-high-bits? bit-tester
+		     (starting-position ,high-bits-start) (size ,high-bits-size)
+		     (bit-pattern #o0))
+	   (sign-bit ungated-output-bits
+		     (size ,(- full-word-size sign-bit-start))
+		     (starting-position ,sign-bit-start)
+		     (bus-size 1) (field-start ,sign-bit-start))
+	   (=2-type bit-tester
+		    (starting-position ,type-start) (size ,type-size)
+		    (bit-pattern #o2))
+	   (right-shift-0 right-shift-with-0
+		     (starting-position ,datum-start) (size ,datum-size))
+	   (index-preparer shift-negate
+			   (starting-position 0) (size ,(+ datum-size 1)))))
+    (array-index-adder adder (starting-position 0) (size ,(+ datum-size 1)))
+    (val normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start))
+	  (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size)))
+	  (associates
+	   (increment incrementer
+		    (size ,datum-size) (starting-position ,datum-start))
+	   (decrement decrementer
+		    (size ,datum-size) (starting-position ,datum-start))
+	   (left-shift-0 left-shift-with-0
+		     (starting-position ,datum-start) (size ,datum-size))
+	   (left-shift-1 left-shift-with-1
+		     (starting-position ,datum-start) (size ,datum-size))
+	   (sign-bit ungated-output-bits
+		     (size ,(- full-word-size sign-bit-start))
+		     (starting-position ,sign-bit-start)
+		     (bus-size 1) (field-start ,sign-bit-start))
+	   (bus= eq-test (starting-position ,word-start) (size ,word-size)
+		 (subfields
+		  (type nil (starting-position ,type-start) (size ,type-size))
+		  (datum nil (starting-position ,datum-start) (size ,datum-size))))
+	   (type-to-datum field-shifter (starting-position ,word-start) (size ,word-size)
+			  (source-start ,type-start) (bus-size ,type-size)
+			  (destination-start ,datum-start) (destination-size ,datum-size)
+			  (target-start ,datum-start) (destination-fill zero))
+	   (cdr-bit value-bus-car-cdr-address
+			(starting-position ,memory-address-start) (size 1))))
+    (wind-forms normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (temporary normal-register (size ,word-size) (starting-position ,word-start)
+	 (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size)))
+	 (associates
+	   (pure-pointer bit-tester
+			 (size ,machine-number-size) (starting-position ,machine-number-start)
+			 (bit-pattern ,(- (lsh 1 machine-number-size) 1)))
+	   (increment incrementer
+		    (size ,datum-size) (starting-position ,datum-start)
+		    (field-size ,local-pointer-size) (field-start ,local-pointer-start))))
+    (temporary-equal-machine-number eq-test
+           (size ,machine-number-size) (starting-position ,machine-number-start))
+    (machine-number normal-register
+		    (size ,machine-number-size) (starting-position ,machine-number-start))
+    (free normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size)))
+	  (associates
+	   (increment incrementer
+		    (field-start ,local-pointer-start) (field-size ,local-pointer-size)
+		    (size ,datum-size) (starting-position ,datum-start))))
+    (free=memtop eq-test (size ,datum-size) (starting-position ,datum-start))
+    (memtop normal-register
+	  (size ,word-size) (starting-position ,word-start))
+    (errcode normal-register
+	  (size ,word-size) (starting-position ,word-start))
+    (interrupt-enables normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (associates
+	    (output-bits ungated-output-bits (size ,word-size) (starting-position ,word-start)
+			(field-start ,word-start) (bus-size 4))))
+    (scan normal-register
+	  (size ,memory-address-size) (starting-position ,memory-address-start)
+	  (associates
+	    (increment incrementer
+		      (size ,memory-address-size) (starting-position ,memory-address-start))
+	    (bus= eq-test
+		  (size ,memory-address-size) (starting-position ,memory-address-start))))
+    (temp-reg-0 normal-register (size ,word-size) (starting-position ,word-start)
+		(subfields
+		  (type nil (starting-position ,type-start) (size ,type-size))
+		  (datum nil (starting-position ,datum-start) (size ,datum-size))))
+    (cdr-bit global-car-cdr-address (size 1) (starting-position ,memory-address-start))
+    (constant-register-0 constant-source
+			(size ,word-size) (starting-position ,word-start)
+			(subfields
+			 (type nil (starting-position ,type-start) (size ,type-size)
+			       (bit-pattern #o0))
+			 (datum nil (starting-position ,datum-start) (size ,datum-size)
+			       (bit-pattern #o0))))
+    (constant-register-1 constant-source
+			(size ,word-size) (starting-position ,word-start)
+			(subfields
+			 (type nil (starting-position ,type-start) (size ,type-size)
+			       (bit-pattern ,type-constant-1))
+			 (datum nil (starting-position ,datum-start) (size ,datum-size)
+			       (bit-pattern ,datum-constant-1))))
+    (constant-register-2 constant-source
+			(size ,word-size) (starting-position ,word-start)
+			(bit-pattern ,(+ (ash type-constant-2 datum-size) datum-constant-2)))
+    (=0 bit-tester (starting-position ,word-start) (size ,word-size)
+	(subfields
+	  (type nil (starting-position ,type-start) (size ,type-size)
+		(bit-pattern #o0))
+	  (datum nil (starting-position ,datum-start) (size ,datum-size)
+		 (bit-pattern #o0))))
+    (=17 bit-tester (starting-position ,class-start) (size ,class-size)
+	 (bit-pattern #o17))
+    (pointer-bit ungated-output-bits
+	      (size ,(- full-word-size pointer-bit-start))
+	      (starting-position ,pointer-bit-start)
+	      (bus-size 1) (field-start ,pointer-bit-start))
+    (datum-source literal (size ,datum-size) (starting-position ,datum-start)
+		  (field-start ,datum-start) (bus-size 3) (fill-in-value zero))
+    (type-source literal (size ,type-size) (starting-position ,type-start)
+		 (bus-size ,type-size) (field-start ,type-start))))
+
+;;; external registers
+
+(comment
+(defreg read-mar simple-register memory-address external output)
+(defreg read-mbr simple-register word external input)
+(defreg write-mar simple-register memory-address external output)
+(defreg write-mbr simple-register word external output)
+(defreg sbus-error-code simple-register word external input)
+
+(defreg interrupt-number simple-register word external input)
+(defreg sbus-output-cons simple-register word external output)
+
+(defreg sbus-input-relocate-request simple-register word external input)
+(defreg sbus-output-relocated-value simple-register word external output)
+(defreg sbus-output-relocate-request simple-register word external output)
+(defreg sbus-input-relocated-value simple-register word external input))
+
+
+
+
+;;;; the next state machine
+
+(defconst pc-size 9)
+(defconst next-state
+   `((pc pc-register (size ,pc-size) (starting-position 0))
+     (stack pc-stack-top (size ,pc-size) (starting-position 0)
+		(associates
+		  (explicit-pc driven-frozen-literal (size ,pc-size) (starting-position 0)
+			       (bus-size ,pc-size))
+		  (stack-1 stack (size ,pc-size) (starting-position 0))
+		  (stack-2 stack (size ,pc-size) (starting-position 0))))
+     (true pass-driven-frozen-literal (size ,pc-size) (starting-position 0)
+	   (bus-size ,pc-size))
+     (false pass-driven-frozen-literal (size ,pc-size) (starting-position 0)
+	    (bus-size ,pc-size))
+     (user-type undriven-frozen-literal
+		(size ,pc-size) (starting-position 0)(bus-size ,pc-size))
+     (extra-type-cont undriven-frozen-literal (size ,pc-size)
+		      (starting-position 0)(bus-size ,pc-size))))
+
+(defun test-main-regs ()
+  (part 'main-regs register-file
+    (cell-power-bus-size 8.)
+    (right-jumpers? t)
+    (right-power-jumper-bridge nil)
+    (right-power-jumper-cut nil)
+    (left-jumpers? t)
+    (left-power-jumper-bridge nil)
+    (left-power-jumper-cut nil)
+    (description main-regs)
+    (driver-power-bus-size 8.)
+    (driver-lower-power-bus-size 8)
+    (driver-scaling 2.)
+    (power-bus-size 50.)))
+
+(defun test-next-state ()
+ (PART 'next-state REGISTER-FILE (DESCRIPTION next-state) (POWER-BUS-SIZE 16)))
+(defun test-uargs ()
+ (part 'uargs uarg-system (power-bus-size 16)))
+
+(comment
+(setq foo (make-a-zwei-file "foobar" t))
+(format foo "~%Main regs current = ~d milli-amps" (>> current main-regs))
+(format foo "~%Main regs power = ~d watts" (>> power main-regs))
+(format foo "~%Main regs minimum power bus size = ~d lambda" (>> power-bus-size main-regs))
+
+(format foo "~%Next state current = ~d milli-amps" (>> current next-state))
+(format foo "~%Next state power = ~d watts" (>> power next-state))
+(format foo "~%Next state minimum power bus size = ~d lambda" (>> power-bus-size next-state))
+
+(format foo "~%Uargs current = ~d milli-amps" (>> current uargs))
+(format foo "~%Uargs power = ~d watts" (>> power uargs))
+(format foo "~%Uargs minimum power bus size = ~d lambda" (>> power-bus-size uargs))
+
+(format foo "~%Total power bus size = ~d"
+  (+ (>> power-bus-size main-regs)
+     (>> power-bus-size uargs)
+     (>> power-bus-size next-state)))
+
+(format foo "~%Total power  = ~d watts"
+  (+ (>> power main-regs)
+     (>> power uargs)
+     (>> power next-state)))
+
+(format foo "~%Total current  = ~d milli-amps"
+  (+ (>> current main-regs)
+     (>> current uargs)
+     (>> current next-state))))

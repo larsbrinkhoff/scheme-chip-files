@@ -1,0 +1,1396 @@
+;;; -*-LISP-*-
+;;; SCHEME Machine & Microcode by GJS, HANSON, GLS, JAR, H, TK, NLM, RMS.
+
+;;; We define the data paths in terms of bit vectors.
+;;; A register is a vector.  So is a bus.  So is a field, which is a
+;;; subvector of another vector.  So is a concatenation of vectors.
+;;; So is the reverse of a vector.
+
+(defmachine eval newpc-bus nextpc-bus uconstant-bus)
+
+(defvector micro-state eval
+	   (subfield type)
+	   (subfield all-but-type)
+	   (low-bit (width 1))
+	   (subfield sbus-op))
+
+(defvector word all
+  (width 32.)
+  (subfield type				;opcodes are TYPEs of sexprs
+	    (width (the width type micro-state *up *up))
+	    (position 0)
+	    ;; Tell defdispatch what to do to define a data-type.
+	    ;; The subclasses are the "value"s of subfields class and list-bit.
+	    (dispatch-class data-type (values-from class list-bit))
+	    (subfield list-bit
+		      (width 1.)
+		      (position 0)
+		      (values (non-pointer 0)))
+	    (subfield class
+		      (width 4.)
+		      (position 0)
+		      (values (array-pointer 17) (list-pointer 10 17)))
+  (subfield count			;counter for PUSH-COUNTER racks
+	    (width (- (the width type *up) (the width class type *up)))
+	    (position (the width class type *up)))
+  (subfield datum
+	    (width (- (the width *up) (the width type *up)))
+	    (position (the width type *up))
+	    (subfield typenum
+		      (width (the width type *up *up))
+		      (position (- (the width *up) (the width))))
+	    (subfield rest
+		      (width (- (the width *up) (the width type *up *up)))
+		      (position 0))
+	    (subfield machine-number (width ?) (position 0))
+	    (subfield high-bits
+		      (width (- (the width *up) 1))
+		      (position 0))
+	    (subfield low-bit
+		      (width 1)
+		      (position (- (the width *up) 1)))
+	    (subfield low-bits
+		      (width (- (the width *up) 1))
+		      (position 1))
+	    (subfield high-bit
+		      (width 1)
+		      (position 0))))
+
+(defvector sbus-word all
+	   (subfield word (type word))
+	   (subfield op (width (the width sbus-op micro-state *up *up))
+		     (subfield local?
+			       (width 1)
+			       (values (non-local 0) (local 1)))
+		     (subfield start-cycle?
+			       (width 2)
+			       (values (no-cycle 0) (left-cycle 1) (right-cycle 2)))
+		     (dispatch-class sbus-op (values-from local? start-cycle?))
+	   (subfield error (width 1))
+	   (subfield mem-request (width 1))
+	   (subfield sa-request (width 1))
+	   (subfield mem-done (width 1))
+	   (subfield sa-done (width 1))
+	   (subfield mem-write (width 1))
+	   (subfield low-address-bit (width 1))
+	   (subfield external-interrupt-request (width 1))
+	   (subfield external-interrupt-grant (width 1))
+	   (subfield -somebody-needs-gc (width 1))
+	   (subfield -somebody-doesnt-need-gc (width 1)))
+
+(defvector bit
+	   (width 1))
+
+;;; A bus is a device which one can source from and drive, in order for
+;;; data to be transferred, it must be done on the same cycle.
+
+;;; A register can actually store data.  It has an input and an output.
+
+;;; Both registers and buses are declared giving the name
+;;; of the vector which says how many bits there are,
+;;; and divides them into subfields.
+
+;;; Both can have a set of control-bits listed.
+;;; Each control bit is a circuit node, a part of the register or
+;;; bus, which causes connections to be made if it is set.
+
+;;; A register or bus can also have status bits, which are
+;;; computed from the contents of the bus or register, and available as outputs.
+
+(defbus uconstant-bus micro-state eval	;microcode constants, alternate pcs
+  (control-bits (output-sbus-op ((path op sbus) (path sbus-op *me*)))))
+
+(defbus nextpc-bus micro-state eval)	; next pc if not branch
+
+(defbus newpc-bus micro-state eval	;the next micro-state in
+  (control-bits (goto-next ((path *me*) (path nextpc-bus)))
+		(goto-alt ((path *me*) (path uconstant-bus)))
+		(dispatch ((path type *me*) (path type main-bus))
+			  ((path all-but-type *me*) 0))))
+
+(defbus main-bus word eval
+  (control-bits (constant-type ((path type *me*) (path type uconstant-bus)))
+		(datum<=0 ((path datum *me*) 0))
+		(sbus bidirectional ((path *me*) (path word sbus))))
+  (status-bits (datum=0? (vnot (vreduce vor (path datum *me*))))
+	       (datum<2? (vnot (vreduce vor (path high-bits datum *me*))))
+	       (at-max-count? (vreduce vand (path count *me*)))
+	       (non-zero-count? (vreduce vor (path count *me*)))))
+
+(defbus sbus sbus-word all
+  (control-bits (main-bus bidirectional ((path word *me*) (path main-bus)))
+		(gc-needed ((path -somebody-needs-gc *me*) 0))
+		(gc-not-needed ((path -somebody-doesnt-need-gc *me*) 0)))
+  (connects
+    ((path external-interrupt-grant sbus) (path output interrupt-grant))
+    ((path gc-needed sbus) (path output I-need-gc))
+    ((path gc-not-needed sbus) (vnot (path output I-need-gc)))))
+
+;;; A register can be loaded from or read onto a bus.  It retains data
+;;;  loaded into it until such data is overwritten by a subsequent load.
+
+;;; A PCLSR clause in the definition sets up both a shadow register
+;;; and control bits "PCLSR-SAVE" and "PCLSR-RESTORE" to read and write it.
+
+(defregister rackpc micro-state eval			;for rack suboperations
+  (control-bits (load ((path input *me*) (path nextpc-bus)))
+		(read ((path newpc-bus) (path output *me*)))))
+
+(defregister micropc micro-state eval		;for microcode subroutines
+  (control-bits (load ((path input *me*) (path nextpc-bus)))
+		(read ((path newpc-bus) (path output *me*)))))
+
+(defregister waitpc micro-state eval			;for busy waiting
+  (connects ((path input *me*) (path newpc-bus)))
+  (control-bits (wait ((path newpc-bus) (path output *me*)))))
+
+;;; Define the control signals which control all pclsring in parallel.
+
+(defbus pclsr-restore bit eval
+  (connects ((path pclsr-restore) 
+	     (path pclsr-restore env)
+	     (path pclsr-restore cont)
+	     (path pclsr-restore thargs)
+	     (path pclsr-restore val)
+	     (path pclsr-restore exp))))
+
+(defbus pclsr-save bit eval
+  (connects ((path pclsr-save)
+	     (path pclsr-save env)
+	     (path pclsr-save cont)
+	     (path pclsr-save thargs)
+	     (path pclsr-save val)
+	     (path pclsr-save exp))))
+
+(defmacro def-uconstant-flag-bit (name)
+  `(defregister ,name bit eval
+		(control-bits
+		  (set ((path input *me*) (path lowbit uconstant-bus))))))
+
+(def-uconstant-flag-bit interrupt-enable)
+
+(def-uconstant-flag-bit gc-interrupt-enable)
+
+(def-uconstant-flag-bit I-need-gc)
+
+(def-uconstant-flag-bit interrupt-grant)
+
+(defbus interrupt-pending bit eval
+   (connects ((path interrupt-pending)
+	      (vor (vand (path external-interrupt-request sbus)
+			 (path output interrupt-enable))
+		   (vand (vnot (path -somebody-needs-gc sbus))
+			 (path output gc-interrupt-enable))))))
+
+;;; The EXP register is used to hold an expression being evaluated.
+
+(defregister exp word eval
+  (control-bits (load ((path input *me*) (path main-bus)))
+		(read ((path main-bus) (path output *me*)))
+		(rsh0 ((path low-bits datum input *me*) (path high-bits datum output *me*))
+		      ((path high-bit datum input *me*) 0)))
+  (pclsr))
+
+
+;;; The VAL register is used to hold the value of the expression just evaluated.
+
+(defregister val word eval
+  (control-bits (load fan-out
+		      ((path (load type) *me*) (path (load datum) *me*)))
+		((load type) ((path type input *me*) (path type main-bus)))
+		((load datum) ((path datum input *me*) (path datum main-bus)))
+		(read ((path main-bus) (path output *me*)))
+		(lsh0 ((path high-bits datum input *me*) (path low-bits datum output *me*))
+		      ((path low-bit datum input *me*) 0))
+		(lsh1 ((path high-bits datum input *me*) (path low-bits datum output *me*))
+		      ((path low-bit datum input *me*) 1))
+		(dec ((path datum input *me*) (vdecrement (path datum output *me*))))
+		(inc ((path datum input *me*) (vincrement (path datum output *me*)))))
+  (status-bits (=type? (vnot (vreduce vor
+				      (vxor (path type main-bus)
+					    (path type output *me*)))))
+	       (=datum? (vnot (vreduce vor
+				       (vxor (path datum main-bus)
+					     (path datum output *me*)))))
+	       (=? (vand (path =datum? *me*) (path =type? *me*))))
+  (pclsr))
+
+(defregister vcell word eval
+  (control-bits (load ((path input *me*) (path main-bus)))
+		(read ((path main-bus) (path output *me*)))))
+
+;;; INTVECTOR Holds array to index into with interrupt code
+;;; to get the routine to call to handle the interrupt.
+;;; The interrupt routine is responsible for setting
+;;; interrupt-grant, if it is an external interrupt,
+;;; and also for re-enabling interrupts.
+
+(defregister intvector word eval
+  (control-bits (load ((path input *me*) (path main-bus)))
+		(read ((path main-bus) (path output *me*)))))
+
+;;; ERRCODE Holds error code while registers are being saved
+;;; to make the control point to return to.
+
+(defregister errcode word eval
+  (control-bits (load ((path input *me*) (path main-bus)))
+		(read ((path main-bus) (path output *me*)))))
+
+
+;;; SPLIT-REG is a random register which provides certain extra datapaths which are
+;;; necessary, such as transferring the TYPE field of the MAIN-BUS to the DATUM field.
+
+(defregister split-reg word eval
+  (control-bits (load ((path input *me*) (path main-bus)))
+		(read fan-out ((path (read type) *me*) (path (read datum) *me*)))
+		((read type) ((path type main-bus) (path type output *me*)))
+		((read datum) ((path datum main-bus) (path datum output *me*)))
+		(type-to-datum ((path typenum datum main-bus) (path type output *me*))
+			       ((path rest datum main-bus) 0))))
+
+(defrack env push-counter word eval
+  (buffer (control-bits (load ((path input *me*) (path main-bus)))
+			(read ((path main-bus) (path output *me*))))
+	  (pclsr))
+  (stack (control-bits (load ((path input *me*) (path main-bus)))
+		       (read ((path main-bus) (path output *me*)))
+		       (dec ((path count input *me*) (vdecrement (path count output *me*))))
+		       (inc ((path count input *me*) (vincrement (path count output *me*)))))
+	 (pclsr)))
+
+(defrack cont push-optimizer word eval
+  (buffer (control-bits (load ((path input *me*) (path main-bus)))
+			(read ((path main-bus) (path output *me*))))
+	  (pclsr))
+  (stack (control-bits (load fan-out ((path (load type) *me*) (path (load datum) *me*)))
+		       ((load type) ((path type input *me*) (path type main-bus)))
+		       ((load datum) ((path datum input *me*) (path datum main-bus)))
+		       (read ((path main-bus) (path output *me*)))
+		       (set-in-use ((path in-use-bit *me*) 1))
+		       (clear-in-use ((path in-use-bit *me*) 0)))
+	 (status-bits (in-use (path in-use-bit)))
+	 (pclsr)))
+
+(defrack thargs push-optimizer word eval
+  (buffer (control-bits (load ((path input *me*) (path main-bus)))
+			(read ((path main-bus) (path output *me*))))
+	  (pclsr))
+  (stack (control-bits (load ((path input *me*) (path main-bus)))
+		       (read ((path main-bus) (path output *me*)))
+		       (set-in-use ((path in-use-bit *me*) 1))
+		       (clear-in-use ((path in-use-bit *me*) 0)))
+	 (status-bits (in-use (path in-use-bit *me*)))
+	 (pclsr)))
+
+;;; (defmicrofun <name> <args> <machine> . <body>)
+;;; defines an macro which expands into the result of evalling <body>
+;;; with the <args> bound.  The resulting expansion should when run
+;;; place data on main-bus.
+;;; a microfun can be used only in contexts which want
+;;; "something to put data on the main-bus".
+
+;;; (defmicropred <name> <args> <machine> <output-bit> . <body>)
+;;; is similar to defmicrofun except that the expansion when run
+;;; causes the <output-bit> to be driven with the desired boolean value.
+;;; A micropred can be used only as the argument of an IF.
+
+;;; (defmicrostatement <name> <args> <machine> . <body>)
+;;; is similar to microfun except that it is used
+;;; at top level to expand into entire macroinstructions.
+
+;;; The defmicro... macros expand into code which uses these primitives:
+
+; (ASSERT (PATH ...)) says to turn on a signal when executed.
+; The signal is allocated an output line from the microcode PLA.
+
+; (UCONSTANT value) says to output the value on the uconstant bus,
+; which comes directly out of the microcode PLA.
+
+; (NEXTPC value) says to output the value on the nextpc-bus,
+; making it the address for normal instruction sequencing.
+
+; (GOTO pc) when unconditional says to output pc on the nextpc-bus,
+; which comes directly out of the microcode PLA,
+; and to route it to be the next PC.
+; This is not really primitive; it is implemented below.
+
+; (BUSY-WAIT) causes the last instruction to be repeated.
+; Presumably it is used conditionally!
+; It routs the waitpc register into the newpc-bus.
+; Also, this automatically inhibits
+; any other kind of jumping, at a low level in the hardware.
+; This is not really primitive; it is implemented below.
+
+; Other kinds of jumps include (RETURN registername)
+; and (DISPATCH).  They are implemented
+; with DEFMICROSTATEMENTs below.
+
+; (IF condition iftrue &optional iffalse)
+; is the only form of conditional.
+; The arms of the conditional must be some form of branch,
+; or may be NIL.
+; The condition should be the name of a signal,
+; or may use a defmicropred which expands into one.
+; In that case, the "body" of the defmicropred
+; is same-cycled with the IF microinstruction.
+; This is intended to set up other data paths
+; so that the signal being tested will contain the
+; value that is to be tested.
+; IF works by turning on a special output line from the microcode PLA
+; (each condition has its own such output line)
+; and putting the alternate successor PCs out on the
+; uconstant bus and the nextpc-bus.
+; The output line goes into the control PLA
+; together with the signal being tested
+; to produce signals which decide which of the two PCs
+; to jump to.
+; If one arm of the IF is NIL or nonexistent, the IF
+; falls through in that case.  This means that the PC
+; used is the address of the "next instruction".  This PC
+; always comes out on the nextpc-bus, and the PC
+; which onvolves actually jumping comes out on the uconstant bus.
+; If an arm of the conditional is a RETURN, DISPATCH
+; or BUSY-WAIT, then no explicit PC needs to come out
+; of the PLA.
+; This is not really primitive; it is implemented below.
+
+; (SAME-CYCLE <multi-cycle> <one-cycle> <one-cycle> ...)
+; causes all the one-cycle operations to happen on the same
+; cycle as the last cycle of the multi-cycle operation.
+; That is, they become part of one horizontally-wide microinstruction.
+
+; (BLOCK <code> <more-code> ...)
+; causes the individual pieces of code (which can be one microinstruction
+; each, or more than one) to be done sequentially.
+; A BLOCK may appear as the first argument of a SAME-CYCLE,
+; in which case the remaining arguments of the SAME-CYCLE
+; are merged into the last microinstruction in the BLOCK.
+
+; (FLUSHABLE-NO-OP) is a no-op that can be deleted
+; if it doesn't get SAME-CYCLE'd with something else.
+
+(defmicrofun read-reg (regname) all
+  `(assert (path read ,regname)))
+
+(defmicrostatement load-reg (regname source) all
+  (setq source (expand-microfuns source nil))
+  `(same-cycle ,source (assert (path load ,regname))))
+
+(defmicrostatement put-on-main-bus (source) all
+  (expand-microfuns source nil))
+
+(defmicrofun constant-type (constant) all
+  `(same-cycle (uconstant ,constant)			;output constant
+	       (assert (path constant-type main-bus))))	;couple busses
+
+
+(defmicrostatement ucall (target-pc) all
+  `(same-cycle (assert (path load micropc))
+	       (goto ,target-pc)))
+
+(defmicrostatement ucall-return-elsewhere (pc-to-call place-to-return)
+  `(same-cycle (if (true?) (goto ,pc-to-call) (goto ,place-to-return))
+	       (assert (path load micropc))))
+
+(defmicrostatement set-uconstant-flag (name value)
+  `(same-cycle (uconstant ,value)
+	       (assert (path set ,name))))
+
+;Used by main loop to check for interrupt
+;while simultaneously saving the registers for pclsring.
+(defmicropred interrupt? () eval
+  '(path interrupt-pending))
+
+(defmicropred datum=0? (source) all
+  '(path datum=0? main-bus)
+  (put-on-main-bus source))
+
+(defmicropred datum<2? (source) eval
+  '(path datum<2? main-bus)
+  (put-on-main-bus source))
+
+(defmicropred low-bit=1? (source) eval
+  '(path low-bit main-bus)
+  (put-on-main-bus source))
+
+(defmicropred =val? (source) eval
+  '(path =? val)
+  (put-on-main-bus source))
+
+(defmicropred type=type-val? (typename) eval
+  '(path =type? val)
+  `(block (load-reg split-reg (constant-type ,typename))
+	  (read-reg (path type split-reg))))
+
+(defmicrostatement rightshift-exp () eval
+  `(assert (path rsh0 exp)))
+
+(defmicrostatement leftshift-val-0 () eval
+  `(assert (path lsh0 val)))
+
+(defmicrostatement leftshift-val-1 () eval
+  `(assert (path lsh1 val)))
+
+(defmicrostatement increment-val () eval
+  `(assert (path inc val)))
+
+(defmicrostatement decrement-val () eval
+  `(assert (path dec val)))
+
+(defmicrofun make-pointer (typename datumsource) all
+  (cond ((zerop datumsource)
+	 `(same-cycle (constant-type ,typename)
+		      (assert (path datum<=0 main-bus))))
+	(t
+	 `(block (load-reg split-reg ,datumsource)
+		 (same-cycle (read-reg (path datum split-reg))
+			     (constant-type ,typename))))))
+
+(defmicrofun type-to-fixnum (typesource) eval
+  `(block (load-reg split-reg ,typesource)
+	  (same-cycle (constant-type fixnum)
+		      (assert (path type-to-datum split-reg)))))
+
+;;; Implement jump instructions.
+
+;Implement an unconditional jump
+;as a jump on a condition which is always true.
+;We must not drive the pc-loading data path controls directly
+;because the control PLA wants to drive them.
+;We must work through the control PLA.
+
+(defmicrostatement dispatch () all
+  `(if true? (dispatch)))
+
+(defmicrostatement return (regname) eval
+  `(if true? (return ,regname)))
+
+(defmicrostatement busy-wait () all
+  '(if true? (busy-wait)))
+
+(defmicrostatement goto (label) all
+  `(if true? (goto ,label)))
+
+(defmicropred true? () all
+  1)
+
+(defmicrostatement if (condition iftrue &optional iffalse) all
+  (let (uconstant nextpc)
+    ;; Decide whether we need to use the uconstant or change the nextpc.
+    ;; UCONSTANT and NEXTPC get the instructions to set them
+    ;; or NIL if there is no need to set them.
+    ;; If we extract a jump address from an arm of the conditional,
+    ;; change that arm to UCONSTANT-BRANCH or NIL
+    ;; if we put its jump address into nextpc.
+    (cond ((and (null iftrue)
+		(eq (car iffalse) 'goto))
+	   (setq uconstant `(uconstant (cadr iffalse))
+		 iffalse 'uconstant-branch))
+	  ((eq (car iftrue) 'goto)
+	   (setq uconstant `(uconstant (cadr iftrue))
+		 iftrue 'uconstant-branch)
+	   (and (eq (car iffalse) 'goto)
+		(setq nextpc `(nextpc (cadr iffalse))
+		      iffalse nil))))
+    (and iftrue (gencontrolterm condition 'iftrue iftrue))
+    (and iffalse (gencontrolform condition 'iffalse iffalse))
+    `(same-cycle ,uconstant ,nextpc
+		 ,(and iftrue `(assert (path (iftrue ,condition) microcode-pla)))
+		 ,(and iffalse `(assert (path (iffalse ,condition) microcode-pla))))))
+
+;;; Sbus interface to EVAL machine.
+
+
+(defmicrostatement sbus-send (opcode arg) eval
+  (setq arg (expand-microfuns arg nil))
+  `(same-cycle ,arg
+	       (uconstant ,opcode)
+	       (assert (path request sbus))
+	       (assert (path output-sbus-op uconstant-bus))
+	       (assert (path sbus main-bus))))
+
+(defmicrostatement sbus-send-next-argument (arg) eval
+  `(same-cycle ,arg
+	       (uconstant next-sbus-argument)
+	       (assert (path request sbus))
+	       (assert (path output-sbus-op uconstant-bus))
+	       (assert (path sbus main-bus))))
+
+(defmicrofun sbus-receive () eval
+  '(same-cycle (assert (path sbus main-bus))
+	       (assert (path load split-reg))
+	       (if (path done sbus) (busy-wait))
+	       ;; The (busy-wait) which means busy-wait
+	       ;; overrides any other attempt to branch.
+	       (if (path error sbus) (goto pclsr-for-error))))
+
+(defmicrostatement sbus-end-transaction () eval
+  (expand-microfuns '(sbus-receive)))
+
+
+
+(defmicrofun left (arg) eval
+  `(block (sbus-send left-opcode-value ,arg)
+	  (sbus-receive)))
+
+(defmicrofun right (arg) eval
+  `(block (sbus-send right-opcode-value ,arg)
+	  (sbus-receive)))
+
+(defmicrostatement set-left (arg new) eval
+  (let (precompute usevalue)
+    (desetq (precompute usevalue) (expand-second-arg new))
+    `(block ,precompute
+	    (sbus-send set-left-opcode-value ,arg)
+	    (sbus-send-next-argument ,usevalue)
+	    (sbus-end-transaction))))
+
+(defmicrostatement set-right (arg new) eval
+  (let (precompute usevalue)
+    (desetq (precompute usevalue) (expand-second-arg new))
+    `(block ,precompute
+	    (sbus-send set-right-opcode-value ,arg)
+	    (sbus-send-next-argument ,usevalue)
+	    (sbus-end-transaction))))
+
+(defmicrofun pcons (arg1 arg2) eval
+  (let (precompute usevalue)
+    (desetq (precompute usevalue) (expand-second-arg arg2))
+    `(block ,precompute
+	    (sbus-send pcons-opcode-value ,arg1)
+	    (sbus-send-next-argument ,usevalue)
+	    (sbus-receive))))
+
+(defmicrofun pncons (arg) eval
+  `(block (sbus-send pncons-opcode-value ,arg)
+	  (sbus-receive)))
+
+(defmicrofun array-ref (array index) eval
+  (let (precompute usevalue)
+    (desetq (precompute usevalue) (expand-second-arg index))
+    `(block ,precompute
+	    (sbus-send array-ref-opcode-value ,array)
+	    (sbus-send-next-argument ,usevalue)
+	    (sbus-receive))))
+
+(defmicrostatement array-set (array index newval) eval
+  (let (precompute2 precompute3 usevalue2 usevalue3)
+    (desetq (precompute2 usevalue2) (expand-second-arg index))
+    (desetq (precompute3 usevalue3) (expand-second-arg newval))
+    `(block ,precompute2 ,precompute3
+	    (sbus-send array-set-opcode-value ,array)
+	    (sbus-send-next-argument ,usevalue2)
+	    (sbus-send-next-argument ,usevalue3)
+	    (sbus-end-transaction))))
+
+(defmicrofun array-cons (size initvalue) eval
+  (let (precompute usevalue)
+    (desetq (precompute usevalue) (expand-second-arg initvalue))
+    `(block ,precompute
+	    (sbus-send array-cons-opcode-value ,size)
+	    (sbus-send-next-argument ,usevalue)
+	    (sbus-receive))))
+
+(defmicrostatement set-memtop (arg) eval
+  `(block (sbus-send set-memtop-opcode-value ,arg)
+	  (sbus-end-transaction)))
+
+(defmicrostatement set-free-pointers (arg1 arg2) eval
+  (let (precompute usevalue)
+    (desetq (precompute usevalue) (expand-second-arg arg2))
+    `(block ,precompute
+	    (sbus-send set-free-pointers-opcode-value ,arg1)
+	    (sbus-send-next-argument ,usevalue)
+	    (sbus-end-transaction))))
+
+(defmicrofun get-free (arg) eval
+  `(block (sbus-send get-free-opcode-value ,arg)
+	  (sbus-receive)))
+
+(defmicrostatement flip () eval
+  `(block (sbus-send flip-opcode-value 0)
+	  (sbus-end-transaction)))
+
+(defmicrofun relocate (arg) eval
+  `(block (sbus-send relocate-opcode-value ,arg)
+	  (sbus-receive)))
+
+;;;		The Implementation of Racks
+
+;;; Assumptions:  The type field of the CONT stack (a push-optimizer) is
+;;; used for holding retpc.  Hence all retpc's are types of PAIR class.
+;;; Push-optimizers have a special bit allocated for IN-USE -- avoiding crap.
+;;; The IN-USE bit for the push-counter implementation is NOT ZEROP of the 
+;;; count field.  The count field resides in the type field of the
+;;; stack pointer.  (That means no one else can use the type field of a
+;;; push-counter to hold cruft.)  In addition, we assume that PCONS returns a
+;;; pointer (list) of zero type.  This causes the stack push for a counter
+;;; rack to automatically create the correct state, but it causes trouble
+;;; for initialization.
+
+(defmicropred in-use? (rack) eval
+  `(path in-use stack ,rack))
+
+(defmicrostatement mark-in-use! (rack) eval
+  `(assert (path set-in-use stack ,rack)))
+
+(defmicrostatement clear-in-use! (rack) eval
+  `(assert (path clear-in-use stack ,rack)))
+
+(defmicropred at-max-count? (rack) eval 
+  '(path at-max-count? main-bus)
+  `(put-on-main-bus (read-reg (path rack-stack ,rack))))
+
+(defmicropred non-zero-count? (rack) eval 
+  '(path non-zero-count? main-bus)
+  `(put-on-main-bus (read-reg (path rack-stack ,rack))))
+
+(defmicrostatement increment-count (rack) eval
+  `(assert (path inc stack ,rack)))
+
+(defmicrostatement decrement-count (rack) eval
+  `(assert (path dec stack ,rack)))
+
+
+
+(defmicrostatement conditional-rack-push (condition rack) eval
+  `(block (same-cycle (assert (path load rackpc))
+		      (if ,condition
+			  (goto (literal
+				  (same-cycle (load-reg (path stack ,rack)
+							(pcons (read-reg (path buffer ,rack))
+							       (read-reg (path stack ,rack))))
+					      (return rackpc))))))
+	  (flushable-no-op)))
+
+(defmicrostatement conditional-rack-pop (negated-condition rack) eval
+  `(block (same-cycle (assert (path load rackpc))
+		      (if ,condition
+			  ()
+			  (goto (literal
+				  (same-cycle (block (load-reg (path buffer ,rack)
+						       (left (path stack ,rack)))
+						     (load-reg (path stack ,rack)
+						       (right (path stack ,rack))))
+					      (return rackpc)))))))
+	  (flushable-no-op))
+
+(defmicrofun fetch (rack) all
+  (caseq (get rack 'register-type)
+	 ((register)
+	  `(read-reg ,rack))
+	 ((push-optimizer push-counter)
+	  `(read-reg (path buffer ,rack)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement assign (rack source) all
+  (caseq (get rack 'register-type)
+	 ((register) `(load-reg ,rack ,source))
+	 ((push-optimizer)
+	  `(block (conditional-rack-push (in-use? ,rack) ,rack) ;conditional call
+		  (same-cycle (load-reg (path buffer ,rack) ,source)
+			      (clear-in-use! ,rack))))	;can't hurt if not set
+	 ((push-counter)
+	  `(block (conditional-rack-push (non-zero-count? ,rack) ,rack) ;conditional call
+		  (load-reg (path buffer ,rack) ,source)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement assign-type (rack source) all
+  (caseq (get rack 'register-type)
+	 ((register) `(load-reg (path type ,rack) ,source))
+	 ((push-optimizer)
+	  `(block (conditional-rack-push (in-use? ,rack) ,rack) ;conditional call
+		  (same-cycle (load-reg (path type buffer ,rack) ,source)
+			      (clear-in-use! ,rack))))	 ;can't hurt if not set
+	 ((push-counter)
+	  `(block (conditional-rack-push (non-zero-count? ,rack) ,rack) ;conditional call
+		  (load-reg (path type buffer ,rack) ,source)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement assign-extra-type (rack source) eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer)
+	  `(block (conditional-rack-push (in-use? ,rack) ,rack) ;conditional call
+		  (same-cycle (load-reg (path type stack ,rack) ,source)
+			      (clear-in-use! ,rack))))	 ;can't hurt if not set
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement save (rack) eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer)
+	  `(block (conditional-rack-push (in-use? ,rack) ,rack) ;conditional call
+		  (mark-in-use! ,rack)))		 ;fold into next cycle?
+	 ((push-counter)
+	  `(block (conditional-rack-push (at-max-count? ,rack) ,rack)
+		  (increment-count ,rack)))		 ;so we must reset it!
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement duplicate (rack) eval
+  `(save ,rack))
+
+(defmicrostatement restore (rack) eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer)
+	  `(block (conditional-rack-pop (not (in-use? ,rack)) ,rack)
+		  (clear-in-use! ,rack)))
+	 ((push-counter)
+	  `(block (conditional-rack-pop (not (non-zero-count? rack)) ,rack)
+		  (decrement-count ,rack)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+
+(defmicrofun get-state (rack) eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer push-counter)
+	  `(block (save ,rack)
+		  (assign ,rack (make-pointer unbound 0))
+		  (read-reg (path stack ,rack))))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement set-state (rack source) eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer)
+	  `(block (same-cycle (load-reg (path stack ,rack) ,source)
+			      (clear-in-use! ,rack))
+		  (restore ,rack)))
+	 ((push-counter)
+	  `(block (load-reg (path stack ,rack) ,source)
+		  (restore ,rack)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+
+(defmicrostatement reset (rack) eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer)
+	  `(block (same-cycle (load-reg (path stack ,rack)
+					(make-pointer unbound 0))
+			      (clear-in-use! ,rack))
+		  (load-reg (path buffer ,rack) (make-pointer unbound 0))))
+	 ((push-counter)
+	  `(block (load-reg (path stack ,rack)
+			    (pcons (make-pointer unbound 0)
+				   (make-pointer unbound 0)))
+		  (load-reg (path buffer ,rack) (make-pointer unbound 0))))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+;Now we define the control PLA, which takes in
+;both branch-condition signals from the microcode PLA
+;and the signals to be tested by the conditions,
+;and generates the signals controlling branching.
+
+;Here we define the outputs.  (The inputs are implicitly defined)
+;Each of the outputs aside from uconstant-branch (which implements GOTO)
+;has a name which is the same as the microcode expression
+;used to ask for that kind of branch.
+;This allows the IF construct to be implemented very simply
+;and detects errors where an IF arm is not a defined type of branch.
+(defpla control
+  (outputs (uconstant-branch
+	    (busy-wait)
+	    (return rackpc)
+	    (return micropc)
+	    (dispatch))))
+
+;Connect the control PLA outputs to the data paths that
+;do the actual jumping.  This is probably not the way
+;we really want to implement these connections,
+;but it says what the logical effect of them is to be.
+(defconnect ((path read waitpc) (path (busy-wait) control-pla))
+	    ((path goto-next newpc-bus)
+	     (vnot (vor (path uconstant-branch control-pla)
+			(path (return rackpc) control-pla)
+			(path (return micropc) control-pla)
+			(path dispatch control-pla)
+			(path (busy-wait) control-pla))))
+	    ((path goto-alt newpc-bus)
+	     (vand (path uconstant-branch control-pla)
+		   (vnot (path (busy-wait) control-pla))))
+	    ((path read rackpc)
+	     (vand (path (return rackpc) control-pla)
+		   (vnot (path (busy-wait) control-pla))))
+	    ((path read micropc)
+	     (vand (path (return micropc) control-pla)
+		   (vnot (path (busy-wait) control-pla))))
+	    ((path (dispatch) newpc-bus)
+	     (vand (path dispatch control-pla)
+		   (vnot (path (busy-wait) control-pla)))))
+
+;This is a sample definition of a term in the PLA.
+;It specifies a logical combination of some inputs, and
+;a list of outputs to be turned on in that case.
+;The inputs to the PLA are not explicitly listed.
+;They are declared implicitly by appearing in a term.
+;
+; (defplaterm control-pla
+;	      (vand (path (iftrue (datum=0? main-bus)) microcode-pla)
+;		    (path datum=0? main-bus))
+;	      (uconstant-branch))
+
+;Control PLA terms such as these are defined automatically by
+;the IF construct when they are needed.
+;Note that condition-signal can be just 1 for an unconditional branch.
+
+(defun gencontrolterm (condition-signal sense branch-type)
+  (let ((condition (cond ((eq sense 'iftrue) condition-signal)
+			 ((eq sense 'iffalse)
+			  `(vnot ,condition-signal))
+			 ((t (error sense '|not IFTRUE or IFFALSE|)))))
+	(term `(path (,sense ,(cdr condition-signal)) microcode-pla)))
+    (or (equal condition-signal 1)
+	(setq term `(vand ,term condition)))
+    (eval `(defplaterm control-pla
+		       ,term
+		       (,branch-type)))))
+
+;;; The microcode for the eval state machine controller starts here
+
+(defpc boot-load
+  (reset env)
+  (reset cont)
+  (reset thargs)
+  (assign-extra-type cont done)
+  (save cont)
+  (assign exp (get-input))
+  (assign intvector (right (fetch exp)))   ;actually a cons of error handler and int array
+  (goto execute-left-exp))
+
+(defdispatch done (data-type non-pointer) user-type
+   (goto done))
+
+
+;;; Constants.
+;;; car/cdr of NIL,UNBOUND is NIL, UNBOUND! Generalized car/cdr needs this.
+;;; check in fygc for these types.
+
+(defdispatch (symbol (list 0)) (data-type list-pointer) user-type
+  (assign val (fetch exp))
+  (goto pop-return))
+
+(defdispatch (character-string array) (data-type array-pointer) user-type
+  (assign val (fetch exp))
+  (goto pop-return))
+
+(defdispatch ((*nil 0)) (data-type non-pointer) user-type
+  (assign val (make-pointer *nil 0))
+  (goto pop-return))
+
+(defdispatch *t (data-type non-pointer) user-type
+  (assign val (make-pointer *t 0))
+  (goto pop-return))
+
+(defdispatch (fixnum character unbound) (data-type non-pointer) user-type
+  (assign val (fetch exp))
+  (goto pop-return))
+
+(defdispatch procedure (data-type list-pointer) user-type
+  (assign val
+	  (make-pointer closure
+			(pcons (fetch exp)
+			       (fetch env))))
+  (goto pop-return))
+
+
+
+;;; Variable Reference and Assignment
+
+
+;;; Global variables.
+
+(defdispatch global (data-type list-pointer) user-type
+  (assign val (left (fetch exp)))
+  (goto pop-return))
+
+(defdispatch set-global (data-type list-pointer) user-type
+  (set-left (fetch exp) (fetch val))
+  (goto pop-return))
+
+(defdispatch unbound-global? (data-type list-pointer) user-type
+  (assign val (left (fetch exp)))
+  (goto unbound-check))
+
+(defpc unbound-check
+  (if (type=type-val? unbound) (goto *t) (goto *nil)))
+
+(defdispatch makunbound-global (data-type list-pointer) user-type
+  (set-left (fetch exp) (make-pointer unbound 0))
+  (goto *nil))
+
+;;; Local (lexically-scoped) variables.
+
+(defdispatch local (data-type non-pointer) user-type
+  (ucall lookup-exp)
+  (assign val (fetch vcell))
+  (goto pop-return))
+
+
+(defdispatch set-car-local (data-type non-pointer) user-type
+  (ucall lookup-exp)
+  (set-left (fetch vcell) (fetch val))
+  (goto pop-return))
+
+
+(defdispatch set-cdr-local (data-type non-pointer) user-type
+  (ucall lookup-exp)
+  (set-right (fetch vcell) (fetch val))
+  (goto pop-return))
+
+(defdispatch unbound-local? (data-type non-pointer) user-type
+  (ucall lookup-exp)
+  (assign val (fetch vcell))
+  (goto unbound-check)))
+
+
+(defdispatch makunbound-car-local (data-type non-pointer) user-type
+  (ucall lookup-exp)
+  (set-left (fetch vcell) (make-pointer unbound 0))
+  (goto *nil))
+
+
+(defdispatch makunbound-cdr-local (data-type non-pointer) user-type
+  (ucall lookup-exp)
+  (set-right (fetch vcell) (make-pointer unbound 0))
+  (goto *nil))
+
+;;; Environment searching routines.
+
+;;; Allows destructuring LET, side effects on env, rest args, etc.
+
+(defpc lookup-exp
+       (assign vcell (fetch env))
+       (goto general-car-cdr))
+
+;;; Does a general car-cdr operation on VCELL according
+;;; to the encoding in datum field of EXP.
+
+(defpc general-car-cdr
+       (if (datum<2? (fetch exp))
+	   (return micropc))
+       (if (low-bit=1? (fetch exp))
+	   (goto general-car-cdr-do-car)
+	   (goto general-car-cdr-do-cdr)))
+
+(defpc general-car-cdr-do-car
+       (same-cycle (assign vcell (left (fetch vcell)))
+		   (rightshift-exp)
+		   (goto general-car-cdr)))
+
+(defpc general-car-cdr-do-cdr
+       (same-cycle (assign vcell (right (fetch vcell)))
+		   (rightshift-exp)
+		   (goto general-car-cdr)))
+
+;;; conditionals
+
+(defdispatch conditional (data-type list-pointer) user-type
+  (if (type=type-val? *nil)
+      (goto execute-right-exp)
+      (goto execute-left-exp)))
+
+;;; sequences
+
+(defdispatch sequence (data-type list-pointer) user-type
+  (assign-extra-type cont sequence-return)
+  (goto sequence-send))
+
+;;; combinations.
+
+(defdispatch first-argument (data-type list-pointer) user-type
+  (assign-extra-type cont first-argument-return)
+  (goto sequence-send))
+
+(defdispatch first-argument-return (data-type list-pointer) extra-type-cont
+  (assign thargs (pncons (fetch val)))
+  (goto sequence-return))
+
+(defdispatch next-argument (data-type list-pointer) user-type
+  (save thargs)
+  (assign-extra-type cont next-argument-return)
+  (goto sequence-send))
+
+(defdispatch next-argument-return (data-type list-pointer) extra-type-cont
+  (restore thargs)
+  (assign thargs (pcons (fetch val) (fetch thargs)))
+  (goto sequence-return))
+
+(defdispatch last-argument (data-type list-pointer) user-type
+  (save thargs)
+  (assign-extra-type cont last-argument-return)
+  (goto sequence-send))
+
+(defdispatch last-argument-return (data-type list-pointer) extra-type-cont
+  (assign exp (fetch cont))
+  (restore thargs)
+  (assign cont (pcons (fetch val) (fetch thargs)))	;will save anyway!
+  (goto execute-function))
+
+(defdispatch apply-1-arg (data-type list-pointer) user-type
+  (assign-extra-type cont apply-1-arg-return)
+  (goto sequence-send))
+
+(defdispatch apply-1-arg-return (data-type list-pointer) extra-type-cont
+  (assign exp (fetch cont))
+  (assign cont (pncons (fetch val)))			;may as well
+  (goto execute-function))
+
+(defdispatch apply-no-args (data-type list-pointer) user-type
+  (assign-extra-type cont internal-apply-no-args)
+  (save cont)
+  (goto execute-left-exp))
+
+(defdispatch spread-argument (data-type list-pointer) user-type	;can remove this, leaving
+  (assign-extra-type cont spread-argument-return)	; spread-partial-argument, 
+  (goto sequence-send))					; at some cost
+
+(defdispatch spread-argument-return (data-type list-pointer) extra-type-cont
+  (assign thargs (fetch val))
+  (goto execute-function))
+
+(defdispatch spread-partial-argument (data-type list-pointer) user-type
+  (assign-extra-type cont spread-partial-argument-return)
+  (goto sequence-send))
+
+(defdispatch spread-partial-argument-return (data-type list-pointer) extra-type-cont
+  (assign thargs (fetch val))
+  (goto sequence-return))
+
+;;; combination support procedures
+
+(defdispatch execute-function (data-type list-pointer) extra-type-cont
+  (assign-extra-type cont internal-apply)		;cont has thargs!
+  (save cont)
+  (restore env)
+  (goto execute-exp))
+
+(defdispatch internal-apply (data-type list-pointer) extra-type-cont
+  (assign thargs (fetch cont))				;undoing confusion
+  (goto internal-apply-1))
+
+(defdispatch internal-apply-no-args (data-type list-pointer) extra-type-cont
+  (assign thargs (make-pointer *nil 0))
+  (goto internal-apply-1))
+
+(defpc internal-apply-1
+  (if (type=type-val? closure)
+      (goto closure))
+  (if (type=type-val? control-point)
+      (goto control-point)
+      (goto unknown-function-type-error)))
+
+
+
+;;; SCODE Control Structures.
+
+(defpc sequence-send
+  (duplicate env)
+  (goto save-right-eval-left-exp))
+
+(defpc save-right-eval-left-exp
+  (assign cont (right (fetch exp)))
+  (save cont)
+  (goto execute-left-exp))
+
+(defdispatch sequence-return (data-type list-pointer) extra-type-cont
+  (restore env)
+  (goto execute-cont))
+
+(defdispatch execute-cont (data-type list-pointer) extra-type-cont
+  (assign exp (fetch cont))
+  (goto execute-exp))
+
+(defpc execute-left-exp
+  (assign exp (left (fetch exp)))
+  (goto execute-exp))
+
+(defpc execute-right-exp
+  (assign exp (right (fetch exp)))
+  (goto execute-exp))
+
+(defpc execute-exp
+  (same-cycle (put-on-main-bus (fetch exp))
+	      (assert (path pclsr-save))
+	      (if (interrupt?)		;interrupt pending and none in progress now
+		  (goto process-interrupt)
+		  (dispatch)))
+
+(defpc pop-return
+  (if (type=type-val? unbound)
+      (goto unbound-val-error))
+  (restore cont)
+  (same-cycle (put-on-main-bus (read-reg (path stack cont)))
+	      (dispatch)))
+
+;;; All procedures are either primitive operators (see below) or
+;;;  they are closures or control points.
+
+(defpc closure
+  (assign env (pcons (fetch thargs) (right (fetch val))))
+  (assign exp (left (left (fetch val))))
+  (goto execute-exp))
+
+(defpc control-point
+  (assign exp (left (fetch thargs)))
+  (goto control-point-1))
+
+(defpc control-point-1
+  (ucall restore-control-point)
+  (assign val (fetch exp))
+  (goto pop-return))
+
+
+;;; zero-arg primitives
+
+(defdispatch primitive-array-cons-immediate (data-type non-pointer) user-type
+  (assign val (array-cons (make-pointer fixnum (fetch exp))
+			  (make-pointer *nil 0)))
+  (if (type=type-val? *nil)
+      (goto execute-exp)
+      (goto pop-return)))
+
+(defdispatch garbage-collect (data-type non-pointer) user-type
+  (ucall make-control-point)
+  (set-uconstant-flag I-need-gc 1)
+  (if (path -somebody-doesnt-need-gc sbus)		;wait for acknowledge from all procs
+      ()
+      (busy-wait))
+  (assign val (relocate (pcons (fetch val) (fetch intvector))))	;do first relocate
+  (set-uconstant-flag I-need-gc 0)			;eval no longer cares
+							;The GC machine will hold down
+							;ths bus bit instead of EVAL
+  (if (path -somebody-needs-gc sbus)			;wait for gc done
+      ()
+      (busy-wait))
+  (assign intvector (right (fetch val)))
+  (assign val (left (fetch val)))
+  (assign exp (make-pointer *nil 0))
+  (goto control-point-1))
+
+(defdispatch allow-interrupts (data-type non-pointer) user-type
+  (set-uconstant-flag interrupt-enable 1)
+  (goto *nil))
+
+(defdispatch allow-gc-interrupts (data-type non-pointer) user-type
+  (set-uconstant-flag gc-interrupt-enable 1)
+  (goto *nil))
+
+(defdispatch primitive-set-interrupt-grant (data-type non-pointer) user-type
+  (set-uconstant-flag interrupt-grant 1))
+
+(defdispatch primitive-clear-interrupt-grant (data-type non-pointer) user-type
+  (set-uconstant-flag interrupt-grant 0))
+
+;;; one-arg primitives.
+
+(defdispatch primitive-apply-1 (data-type list-pointer) user-type
+  (assign-extra-type cont execute-cont)
+  (goto save-right-eval-left-exp))
+
+(defdispatch primitive-car (data-type non-pointer) user-type
+  (assign val (left (fetch val)))
+  (goto pop-return))
+
+(defdispatch primitive-cdr (data-type non-pointer) user-type
+  (assign val (right (fetch val)))
+  (goto pop-return))
+
+(defdispatch primitive-general-car-cdr (data-type non-pointer) user-type
+  (assign vcell (fetch val))
+  (ucall general-car-cdr)
+  (assign val (fetch vcell))
+  (goto pop-return))
+
+(defdispatch primitive-array-ref-immediate (data-type non-pointer) user-type
+  (assign val (array-ref (fetch val) (make-pointer fixnum (fetch exp))))
+  (goto pop-return))
+
+(defdispatch primitive-type (data-type non-pointer) user-type
+  (assign val (type-to-fixnum (fetch val)))
+  (goto pop-return))
+
+(defdispatch primitive-lsh-0 (data-type non-pointer) user-type
+  (leftshift-val-0)
+  (goto pop-return))
+
+(defdispatch primitive-lsh-1 (data-type non-pointer) user-type
+  (leftshift-val-1)
+  (goto pop-return))
+
+(defdispatch primitive-zerop (data-type non-pointer) user-type
+  (if (datum=0? (fetch val)) (goto *t) (goto *nil)))
+
+(defdispatch primitive-sub1 (data-type non-pointer) user-type
+  (decrement-val)
+  (goto pop-return))
+
+(defdispatch primitive-add1 (data-type non-pointer) user-type
+  (increment-val)
+  (goto pop-return))
+
+(defdispatch primitive-get-free (data-type non-pointer) user-type
+  (assign val (get-free (fetch val)))
+  (goto pop-return))
+
+(defdispatch primitive-set-memtop  (data-type non-pointer) user-type
+  (set-memtop (fetch val))
+  (goto pop-return))
+
+
+;;; Two-arg Primitives.
+
+(defdispatch primitive-apply-2 (data-type list-pointer) user-type
+  (assign thargs (fetch val))
+  (goto primitive-apply-N))
+
+(defdispatch primitive-apply-N (data-type list-pointer) user-type
+  (assign-extra-type cont primitive-apply-N-return)
+  (save thargs)
+  (goto save-right-eval-left-exp))
+
+(defdispatch primitive-apply-N-return (data-type list-pointer) extra-type-cont
+  (restore thargs)
+  (goto execute-cont))
+
+(defdispatch primitive-cons (data-type non-pointer) user-type
+  (assign val (pcons (fetch val) (fetch thargs)))
+  (goto pop-return))
+
+(defdispatch primitive-eq (data-type non-pointer) user-type
+  (if (=val? (fetch thargs)) (goto *t) (goto *nil)))
+
+(defdispatch primitive-rplaca (data-type non-pointer) user-type
+  (set-left (fetch val) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-rplacd (data-type non-pointer) user-type
+  (set-right (fetch val) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-general-rplaca (data-type non-pointer) user-type
+  (assign vcell (fetch val))
+  (ucall general-car-cdr)
+  (set-left (fetch vcell) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-general-rplacd (data-type non-pointer) user-type
+  (assign vcell (fetch val))
+  (ucall general-car-cdr)
+  (set-right (fetch vcell) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-set-type (data-type non-pointer) user-type
+  (assign-type val (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-array-cons (data-type non-pointer) user-type
+  (assign val (array-cons (fetch val) (fetch thargs)))
+  (if (type=type-val? *nil)
+      (goto execute-exp)
+      (goto pop-return)))
+
+(defdispatch primitive-array-ref (data-type non-pointer) user-type
+  (assign val (array-ref (fetch val) (fetch thargs)))
+  (goto pop-return))
+
+(defdispatch primitive-array-set-immediate (data-type non-pointer) user-type
+  (array-set (fetch val)				;array pointer
+	     (make-pointer fixnum (fetch exp))		;index
+	     (fetch thargs))				;value to be stored.
+  (goto pop-return))
+
+(defdispatch primitive-set-free-pointers  (data-type non-pointer) user-type
+  (set-free-pointers (fetch val) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-array-set (data-type non-pointer) user-type
+  (array-set (fetch val)
+	     (left (fetch thargs))
+	     (left (right (fetch thargs))))
+  (goto pop-return))
+
+;;; Interpreter Control Functions
+
+(defdispatch get-control-point (data-type list-pointer) user-type
+  (ucall-return-elsewhere make-control-point sequence))
+
+(defpc make-control-point
+	(assign val
+		(make-pointer control-point
+			      (pcons (get-state cont)
+				     (pcons (get-state env)
+					    (get-state thargs)))))
+	(return micropc))
+
+(defpc restore-control-point
+       (set-state cont (left (fetch val)))
+       (assign vcell (right (fetch val)))
+       (set-state env (left (fetch vcell)))
+       (set-state thargs (right (fetch vcell)))
+       (return micropc))
+
+;;; interrupt points
+
+(defpc process-interrupt
+       (same-cycle (set-uconstant-flag interrupt-enable 0)
+		   (set-uconstant-flag gc-interrupt-enable 0))
+       		;These two can be same-cycled because
+		;they put the same thing on the uconstant bus.
+       (load-reg errcode (make-pointer fixnum 0))
+       (goto process-interrupt-0))
+
+(defpc process-interrupt-0
+       (save cont)
+       (assign-extra-type cont interrupt-restore)
+       (save env)
+       (assign env (fetch val))				;(save val)
+       (save env)
+       (assign env (fetch exp))				;(save exp)
+       (save env)
+       (assign env (fetch errcode))
+       (assign val (make-pointer fixnum 0))		;Index 0 for GC,
+       (if (path -somebody-needs-gc sbus)
+	   ()
+	   (goto process-interrupt-1))
+       (increment-val)					;1 for error,
+       (if (path nonzero? errcode)
+	   (goto process-interrupt-1))
+       (assign val (get-input))				;else read index from external source.
+       (goto process-interrupt-1))
+
+(defpc process-interrupt-1
+       (assign exp (array-ref (fetch intvector) (fetch val)))
+       (ucall make-control-point)
+       (reset cont)
+       (reset env)
+       (reset thargs)
+       (assign thargs (fetch val))
+       (assign-extra-type cont done)
+       (goto execute-exp))
+
+(defdispatch interrupt-restore (data-type list-pointer) user-type
+  (ucall restore-control-point)
+  (assign split-reg (fetch env))
+  (restore env)						;Discard error code.
+  (assign exp (fetch env))
+  (restore env)						;(restore val)
+  (assign val (fetch env))
+  (restore env)
+  (restore cont)
+  (goto execute-exp))
+
+(defpc unbound-val-error
+       (assign split-reg (make-pointer fixnum ubv-error-code))
+       (goto pclsr-for-error))
+
+(defpc unknown-function-type-error
+       (assign split-reg (make-pointer fixnum udf-error-code))
+       (goto pclsr-for-error))
+
+(defpc sbus-error
+  (if (path nonzero? errcode)
+      (goto error-within-error)
+      (goto pclsr-for-error)))
+
+(defpc pclsr-for-error
+  (same-cycle
+    (load-reg errcode  (fetch split-reg))
+    (assert (path pclsr-restore))
+    (goto process-interrupt-0)))

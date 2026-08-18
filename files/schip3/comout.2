@@ -1,0 +1,84 @@
+
+;;; -*-LISP-*-  SCHEME chip simulator -- RMS, GJS
+
+(DECLARE (MACROS T))
+
+(EVAL-WHEN (EVAL COMPILE LOAD)
+	   (DEFUN RESET-LOADING ()
+		  (SETQ EXPLICIT-TYPES NIL EXPLICIT-DATUMS NIL)   ;(SPELLING OK!)
+		  (SETQ USER-TYPE (*ARRAY NIL T 128.))
+		  (SETQ EXTRA-TYPE-CONT (*ARRAY NIL T 128.))
+		  (SETQ REG-NUMBER 0)
+		  (setq used-temps 0)
+		  (setq last-temp 0)
+		  (setq arg-expressions nil))
+	   (RESET-LOADING))
+
+;;; The SCHEME virtual machine is composed of a set of registers with
+;;; associated stacks (RACKS), other registers, and a controller.  The following allows
+;;; one to set up the registers.
+
+;;; The microcode of the machine is in the file NUCODE, while
+;;; the primitive macros are in GENMAC.
+
+(DECLARE (SPECIAL REG-NUMBER *REG-STATS?))
+(SETQ *REG-STATS? NIL)
+
+;;; The controller part of the virtual machine is implemented in LISP below.
+
+;;; The following macros allow us to refer to virtual machine PC's as
+;;; the values of LISP variables.
+
+;;; Virtual machine PCs which are referred to are defined with:
+;;; This builder function is used by the DEFPC macro to generate the code.
+;;; It should return the code which will be returned from the macro.
+
+(DEFUN DEFPC-BUILDER (CNAME BODY)
+  (LET ((PROC (COND ((MEMQ 'COMPLR (STATUS FEATURES))
+		     `(GET ',CNAME 'SUBR))
+		    (T
+		     `',CNAME))))
+    `(PROGN 'COMPILE
+	    (DEFUN ,CNAME ()
+		   ,(DEFPC-CODEWALK `(PROG () ,@BODY (ERROR "Drop off end" ',CNAME))))
+	    (SETQ ,CNAME ,PROC))))
+
+(DEFUN DEFPC-CODEWALK (BODY)
+  (CODEWALK (SUBST NIL NIL BODY) NIL 'CODEWALK-1 'CODEWALK-EXPAND-CLOBBER NIL))
+
+;This works as long as we are interpreting the microcode
+;(that is, not passing it through NCOMPLR).
+(DEFUN DO-LATER (EXP) (EVAL EXP))
+
+;;; Define the temp registers and tell compiler what they are.
+(setq temp-regs '(temp-reg-0 temp-reg-1 temp-reg-2 temp-reg-3 temp-reg-4))
+(defreg temp-reg-0 simple-register word)
+(defreg temp-reg-1 simple-register word)
+(defreg temp-reg-2 simple-register word)
+(defreg temp-reg-3 simple-register word)
+(defreg temp-reg-4 simple-register word)
+
+;;; These are our argument registers.
+;;; An arg register is a phony register.
+;;; The microcode can fetch or assign the arg register as if it were a real register
+;;; but the arg register remembers the name of some other real register
+;;; and fetches or assigns that register.
+
+;;; In fact, the arg register has a stack of rememebered registers
+;;; and it uses the last one pushed.  Here are the names of the arg registers.
+(setq arg-stack-names '(arg1-stack arg2-stack))
+(setq target-stack-name 'target-stack)
+
+;;; Here is how to fetch and assign them.
+
+(defun (arg-register fetch-preparation) (reg) nil)
+
+(defun (arg-register assign-preparation) (reg) nil)
+
+
+;Definitions for random logic.
+
+(DEFMACRO DEFLOGIC (NAME BODY)
+  `(PROGN 'COMPILE
+	  (DEFUN ,NAME () ,BODY)
+	  (DEFREG ,NAME LOGIC-FLAG BIT)))

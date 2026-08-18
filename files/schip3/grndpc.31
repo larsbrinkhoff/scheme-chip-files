@@ -1,0 +1,99 @@
+;;;-*-mode:LISP; package: SCHIP -*-
+
+;;; This file contains functions for prettily printing the expanded definitions
+;;; of PCs.
+
+;;; The function GRIND-PC takes a PC name and prints out info on it.
+;;; The format is:
+;;; (DEFINE-A-PC <name> <kind-info> . <body>)
+;;; Where <kind-info> depends on what kind of PC it is
+;;; and <body> is the expanded definition of the PC.
+;;; <kind-info> is NIL if it is an ordinary PC, otherwise it
+;;; is a list beginning with the kind of PC (dispatch microsubr or microfun)
+;;; followed by an alist of interesting info that depends on the kind of pc
+;;; A simple definition of DEFINE-A-PC is here also, it just gives the
+;;; <name> a PC-KIND porperty, also a PC-DEFINITION property, as well
+;;; as the other properties in the <kind-info> list.
+;;; The name of the PC is placed on a list *defined-pc-list*
+;;; which serves the same purpose as *pc-list*.
+
+;;; The fuction GRIND-ALL-PCS grinds all the pcs in *PC-LIST* into the specified file.
+
+
+#M
+(defun grind-all-pcs (filename)
+       (let ((outfiles (list (open filename 'out)))
+	     (^r t)
+	     (^w t))
+	    (unwind-protect
+	     (mapc #'grind-pc (reverse *pc-list*))	;this produces them in the order
+	     (mapc #'close outfiles))			;they were made
+	    filename))
+
+#Q
+(defun grind-all-pcs (filename)
+  (let ((standard-output (open filename ':out)))
+    (unwind-protect
+      (mapc #'grind-pc (reverse *pc-list*))
+      (close standard-output))
+    filename))
+
+(defun grind-pc (name)
+  (if (not (null (get-pc-def name)))
+      (progn
+	(format t "~%~%(DEFINE-A-PC ~A" name)
+	(print-pc-kind-info name)
+	(print-pc-def name)
+	(format t ")"))
+      (error "Not a PC." name 'fail-act)))
+
+(defun get-pc-def (name)
+  #M(caddr (get name 'expr))
+  #Q(if (fboundp name)
+	(let ((def (or (get name ':previous-expr-definition)
+		       (fsymeval name))))
+	  (caddr (cadddr def)))))
+
+(defun print-pc-def (name)
+       (format t "~%   ")
+       (sprin1 (get-pc-def name)))
+
+(defun print-pc-kind-info (name)
+  (let ((kind (get name 'pc-kind)))
+    (if (null kind)
+	(format t "~%   NIL")
+	(format t "~%   ~A"
+		(funcall (get kind 'pc-kind-info-getter) name)))))
+
+(defun (dispatch pc-kind-info-getter) (name)
+       (let ((usert (get name 'user-type))
+	     (extrt (get name 'extra-type-cont))
+	     (ls nil))
+	    (if usert (setq ls (cons `(USER-TYPE ,usert) ls)))
+	    (if extrt (setq ls (cons `(EXTRA-TYPE-CONT ,extrt) ls)))
+	    `(DISPATCH (DISPATCH-TYPE ,(get name 'dispatch-type)) . ,ls)))
+
+(defun (microfun pc-kind-info-getter) (name)
+  (list 'microfun
+	`(microfun-name ,(get name 'microfun-name))
+	`(nargs ,(get (get name 'microfun-name) 'nargs))))
+
+(defun (microsubr pc-kind-info-getter) (name)
+  (list 'microsubr
+	`(nargs ,(get name 'nargs))))
+
+(defvar *defined-pc-list* nil)
+
+(defmacro define-a-pc (name kind-info body)
+  `(progn
+    (push ',name *defined-pc-list*)
+    (defprop ,name nil kind-info)
+    (defprop ,name ,body pc-definition)
+    (cond ((not (null ',kind-info))
+	   (defprop ,name ,(car kind-info) pc-kind)
+	   (mapc #'(lambda (pair)
+			   (putprop ',name (cadr pair) (car pair))
+			   (putprop ',name (cons (car pair) (get ',name 'kind-info))
+				    'kind-info))
+		 ',(cdr kind-info))))
+    ',name))

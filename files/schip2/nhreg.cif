@@ -1,0 +1,1510 @@
+( Created by Sif from nhreg.ic );
+
+DS 1;     ( Name: ZEROP-COLUMN );
+( 4 Items. );
+Layer NDif;  Box  Len 400  Wid 8000  Center 200,4000 ;
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,4800 ;
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,800 ;
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,6200 ;
+DF;
+
+
+DS 2;     ( Name: ZEROP-DUMMY );
+( 4 Items. );
+Layer NDif;  Box  Len 400  Wid 8000  Center 200,4000 ;
+Layer NMet;  Box  Len 2000  Wid 800  Center 1000,4800 ;
+Layer NMet;  Box  Len 2000  Wid 800  Center 1000,800 ;
+Layer NMet;  Box  Len 2000  Wid 800  Center 1000,6200 ;
+DF;
+
+
+DS 3;     ( Name: TWO-POLY-COLUMN );
+( 5 Items. );
+Layer NPol;  Box  Len 400  Wid 8000  Center 1000,4000 ;
+Layer NPol;  Box  Len 400  Wid 8000  Center 200,4000 ;
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,4800 ;
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,800 ;
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,6200 ;
+DF;
+
+
+DS 4;     ( Name: BUTTING-CONTACT );
+( 4 Items. );
+Layer NCut;  Box  Len 400  Wid 800  Center 0,0 ;
+Layer NMet;  Box  Len 800  Wid 1200  Center 0,0 ;
+Layer NPol;  Box  Len 800  Wid 600  Center 0,300 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 0,-200 ;
+DF;
+
+
+DS 5;     ( Name: PULLUP-WITHOUT-CONTACT-2 );
+( 3 Items. );
+Layer NImp;  Box  Len 1200  Wid 2400  Center 0,800 ;
+Layer NDif;  Box  Len 400  Wid 1600  Center 0,800 ;
+Layer NPol;  Box  Len 1200  Wid 1600  Center 0,800 ;
+DF;
+
+
+DS 6;     ( Name: PULLUP-WITHOUT-CONTACT );
+( 3 Items. );
+Layer NImp;  Box  Len 1200  Wid 1800  Center 0,500 ;
+Layer NDif;  Box  Len 400  Wid 1000  Center 0,500 ;
+Layer NPol;  Box  Len 1200  Wid 1000  Center 0,500 ;
+DF;
+
+
+DS 7;     ( Name: HBIT );
+( 45 Items. );
+Layer NMet;  Box  Len 4600  Wid 600  Center 5700,2100 ;
+Layer NMet;  Box  Len 3200  Wid 600  Center 6400,3500 ;
+Layer NPol;  Box  Len 400  Wid 2400  Center 5200,4800 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 3700,3200 ;
+Layer NPol;  Box  Len 1800  Wid 400  Center 4300,2000 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 3200,6200 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 3200,6200 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 3200,6200 ;
+Layer NDif;  Box  Len 400  Wid 4200  Center 3000,4300 ;
+Layer NDif;  Box  Len 1800  Wid 400  Center 3700,6400 ;
+Layer NDif;  Box  Len 400  Wid 2000  Center 4600,5600 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 7400,4800 ;
+Layer NDif;  Box  Len 600  Wid 3800  Center 4500,2700 ;
+Layer NDif;  Box  Len 800  Wid 1800  Center 3200,1300 ;
+Layer NDif;  Box  Len 1600  Wid 400  Center 4000,600 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 4800,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 4800,800 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 4800,800 ;
+Layer NPol;  Box  Len 2000  Wid 400  Center 3000,1200 ;
+Layer NPol;  Box  Len 400  Wid 1400  Center 2000,1700 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 6800,3400 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 6800,3400 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 6800,3400 ;
+Layer NDif;  Box  Len 400  Wid 4000  Center 6600,5400 ;
+Layer NDif;  Box  Len 5000  Wid 400  Center 4300,7400 ;
+Layer NDif;  Box  Len 400  Wid 5200  Center 1800,5000 ;
+Layer NDif;  Box  Len 1400  Wid 800  Center 1100,4800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,4800 ;
+Call 4 Rot 0,-1  Trans 4800,3600;
+Call 6 Trans 4600,5000;
+Call 4 Rot 0,-1  Trans 3400,2200;
+Call 5 Trans 3000,2800;
+Call 4 Mir X  Rot -1,0  Trans 1800,2400;
+Layer NMet;  Box  Len 8000  Wid 600  Center 4000,4900 ;
+Layer NMet;  Box  Len 8000  Wid 800  Center 4000,800 ;
+Layer NMet;  Box  Len 8000  Wid 800  Center 4000,6200 ;
+Layer NPol;  Box  Len 400  Wid 8000  Center 7600,4000 ;
+Layer NPol;  Box  Len 400  Wid 8000  Center 6000,4000 ;
+Layer NPol;  Box  Len 400  Wid 2400  Center 800,6800 ;
+Layer NPol;  Box  Len 600  Wid 400  Center 900,5600 ;
+Layer NPol;  Box  Len 400  Wid 1800  Center 1200,4900 ;
+Layer NPol;  Box  Len 600  Wid 400  Center 1100,4000 ;
+Layer NPol;  Box  Len 400  Wid 4200  Center 800,2100 ;
+DF;
+
+
+DS 8;     ( Name: HINC-DUMMY );
+( 11 Items. );
+Layer NDif;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,4800 ;
+Layer NPol;  Box  Len 400  Wid 2400  Center 400,6800 ;
+Layer NPol;  Box  Len 1000  Wid 400  Center 700,5600 ;
+Layer NPol;  Box  Len 400  Wid 1800  Center 1200,4900 ;
+Layer NPol;  Box  Len 1000  Wid 400  Center 900,4000 ;
+Layer NPol;  Box  Len 400  Wid 4200  Center 400,2100 ;
+Layer NMet;  Box  Len 8600  Wid 800  Center 4300,4800 ;
+Layer NMet;  Box  Len 8600  Wid 800  Center 4300,800 ;
+Layer NMet;  Box  Len 8600  Wid 800  Center 4300,6200 ;
+DF;
+
+
+DS 9;     ( Name: NARROW-ONE-POLY-COLUMN );
+( 4 Items. );
+Layer NPol;  Box  Len 400  Wid 8000  Center 600,4000 ;
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,4800 ;
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,800 ;
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,6200 ;
+DF;
+
+
+DS 10;     ( Name: HEQ-DUMMY );
+( 13 Items. );
+Layer NDif;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,4800 ;
+Layer NDif;  Box  Len 400  Wid 8000  Center 8200,4000 ;
+Layer NMet;  Box  Len 9000  Wid 800  Center 4500,800 ;
+Layer NMet;  Box  Len 9000  Wid 600  Center 4500,2100 ;
+Layer NMet;  Box  Len 2800  Wid 600  Center 7600,3500 ;
+Layer NMet;  Box  Len 600  Wid 400  Center 6100,3600 ;
+Layer NMet;  Box  Len 3000  Wid 600  Center 4900,3300 ;
+Layer NMet;  Box  Len 600  Wid 400  Center 3300,3300 ;
+Layer NMet;  Box  Len 3600  Wid 600  Center 1800,3500 ;
+Layer NMet;  Box  Len 9000  Wid 600  Center 4500,4700 ;
+Layer NMet;  Box  Len 9000  Wid 800  Center 4500,6200 ;
+DF;
+
+
+DS 11;     ( Name: PULLUP-WITHOUT-EXTRA-LENGTH );
+( 5 Items. );
+Layer NImp;  Box  Len 400  Wid 1600  Center 0,800 ;
+Layer NImp;  Box  Len 1200  Wid 2600  Center 0,900 ;
+Layer NDif;  Box  Len 400  Wid 2000  Center 0,800 ;
+Layer NPol;  Box  Len 1200  Wid 1600  Center 0,800 ;
+Call 4 Trans 0,0;
+DF;
+
+
+DS 12;     ( Name: PASS-TRANSISTOR-4 );
+( 2 Items. );
+Layer NDif;  Box  Len 800  Wid 800  Center 0,0 ;
+Layer NPol;  Box  Len 1600  Wid 400  Center 0,0 ;
+DF;
+
+
+DS 13;     ( Name: PASS-TRANSISTOR-3 );
+( 2 Items. );
+Layer NDif;  Box  Len 400  Wid 800  Center 0,0 ;
+Layer NPol;  Box  Len 1200  Wid 400  Center 0,0 ;
+DF;
+
+
+DS 14;     ( Name: heq );
+( 53 Items. );
+Layer NDif;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 9000  Wid 800  Center 4500,800 ;
+Layer NMet;  Box  Len 9000  Wid 600  Center 4500,2100 ;
+Layer NMet;  Box  Len 2800  Wid 600  Center 1400,3500 ;
+Layer NMet;  Box  Len 9000  Wid 600  Center 4500,4700 ;
+Layer NMet;  Box  Len 3200  Wid 800  Center 1600,6200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,4800 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 800,2200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 800,2200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 800,2200 ;
+Layer NPol;  Box  Len 2400  Wid 400  Center 2200,4600 ;
+Layer NPol;  Box  Len 1600  Wid 400  Center 2000,2200 ;
+Layer NDif;  Box  Len 800  Wid 2200  Center 1800,3700 ;
+Layer NDif;  Box  Len 400  Wid 2800  Center 1600,6200 ;
+Layer NDif;  Box  Len 1600  Wid 1200  Center 2200,4600 ;
+Layer NDif;  Box  Len 6600  Wid 400  Center 4900,7400 ;
+Layer NMet;  Box  Len 4600  Wid 600  Center 4100,3300 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 2600,3000 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 2800,6200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 2800,6200 ;
+Layer NMet;  Box  Len 800  Wid 1600  Center 2800,7000 ;
+Layer NPol;  Box  Len 400  Wid 1400  Center 2600,3100 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 2800,6200 ;
+Layer NMet;  Box  Len 4200  Wid 800  Center 4900,7400 ;
+Call 11 Rot 0,1  Trans 5000,6000;
+Layer NDif;  Box  Len 2600  Wid 3000  Center 4300,1900 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 3600,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 3600,800 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 3600,800 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 3800,4600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 3800,4600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 3800,4600 ;
+Layer NPol;  Box  Len 1800  Wid 400  Center 5100,4400 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 5000,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 5000,800 ;
+Layer NPol;  Box  Len 2000  Wid 400  Center 5600,6800 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 5000,800 ;
+Layer NDif;  Box  Len 400  Wid 2200  Center 5000,4500 ;
+Layer NDif;  Box  Len 400  Wid 2600  Center 5400,4700 ;
+Layer NDif;  Box  Len 1400  Wid 800  Center 6300,2200 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 6200,3400 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 6200,3400 ;
+Call 12 Trans 6600,6800;
+Layer NMet;  Box  Len 600  Wid 400  Center 6100,3600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 6200,3400 ;
+Layer NPol;  Box  Len 400  Wid 1600  Center 6200,2200 ;
+Layer NDif;  Box  Len 800  Wid 1400  Center 6600,6100 ;
+Layer NMet;  Box  Len 2800  Wid 600  Center 7600,3500 ;
+Layer NMet;  Box  Len 800  Wid 1600  Center 6600,6600 ;
+Layer NMet;  Box  Len 2400  Wid 800  Center 7800,6200 ;
+Layer NDif;  Box  Len 400  Wid 4000  Center 7200,3800 ;
+Layer NDif;  Box  Len 400  Wid 8000  Center 8200,4000 ;
+DF;
+
+
+DS 15;     ( Name: DIFF-POLY-COLUMN );
+( 5 Items. );
+Layer NPol;  Box  Len 400  Wid 8000  Center 800,4000 ;
+Layer NDif;  Box  Len 400  Wid 8000  Center 200,4000 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 600,4800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 600,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 600,6200 ;
+DF;
+
+
+DS 16;     ( Name: PULLUP-2 );
+( 5 Items. );
+Layer NImp;  Box  Len 400  Wid 1800  Center 0,900 ;
+Layer NImp;  Box  Len 1200  Wid 2600  Center 0,900 ;
+Layer NDif;  Box  Len 400  Wid 1800  Center 0,900 ;
+Layer NPol;  Box  Len 1200  Wid 1800  Center 0,900 ;
+Call 4 Trans 0,0;
+DF;
+
+
+DS 17;     ( Name: PULLUP );
+( 5 Items. );
+Layer NImp;  Box  Len 400  Wid 1200  Center 0,600 ;
+Layer NImp;  Box  Len 1200  Wid 2000  Center 0,600 ;
+Layer NDif;  Box  Len 400  Wid 1200  Center 0,600 ;
+Layer NPol;  Box  Len 1200  Wid 1200  Center 0,600 ;
+Call 4 Trans 0,0;
+DF;
+
+
+DS 18;     ( Name: REGCELL );
+( 55 Items. );
+Layer NDif;  Box  Len 2400  Wid 800  Center 4000,800 ;
+Layer NDif;  Box  Len 2400  Wid 800  Center 4000,6200 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 8000,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 8000,4800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 8000,4800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,4800 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 7400,4800 ;
+Layer NDif;  Box  Len 1400  Wid 800  Center 1100,4800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 6800,3200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 6800,3200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 6800,3200 ;
+Layer NDif;  Box  Len 400  Wid 4200  Center 6600,5300 ;
+Layer NDif;  Box  Len 5000  Wid 400  Center 4300,7400 ;
+Layer NDif;  Box  Len 400  Wid 5000  Center 1800,5100 ;
+Layer NPol;  Box  Len 2000  Wid 400  Center 3000,1600 ;
+Layer NPol;  Box  Len 400  Wid 1200  Center 2000,2000 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 4800,6200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 4800,6200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 4800,6200 ;
+Layer NDif;  Box  Len 400  Wid 1600  Center 4800,5400 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 4800,800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 4800,800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 4800,800 ;
+Layer NDif;  Box  Len 600  Wid 2800  Center 4700,2200 ;
+Layer NMet;  Box  Len 2400  Wid 600  Center 5600,3100 ;
+Layer NPol;  Box  Len 1400  Wid 400  Center 4700,2400 ;
+Layer NPol;  Box  Len 400  Wid 600  Center 4000,2500 ;
+Layer NPol;  Box  Len 1000  Wid 400  Center 3700,2800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 3200,6200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 3200,6200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 3200,6200 ;
+Layer NDif;  Box  Len 400  Wid 1800  Center 3200,5300 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 3200,800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 3200,800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 3200,800 ;
+Layer NDif;  Box  Len 800  Wid 2000  Center 3200,1800 ;
+Layer NMet;  Box  Len 8000  Wid 600  Center 4000,4900 ;
+Layer NMet;  Box  Len 8400  Wid 800  Center 4200,800 ;
+Layer NMet;  Box  Len 8400  Wid 800  Center 4200,6200 ;
+Call 4 Mir X  Rot -1,0  Trans 1800,2600;
+Call 17 Trans 4800,3400;
+Call 16 Trans 3200,2600;
+Layer NPol;  Box  Len 400  Wid 2400  Center 7600,6800 ;
+Layer NPol;  Box  Len 600  Wid 400  Center 7500,5600 ;
+Layer NPol;  Box  Len 400  Wid 1800  Center 7200,4900 ;
+Layer NPol;  Box  Len 600  Wid 400  Center 7300,4000 ;
+Layer NPol;  Box  Len 400  Wid 4200  Center 7600,2100 ;
+Layer NPol;  Box  Len 400  Wid 8000  Center 6000,4000 ;
+Layer NPol;  Box  Len 400  Wid 2400  Center 800,6800 ;
+Layer NPol;  Box  Len 600  Wid 400  Center 900,5600 ;
+Layer NPol;  Box  Len 400  Wid 1800  Center 1200,4900 ;
+Layer NPol;  Box  Len 600  Wid 400  Center 1100,4000 ;
+Layer NPol;  Box  Len 400  Wid 4200  Center 800,2100 ;
+DF;
+
+
+DS 19;     ( Name: WIDE-ONE-POLY-COLUMN );
+( 4 Items. );
+Layer NPol;  Box  Len 400  Wid 8000  Center 1200,4000 ;
+Layer NMet;  Box  Len 1600  Wid 800  Center 800,4800 ;
+Layer NMet;  Box  Len 1600  Wid 800  Center 800,800 ;
+Layer NMet;  Box  Len 1600  Wid 800  Center 800,6200 ;
+DF;
+
+
+DS 20;     ( Name: NILCELL );
+( 12 Items. );
+Layer NDif;  Box  Len 800  Wid 4000  Center 2000,2800 ;
+Layer NDif;  Box  Len 2000  Wid 800  Center 1400,4800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 2000,800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 2000,800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 2000,800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,4800 ;
+Layer NPol;  Box  Len 400  Wid 8000  Center 1200,4000 ;
+Layer NMet;  Box  Len 2400  Wid 800  Center 1200,4800 ;
+Layer NMet;  Box  Len 2400  Wid 800  Center 1200,800 ;
+Layer NMet;  Box  Len 2400  Wid 800  Center 1200,6200 ;
+DF;
+
+
+DS 21;     ( Name: TYPE-FIELD-ROW );
+( 21 Items. );
+Call 20 Trans 114000,0;
+Call 18 Trans 106400,0;
+Call 18 Trans 98800,0;
+Call 18 Trans 91200,0;
+Call 18 Trans 83600,0;
+Call 18 Trans 76000,0;
+Call 19 Trans 74400,0;
+Call 18 Trans 66800,0;
+Call 15 Trans 65600,0;
+Call 14 Trans 56600,0;
+Call 7 Trans 48600,0;
+Call 9 Trans 47600,0;
+Call 8 Trans 39000,0;
+Call 10 Trans 30000,0;
+Call 7 Trans 22000,0;
+Call 9 Trans 21000,0;
+Call 8 Trans 12400,0;
+Call 7 Trans 4400,0;
+Call 3 Trans 3000,0;
+Call 2 Trans 1000,0;
+Call 1 Trans 0,0;
+DF;
+
+
+DS 22;     ( Name: COLUMN-3 );
+( 8 Items. );
+Call 21 Trans 0,56000;
+Call 21 Trans 0,48000;
+Call 21 Trans 0,40000;
+Call 21 Trans 0,32000;
+Call 21 Trans 0,24000;
+Call 21 Trans 0,16000;
+Call 21 Trans 0,8000;
+Call 21 Trans 0,0;
+DF;
+
+
+DS 23;     ( Name: ZEROP-BOX );
+( 1 Items. );
+Layer NDif;  Box  Len 400  Wid 1000  Center 200,500 ;
+DF;
+
+
+DS 24;     ( Name: ZEROP-COUPLER );
+( 1 Items. );
+Layer NDif;  Box  Len 400  Wid 1000  Center 200,500 ;
+DF;
+
+
+DS 25;     ( Name: TWO-POLY-ELBOW );
+( 3 Items. );
+Layer NPol;  Box  Len 400  Wid 1000  Center 200,500 ;
+Layer NPol;  Box  Len 400  Wid 400  Center 1200,800 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 1000,500 ;
+DF;
+
+
+DS 26;     ( Name: TO-ENTRANCE );
+( 3 Items. );
+Layer NPol;  Box  Len 1000  Wid 400  Center 500,800 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 7600,500 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 6000,500 ;
+DF;
+
+
+DS 27;     ( Name: HINC-COUPLER );
+( 3 Items. );
+Layer NPol;  Box  Len 400  Wid 1000  Center 8400,500 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 6400,500 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 400,500 ;
+DF;
+
+
+DS 28;     ( Name: NARROW-ONE-POLY-ELBOW );
+( 2 Items. );
+Layer NPol;  Box  Len 400  Wid 400  Center 800,800 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 600,500 ;
+DF;
+
+
+DS 29;     ( Name: HEQ-COUPLER );
+( 1 Items. );
+Layer NDif;  Box  Len 400  Wid 1000  Center 8200,500 ;
+DF;
+
+
+DS 30;     ( Name: HEQ-ENTER );
+( 1 Items. );
+Layer NDif;  Box  Len 1000  Wid 400  Center 8500,800 ;
+DF;
+
+
+DS 31;     ( Name: DIFF-POLY-ELBOW );
+( 3 Items. );
+Layer NDif;  Box  Len 400  Wid 1000  Center 200,500 ;
+Layer NPol;  Box  Len 400  Wid 400  Center 1000,800 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 800,500 ;
+DF;
+
+
+DS 32;     ( Name: REGCELL-TO-ENTER );
+( 3 Items. );
+Layer NPol;  Box  Len 1000  Wid 400  Center 500,800 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 7600,500 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 6000,500 ;
+DF;
+
+
+DS 33;     ( Name: WIDE-ONE-POLY-ELBOW );
+( 2 Items. );
+Layer NPol;  Box  Len 400  Wid 400  Center 1400,800 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 1200,500 ;
+DF;
+
+
+DS 34;     ( Name: REGCELL-COUPLER );
+( 3 Items. );
+Layer NPol;  Box  Len 400  Wid 1000  Center 800,500 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 7600,500 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 6000,500 ;
+DF;
+
+
+DS 35;     ( Name: NILCELL-COUPLER );
+( 1 Items. );
+Layer NPol;  Box  Len 400  Wid 1000  Center 1200,500 ;
+DF;
+
+
+DS 36;     ( Name: TYPE-DISPLACEMENT-ROW );
+( 21 Items. );
+Call 35 Trans 114000,0;
+Call 34 Trans 106400,0;
+Call 34 Trans 98800,0;
+Call 34 Trans 91200,0;
+Call 34 Trans 83600,0;
+Call 32 Trans 76000,0;
+Call 33 Trans 74400,0;
+Call 32 Trans 66800,0;
+Call 31 Trans 65600,0;
+Call 30 Trans 56600,0;
+Call 26 Trans 48600,0;
+Call 28 Trans 47600,0;
+Call 27 Trans 39000,0;
+Call 29 Trans 30000,0;
+Call 26 Trans 22000,0;
+Call 28 Trans 21000,0;
+Call 27 Trans 12400,0;
+Call 26 Trans 4400,0;
+Call 25 Trans 3000,0;
+Call 24 Trans 1000,0;
+Call 23 Trans 0,0;
+DF;
+
+
+DS 37;     ( Name: ZEROP );
+( 13 Items. );
+Layer NDif;  Box  Len 1400  Wid 400  Center 900,3200 ;
+Layer NDif;  Box  Len 400  Wid 2600  Center 1600,2100 ;
+Layer NPol;  Box  Len 400  Wid 2200  Center 1000,3700 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 1400,800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1400,800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 1400,800 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 1200,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1200,4800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 1200,4800 ;
+Layer NDif;  Box  Len 400  Wid 8000  Center 200,4000 ;
+Layer NMet;  Box  Len 2000  Wid 800  Center 1000,4800 ;
+Layer NMet;  Box  Len 2000  Wid 800  Center 1000,800 ;
+Layer NMet;  Box  Len 2000  Wid 800  Center 1000,6200 ;
+DF;
+
+
+DS 38;     ( Name: ONE-POLY-COLUMN );
+( 4 Items. );
+Layer NPol;  Box  Len 400  Wid 8000  Center 200,4000 ;
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,4800 ;
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,800 ;
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,6200 ;
+DF;
+
+
+DS 39;     ( Name: HINC );
+( 57 Items. );
+Layer NDif;  Box  Len 800  Wid 600  Center 7600,2700 ;
+Layer NDif;  Box  Len 600  Wid 2200  Center 7100,1900 ;
+Layer NDif;  Box  Len 400  Wid 5400  Center 5800,3500 ;
+Layer NDif;  Box  Len 2000  Wid 400  Center 6600,6200 ;
+Layer NDif;  Box  Len 400  Wid 3000  Center 7600,4900 ;
+Layer NDif;  Box  Len 3000  Wid 800  Center 4300,1200 ;
+Layer NDif;  Box  Len 400  Wid 2600  Center 1800,3500 ;
+Layer NDif;  Box  Len 800  Wid 1200  Center 3200,4200 ;
+Layer NDif;  Box  Len 3200  Wid 800  Center 2000,4800 ;
+Layer NPol;  Box  Len 600  Wid 1200  Center 4900,4200 ;
+Layer NPol;  Box  Len 1400  Wid 400  Center 7100,2000 ;
+Layer NPol;  Box  Len 400  Wid 1800  Center 5000,1300 ;
+Layer NPol;  Box  Len 1200  Wid 400  Center 1800,3200 ;
+Layer NPol;  Box  Len 400  Wid 600  Center 2400,3100 ;
+Layer NPol;  Box  Len 1800  Wid 400  Center 3100,2800 ;
+Layer NMet;  Box  Len 1800  Wid 800  Center 4100,2200 ;
+Layer NMet;  Box  Len 1600  Wid 600  Center 800,2100 ;
+Layer NMet;  Box  Len 3200  Wid 600  Center 1600,3500 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 5000,2200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 5000,2200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 5000,2200 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 7200,6200 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 7200,6200 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 7200,6200 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 7400,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 7400,800 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 7400,800 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 2800,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 2800,800 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 2800,800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 3200,3600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 3200,3600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 3200,3600 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 1600,2200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1600,2200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 1600,2200 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,4800 ;
+Layer NPol;  Box  Len 400  Wid 4600  Center 8400,2300 ;
+Layer NPol;  Box  Len 400  Wid 4800  Center 6400,2400 ;
+Layer NPol;  Box  Len 400  Wid 6600  Center 4000,3700 ;
+Layer NPol;  Box  Len 4600  Wid 400  Center 6100,7000 ;
+Layer NPol;  Box  Len 400  Wid 1200  Center 8400,7400 ;
+Layer NPol;  Box  Len 400  Wid 3800  Center 2400,5900 ;
+Layer NPol;  Box  Len 4400  Wid 400  Center 4400,7800 ;
+Layer NPol;  Box  Len 400  Wid 2400  Center 400,6800 ;
+Layer NPol;  Box  Len 1000  Wid 400  Center 700,5600 ;
+Layer NPol;  Box  Len 400  Wid 1800  Center 1200,4900 ;
+Layer NPol;  Box  Len 1000  Wid 400  Center 900,4000 ;
+Layer NPol;  Box  Len 400  Wid 4200  Center 400,2100 ;
+Layer NMet;  Box  Len 8600  Wid 600  Center 4300,4900 ;
+Layer NMet;  Box  Len 8600  Wid 800  Center 4300,800 ;
+Layer NMet;  Box  Len 8600  Wid 800  Center 4300,6200 ;
+Call 5 Trans 5800,4200;
+Call 17 Trans 7600,3400;
+Call 4 Rot 0,1  Trans 5200,3600;
+DF;
+
+
+DS 40;     ( Name: DEC );
+( 2 Items. );
+Layer NMet;  Box  Len 1600  Wid 800  Center 2400,2200 ;
+Call 39 Trans 0,0;
+DF;
+
+
+DS 41;     ( Name: NARROW-EMPTY-COLUMN );
+( 3 Items. );
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,4800 ;
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,800 ;
+Layer NMet;  Box  Len 1000  Wid 800  Center 500,6200 ;
+DF;
+
+
+DS 42;     ( Name: INC );
+( 2 Items. );
+Layer NMet;  Box  Len 800  Wid 1800  Center 3200,2700 ;
+Call 39 Trans 0,0;
+DF;
+
+
+DS 43;     ( Name: MIDDLE-EMPTY-COLUMN );
+( 3 Items. );
+Layer NMet;  Box  Len 1200  Wid 800  Center 600,4800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 600,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 600,6200 ;
+DF;
+
+
+DS 44;     ( Name: WIDE-EMPTY-COLUMN );
+( 3 Items. );
+Layer NMet;  Box  Len 1600  Wid 800  Center 800,4800 ;
+Layer NMet;  Box  Len 1600  Wid 800  Center 800,800 ;
+Layer NMet;  Box  Len 1600  Wid 800  Center 800,6200 ;
+DF;
+
+
+DS 45;     ( Name: DISPLACEMENT-FIELD-ROW );
+( 21 Items. );
+Call 20 Trans 114000,0;
+Call 18 Trans 106400,0;
+Call 18 Trans 98800,0;
+Call 18 Trans 91200,0;
+Call 18 Trans 83600,0;
+Call 18 Trans 76000,0;
+Call 44 Trans 74400,0;
+Call 18 Trans 66800,0;
+Call 43 Trans 65600,0;
+Call 14 Trans 56600,0;
+Call 7 Trans 48600,0;
+Call 41 Trans 47600,0;
+Call 42 Trans 39000,0;
+Call 14 Trans 30000,0;
+Call 7 Trans 22000,0;
+Call 41 Trans 21000,0;
+Call 40 Trans 12400,0;
+Call 7 Trans 4400,0;
+Call 38 Trans 3000,0;
+Call 37 Trans 1000,0;
+Call 1 Trans 0,0;
+DF;
+
+
+DS 46;     ( Name: COLUMN-2 );
+( 12 Items. );
+Call 45 Trans 0,88000;
+Call 45 Trans 0,80000;
+Call 45 Trans 0,72000;
+Call 45 Trans 0,64000;
+Call 45 Trans 0,56000;
+Call 45 Trans 0,48000;
+Call 45 Trans 0,40000;
+Call 45 Trans 0,32000;
+Call 45 Trans 0,24000;
+Call 45 Trans 0,16000;
+Call 45 Trans 0,8000;
+Call 45 Trans 0,0;
+DF;
+
+
+DS 47;     ( Name: ZEROP-ELBOW );
+( 2 Items. );
+Layer NDif;  Box  Len 800  Wid 400  Center 600,800 ;
+Layer NDif;  Box  Len 400  Wid 1000  Center 200,500 ;
+DF;
+
+
+DS 48;     ( Name: ZEROP-ENTER );
+( 1 Items. );
+Layer NDif;  Box  Len 400  Wid 400  Center 200,800 ;
+DF;
+
+
+DS 49;     ( Name: ONE-POLY-ELBOW );
+( 2 Items. );
+Layer NPol;  Box  Len 1200  Wid 400  Center 800,800 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 200,500 ;
+DF;
+
+
+DS 50;     ( Name: NARROW-EMPTY-BOX );
+( 0 Items. );
+DF;
+
+
+DS 51;     ( Name: HBIT-COUPLER );
+( 3 Items. );
+Layer NPol;  Box  Len 400  Wid 1000  Center 800,500 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 7600,500 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center 6000,500 ;
+DF;
+
+
+DS 52;     ( Name: MIDDLE-EMPTY-BOX );
+( 0 Items. );
+DF;
+
+
+DS 53;     ( Name: WIDE-EMPTY-BOX );
+( 0 Items. );
+DF;
+
+
+DS 54;     ( Name: DISPLACEMENT-FRAME-ROW );
+( 17 Items. );
+Call 35 Trans 114000,0;
+Call 34 Trans 106400,0;
+Call 34 Trans 98800,0;
+Call 34 Trans 91200,0;
+Call 34 Trans 83600,0;
+Call 34 Trans 76000,0;
+Call 34 Trans 66800,0;
+Call 29 Trans 56600,0;
+Call 51 Trans 48600,0;
+Call 27 Trans 39000,0;
+Call 29 Trans 30000,0;
+Call 51 Trans 22000,0;
+Call 27 Trans 12400,0;
+Call 26 Trans 4400,0;
+Call 49 Trans 3000,0;
+Call 48 Trans 1000,0;
+Call 47 Trans 0,0;
+DF;
+
+
+DS 55;     ( Name: SEVEN-EMPTY-COLUMN );
+( 3 Items. );
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,4800 ;
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,800 ;
+Layer NMet;  Box  Len 1400  Wid 800  Center 700,6200 ;
+DF;
+
+
+DS 56;     ( Name: FRAME-FIELD-ROW );
+( 21 Items. );
+Call 20 Trans 114000,0;
+Call 18 Trans 106400,0;
+Call 18 Trans 98800,0;
+Call 18 Trans 91200,0;
+Call 18 Trans 83600,0;
+Call 18 Trans 76000,0;
+Call 44 Trans 74400,0;
+Call 18 Trans 66800,0;
+Call 43 Trans 65600,0;
+Call 14 Trans 56600,0;
+Call 7 Trans 48600,0;
+Call 41 Trans 47600,0;
+Call 42 Trans 39000,0;
+Call 14 Trans 30000,0;
+Call 7 Trans 22000,0;
+Call 41 Trans 21000,0;
+Call 40 Trans 12400,0;
+Call 7 Trans 4400,0;
+Call 55 Trans 3000,0;
+Call 37 Trans 1000,0;
+Call 1 Trans 0,0;
+DF;
+
+
+DS 57;     ( Name: COLUMN );
+( 12 Items. );
+Call 56 Trans 0,88000;
+Call 56 Trans 0,80000;
+Call 56 Trans 0,72000;
+Call 56 Trans 0,64000;
+Call 56 Trans 0,56000;
+Call 56 Trans 0,48000;
+Call 56 Trans 0,40000;
+Call 56 Trans 0,32000;
+Call 56 Trans 0,24000;
+Call 56 Trans 0,16000;
+Call 56 Trans 0,8000;
+Call 56 Trans 0,0;
+DF;
+
+
+DS 58;     ( Name: REGISTER-ARRAY );
+( 5 Items. );
+Call 57 Trans 0,162000;
+Call 54 Trans 0,161000;
+Call 46 Trans 0,65000;
+Call 36 Trans 0,64000;
+Call 22 Trans 0,0;
+DF;
+
+
+DS 59;     ( Name: GENERAL-PULLUP-4 );
+( 3 Items. );
+Layer NImp;  Box  Len 1200  Wid 1800  Center 0,500 ;
+Layer NDif;  Box  Len 400  Wid 1400  Center 0,500 ;
+Layer NPol;  Box  Len 1200  Wid 1000  Center 0,500 ;
+DF;
+
+
+DS 60;     ( Name: PASS-TRANSISTOR-2 );
+( 2 Items. );
+Layer NDif;  Box  Len 1200  Wid 800  Center 0,0 ;
+Layer NPol;  Box  Len 2000  Wid 400  Center 0,0 ;
+DF;
+
+
+DS 61;     ( Name: PASS-TRANSISTOR );
+( 2 Items. );
+Layer NDif;  Box  Len 600  Wid 800  Center 0,0 ;
+Layer NPol;  Box  Len 1400  Wid 400  Center 0,0 ;
+DF;
+
+
+DS 62;     ( Name: GENERAL-PULLUP-3 );
+( 3 Items. );
+Layer NImp;  Box  Len 1200  Wid 2000  Center 0,600 ;
+Layer NDif;  Box  Len 400  Wid 1600  Center 0,600 ;
+Layer NPol;  Box  Len 1200  Wid 1200  Center 0,600 ;
+DF;
+
+
+DS 63;     ( Name: GENERAL-PULLUP-2 );
+( 3 Items. );
+Layer NImp;  Box  Len 1400  Wid 2000  Center 0,600 ;
+Layer NDif;  Box  Len 600  Wid 1600  Center 0,600 ;
+Layer NPol;  Box  Len 1400  Wid 1200  Center 0,600 ;
+DF;
+
+
+DS 64;     ( Name: ph1-driver );
+( 32 Items. );
+Layer NMet;  Box  Len 3800  Wid 800  Center 1900,400 ;
+Layer NMet;  Box  Len 3800  Wid 800  Center 1900,4600 ;
+Layer NMet;  Box  Len 3800  Wid 800  Center 1900,6000 ;
+Layer NPol;  Box  Len 400  Wid 2200  Center 400,8900 ;
+Layer NPol;  Box  Len 1200  Wid 400  Center 800,7800 ;
+Layer NPol;  Box  Len 400  Wid 6000  Center 600,4000 ;
+Call 4 Rot 0,1  Trans 1000,2600;
+Layer NDif;  Box  Len 1200  Wid 800  Center 1400,400 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 1400,400 ;
+Call 4 Rot 0,1  Trans 1400,7800;
+Call 12 Trans 1600,6800;
+Call 59 Trans 1400,1000;
+Layer NDif;  Box  Len 2000  Wid 800  Center 2000,2600 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 1400,400 ;
+Call 63 Trans 1700,8600;
+Layer NDif;  Box  Len 2200  Wid 800  Center 2300,6000 ;
+Layer NDif;  Box  Len 400  Wid 600  Center 1400,7300 ;
+Layer NDif;  Box  Len 600  Wid 1800  Center 1700,7700 ;
+Call 60 Trans 2400,3400;
+Call 60 Trans 2400,4600;
+Layer NDif;  Box  Len 1200  Wid 800  Center 2200,6000 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 2200,6000 ;
+Layer NDif;  Box  Len 1200  Wid 3400  Center 2400,4300 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 2200,6000 ;
+Call 61 Trans 2900,6800;
+Call 62 Trans 3000,8600;
+Layer NDif;  Box  Len 600  Wid 1800  Center 2900,7700 ;
+Call 4 Trans 3000,8600;
+Layer NPol;  Box  Len 400  Wid 3600  Center 3400,1800 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 3800,4600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 3800,4600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 3800,4600 ;
+DF;
+
+
+DS 65;     ( Name: GENERAL-PULLUP );
+( 3 Items. );
+Layer NImp;  Box  Len 1200  Wid 1600  Center 0,400 ;
+Layer NDif;  Box  Len 400  Wid 1200  Center 0,400 ;
+Layer NPol;  Box  Len 1200  Wid 800  Center 0,400 ;
+DF;
+
+
+DS 66;     ( Name: PH2-DRIVER );
+( 32 Items. );
+Layer NDif;  Box  Len 1200  Wid 800  Center 5600,400 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 5600,400 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 5600,400 ;
+Layer NDif;  Box  Len 3600  Wid 800  Center 3800,400 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 2000,400 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 2000,400 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 2000,400 ;
+Layer NDif;  Box  Len 600  Wid 1000  Center 2700,2500 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 2000,3000 ;
+Layer NDif;  Box  Len 400  Wid 1600  Center 1000,3400 ;
+Layer NDif;  Box  Len 2000  Wid 400  Center 1800,4200 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 1400,1800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1400,1800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 1400,1800 ;
+Layer NPol;  Box  Len 400  Wid 3200  Center 3400,2600 ;
+Layer NDif;  Box  Len 600  Wid 2800  Center 4700,1800 ;
+Layer NDif;  Box  Len 800  Wid 600  Center 4600,3200 ;
+Layer NDif;  Box  Len 600  Wid 1000  Center 4200,3500 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 5600,1800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 5600,1800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 5600,1800 ;
+Call 12 Rot 0,1  Trans 1600,3000;
+Call 4 Rot 0,-1  Trans 3000,3000;
+Call 65 Trans 2800,1000;
+Call 12 Trans 4200,4000;
+Call 63 Trans 4700,1000;
+Layer NPol;  Box  Len 400  Wid 1200  Center 5600,3800 ;
+Call 4 Rot 0,-1  Trans 5400,3200;
+Layer NPol;  Box  Len 400  Wid 4000  Center 7200,2000 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center 400,2000 ;
+Layer NMet;  Box  Len 7600  Wid 600  Center 3800,1700 ;
+Layer NMet;  Box  Len 7600  Wid 800  Center 3800,400 ;
+DF;
+
+
+DS 67;     ( Name: REGCELL-DRIVER );
+( 3 Items. );
+Call 66 Trans 0,10000;
+Call 64 Mir X  Trans 7600,0;
+Call 64 Trans 0,0;
+DF;
+
+
+DS 68;     ( Name: PH1-ONLY );
+( 5 Items. );
+Layer NDif;  Box  Len 1200  Wid 800  Center 1600,10400 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 1600,10400 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 1600,10400 ;
+Layer NDif;  Box  Len 1800  Wid 800  Center 2300,10400 ;
+Call 64 Trans 0,0;
+DF;
+
+
+DS 69;     ( Name: ph1-and-not-freeze-gen );
+( 51 Items. );
+Layer NPol;  Box  Len 800  Wid 800  Center -200,4600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center -200,4600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center -200,4600 ;
+Layer NPol;  Box  Len 400  Wid 3200  Center -200,6200 ;
+Layer NPol;  Box  Len 1800  Wid 400  Center 500,7800 ;
+Layer NMet;  Box  Len 6400  Wid 800  Center 3200,400 ;
+Layer NMet;  Box  Len 6400  Wid 800  Center 3200,4600 ;
+Layer NMet;  Box  Len 6400  Wid 800  Center 3200,6000 ;
+Layer NPol;  Box  Len 400  Wid 2800  Center 600,2400 ;
+Call 4 Rot 0,1  Trans 1000,2600;
+Layer NPol;  Box  Len 400  Wid 3600  Center 800,5200 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 1400,400 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 1400,400 ;
+Call 4 Rot 0,1  Trans 1400,7800;
+Call 12 Trans 1600,6800;
+Call 59 Trans 1400,1000;
+Layer NDif;  Box  Len 2000  Wid 800  Center 2000,2600 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 1400,400 ;
+Call 63 Trans 1700,8600;
+Layer NDif;  Box  Len 2200  Wid 800  Center 2300,6000 ;
+Layer NDif;  Box  Len 1800  Wid 800  Center 2300,10400 ;
+Layer NDif;  Box  Len 600  Wid 1800  Center 1700,7700 ;
+Call 60 Trans 2400,3400;
+Call 60 Trans 2400,4600;
+Layer NDif;  Box  Len 1200  Wid 800  Center 2200,6000 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 2200,6000 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 2400,10400 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 2400,10400 ;
+Layer NDif;  Box  Len 1200  Wid 3400  Center 2400,4300 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 2200,6000 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 2400,10400 ;
+Call 61 Trans 2900,6800;
+Layer NPol;  Box  Len 1400  Wid 400  Center 3100,4600 ;
+Call 62 Trans 3000,8600;
+Layer NDif;  Box  Len 600  Wid 1800  Center 2900,7700 ;
+Call 4 Trans 3000,8600;
+Layer NPol;  Box  Len 400  Wid 3600  Center 3400,1800 ;
+Layer NPol;  Box  Len 400  Wid 600  Center 3600,4300 ;
+Layer NPol;  Box  Len 800  Wid 400  Center 4000,4200 ;
+Layer NPol;  Box  Len 400  Wid 1800  Center 4200,3300 ;
+Call 13 Trans 5000,5000;
+Call 16 Mir X  Rot -1,0  Trans 5000,2800;
+Layer NDif;  Box  Len 800  Wid 800  Center 5000,400 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 5000,400 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 5000,6000 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 5000,6000 ;
+Layer NDif;  Box  Len 400  Wid 5600  Center 5000,3200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 5000,400 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 5000,6000 ;
+Layer NPol;  Box  Len 1400  Wid 400  Center 5700,5000 ;
+Layer NPol;  Box  Len 400  Wid 5000  Center 6200,2500 ;
+DF;
+
+
+DS 70;     ( Name: REGISTERS-WITH-DRIVERS );
+( 58 Items. );
+Layer NDif;  Box  Len 400  Wid 14200  Center -4400,-6900 ;
+Layer NDif;  Box  Len 4800  Wid 400  Center -2200,200 ;
+Layer NDif;  Box  Len 400  Wid 400  Center 200,200 ;
+Layer NDif;  Box  Len 400  Wid 12800  Center -3400,-7600 ;
+Layer NDif;  Box  Len 4800  Wid 400  Center -1200,-1200 ;
+Layer NDif;  Box  Len 400  Wid 1400  Center 1200,-700 ;
+Layer NDif;  Box  Len 400  Wid 14000  Center 38200,-7000 ;
+Layer NDif;  Box  Len 400  Wid 12600  Center 57800,-7700 ;
+Layer NDif;  Box  Len 8200  Wid 400  Center 61700,-1400 ;
+Layer NDif;  Box  Len 400  Wid 1600  Center 65800,-800 ;
+Layer NDif;  Box  Len 400  Wid 13600  Center 56800,-7200 ;
+Layer NDif;  Box  Len 8200  Wid 400  Center 60700,-400 ;
+Layer NDif;  Box  Len 400  Wid 600  Center 64800,-300 ;
+Layer NPol;  Box  Len 600  Wid 400  Center 59300,-4200 ;
+Layer NPol;  Box  Len 400  Wid 11000  Center 59000,-9500 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 59000,-15000 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 59000,-15000 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 59000,-15000 ;
+Layer NMet;  Box  Len 16600  Wid 600  Center 67300,-15000 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 75600,-15000 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 75600,-15000 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 75600,-15000 ;
+Layer NPol;  Box  Len 400  Wid 15000  Center 75600,-7500 ;
+Layer NPol;  Box  Len 400  Wid 1600  Center -2800,-3100 ;
+Layer NPol;  Box  Len 6200  Wid 400  Center 100,-2300 ;
+Layer NPol;  Box  Len 400  Wid 2400  Center 3200,-1200 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center 115200,-2000 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center 66400,-2000 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center 48200,-2000 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center 39400,-2000 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center 21600,-2000 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center 12800,-2000 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center 4000,-2000 ;
+Call 69 Trans 31000,-14000;
+Call 68 Trans 59200,-14000;
+Call 68 Trans -3200,-14000;
+Call 68 Trans 114800,-14000;
+Call 68 Mir X  Trans 66800,-14000;
+Call 68 Mir X  Trans 48600,-14000;
+Call 68 Trans 39000,-14000;
+Call 68 Mir X  Trans 22000,-14000;
+Call 68 Trans 12400,-14000;
+Call 68 Mir X  Trans 4400,-14000;
+Layer NMet;  Box  Len 116400  Wid 800  Center 58200,-13600 ;
+Layer NMet;  Box  Len 116400  Wid 800  Center 58200,-9400 ;
+Layer NMet;  Box  Len 116400  Wid 800  Center 58200,-8000 ;
+Layer NMet;  Box  Len 116400  Wid 800  Center 58200,-3600 ;
+Layer NMet;  Box  Len 116400  Wid 600  Center 58200,-2300 ;
+Call 67 Trans 106800,-14000;
+Call 67 Trans 99200,-14000;
+Call 67 Trans 91600,-14000;
+Call 67 Trans 84000,-14000;
+Call 67 Trans 76400,-14000;
+Call 67 Trans 67200,-14000;
+Call 67 Trans 49000,-14000;
+Call 67 Trans 22400,-14000;
+Call 67 Trans 4800,-14000;
+Call 58 Trans 0,0;
+DF;
+
+
+DS 71;     ( Name: PULLUP-A );
+( 5 Items. );
+Layer NDif;  Box  Len 400  Wid 1600  Center 800,200 ;
+Layer NDif;  Box  Len 1000  Wid 400  Center -1700,1400 ;
+Layer NDif;  Box  Len 400  Wid 1600  Center -2200,800 ;
+Layer NDif;  Box  Len 600  Wid 400  Center -2100,0 ;
+Call 16 Rot 0,1  Trans 0,0;
+DF;
+
+
+DS 72;     ( Name: PULLUP-B );
+( 7 Items. );
+Layer NMet;  Box  Len 600  Wid 2400  Center 2400,-1200 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 2400,0 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 2400,0 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 2400,0 ;
+Layer NDif;  Box  Len 2400  Wid 400  Center 1200,0 ;
+Layer NDif;  Box  Len 400  Wid 1000  Center -400,-500 ;
+Call 16 Rot 0,-1  Trans 0,0;
+DF;
+
+
+DS 73;     ( Name: COMPLETE-REGISTERS );
+( 91 Items. );
+Layer NPol;  Box  Len 800  Wid 800  Center 26600,275800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 26600,275800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 26600,275800 ;
+Layer NPol;  Box  Len 400  Wid 2600  Center 26600,274500 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 53200,275800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 53200,275800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 53200,275800 ;
+Layer NPol;  Box  Len 400  Wid 2600  Center 53200,274500 ;
+Layer NMet;  Box  Len 129400  Wid 800  Center 64700,275800 ;
+Layer NMet;  Box  Len 800  Wid 2800  Center 129400,274800 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 50800,271600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 50800,271600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 50800,271600 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 24200,271600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 24200,271600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 24200,271600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,266200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,271600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,258200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,263600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,250200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,255600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,242200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,247600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,234200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,239600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,226200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,231600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,218200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,223600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,210200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,215600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,202200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,207600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,194200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,199600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,186200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,191600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,178200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,183600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,169200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,174600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,161200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,166600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,153200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,158600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,145200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,150600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,137200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,142600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,129200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,134600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,121200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,126600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,113200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,118600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,105200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,110600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,97200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,102600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,89200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,94600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,81200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,86600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,72200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,77600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,64200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,69600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,56200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,61600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,48200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,53600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,40200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,45600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,32200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,37600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,24200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,29600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,16200 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,21600 ;
+Layer NMet;  Box  Len 5200  Wid 800  Center 126800,7400 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,1800 ;
+Layer NMet;  Box  Len 5800  Wid 800  Center 4900,11800 ;
+Call 72 Trans 8400,274400;
+Call 72 Trans 46400,274400;
+Call 72 Trans 73000,274400;
+Call 71 Mir X  Trans 5200,400;
+Call 71 Trans 63800,400;
+Layer NMet;  Box  Len 4000  Wid 273400  Center 129400,136700 ;
+Layer NMet;  Box  Len 4000  Wid 273400  Center 2000,136700 ;
+Call 70 Trans 7800,15400;
+DF;
+
+
+DS 74;     ( Name: COMPLEMENTARY-PAIR-DRIVER );
+( 33 Items. );
+Layer NCut;  Box  Len 400  Wid 400  Center 0,-6800 ;
+Layer NDif;  Box  Len 400  Wid 4000  Center 0,-3200 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 0,-6800 ;
+Layer NPol;  Box  Len 400  Wid 400  Center -800,-200 ;
+Layer NPol;  Box  Len 400  Wid 4200  Center -600,-2100 ;
+Layer NPol;  Box  Len 400  Wid 4000  Center -800,-6600 ;
+Layer NDif;  Box  Len 400  Wid 1200  Center -1000,-1400 ;
+Layer NDif;  Box  Len 1200  Wid 1600  Center -400,-1400 ;
+Layer NDif;  Box  Len 1600  Wid 3200  Center -600,-6600 ;
+Layer NDif;  Box  Len 800  Wid 1200  Center -1600,-1400 ;
+Layer NDif;  Box  Len 400  Wid 200  Center -1800,-1900 ;
+Layer NDif;  Box  Len 400  Wid 1200  Center -1800,-2600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center -1800,-3200 ;
+Layer NDif;  Box  Len 400  Wid 200  Center -1800,-4500 ;
+Layer NDif;  Box  Len 400  Wid 1200  Center -1800,-4000 ;
+Layer NDif;  Box  Len 800  Wid 1200  Center -1600,-5000 ;
+Layer NCut;  Box  Len 800  Wid 400  Center -1800,-1200 ;
+Layer NDif;  Box  Len 800  Wid 800  Center -1800,-3200 ;
+Layer NCut;  Box  Len 800  Wid 400  Center -1800,-5200 ;
+Layer NPol;  Box  Len 400  Wid 400  Center -2000,-200 ;
+Layer NPol;  Box  Len 400  Wid 1000  Center -2200,-500 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center -1800,-1200 ;
+Layer NPol;  Box  Len 1200  Wid 400  Center -1800,-2400 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center -1800,-2400 ;
+Layer NPol;  Box  Len 1800  Wid 400  Center -1500,-4000 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center -1800,-4000 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center -1800,-5200 ;
+Layer NPol;  Box  Len 800  Wid 800  Center -2200,-1200 ;
+Layer NPol;  Box  Len 400  Wid 1200  Center -2400,-2000 ;
+Layer NPol;  Box  Len 400  Wid 1200  Center -2400,-4400 ;
+Layer NPol;  Box  Len 800  Wid 800  Center -2200,-5200 ;
+Layer NMet;  Box  Len 3200  Wid 800  Center -1200,-6800 ;
+Layer NMet;  Box  Len 3200  Wid 800  Center -1200,-3200 ;
+DF;
+
+
+DS 75;     ( Name: SELECTOR );
+( 42 Items. );
+Layer NDif;  Box  Len 400  Wid 10200  Center 200,5500 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 6400,10400 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 5000,10400 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 800,10400 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 6400,9000 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 5000,9000 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 2200,9000 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 6400,7600 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 3600,7600 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 800,7600 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 6400,6200 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 3600,6200 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 2200,6200 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 7800,4800 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 5000,4800 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 800,4800 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 7800,3400 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 5000,3400 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 2200,3400 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 7800,2000 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 3600,2000 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 800,2000 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 7800,600 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 3600,600 ;
+Layer NImp;  Box  Len 1200  Wid 1200  Center 2200,600 ;
+Layer NPol;  Box  Len 400  Wid 11400  Center 7800,5700 ;
+Layer NPol;  Box  Len 400  Wid 11400  Center 6400,5700 ;
+Layer NPol;  Box  Len 400  Wid 11400  Center 5000,5700 ;
+Layer NPol;  Box  Len 400  Wid 11400  Center 3600,5700 ;
+Layer NPol;  Box  Len 400  Wid 11400  Center 2200,5700 ;
+Layer NPol;  Box  Len 400  Wid 11400  Center 800,5700 ;
+Layer NDif;  Box  Len 8400  Wid 400  Center 4600,10400 ;
+Layer NDif;  Box  Len 8400  Wid 400  Center 4600,9000 ;
+Layer NDif;  Box  Len 8400  Wid 400  Center 4600,7600 ;
+Layer NDif;  Box  Len 8400  Wid 400  Center 4600,6200 ;
+Layer NDif;  Box  Len 8400  Wid 400  Center 4600,4800 ;
+Layer NDif;  Box  Len 8400  Wid 400  Center 4600,3400 ;
+Layer NDif;  Box  Len 8400  Wid 400  Center 4600,2000 ;
+Layer NDif;  Box  Len 8400  Wid 400  Center 4600,600 ;
+Call 74 Trans 8400,0;
+Call 74 Mir X  Trans 2800,0;
+Call 74 Trans 2800,0;
+DF;
+
+
+DS 76;     ( Name: pc-regcell );
+( 47 Items. );
+Layer NDif;  Box  Len 800  Wid 800  Center 400,5800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,5800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 400,1800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,1800 ;
+Layer NMet;  Box  Len 800  Wid 8200  Center 400,4100 ;
+Layer NPol;  Box  Len 5600  Wid 400  Center 2800,7000 ;
+Layer NPol;  Box  Len 5600  Wid 400  Center 2800,3400 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,5800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,1800 ;
+Layer NDif;  Box  Len 4800  Wid 400  Center 2800,5800 ;
+Layer NDif;  Box  Len 4800  Wid 400  Center 2800,1800 ;
+Layer NImp;  Box  Len 3200  Wid 1200  Center 2200,5800 ;
+Layer NPol;  Box  Len 2400  Wid 1200  Center 2200,5800 ;
+Call 16 Rot 0,1  Trans 3400,1800;
+Layer NDif;  Box  Len 800  Wid 800  Center 1800,7800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1800,7800 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 1800,400 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1800,400 ;
+Layer NMet;  Box  Len 800  Wid 8200  Center 1800,4100 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 1800,7800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 1800,400 ;
+Layer NImp;  Box  Len 1800  Wid 400  Center 2500,5800 ;
+Layer NDif;  Box  Len 1800  Wid 400  Center 2500,5800 ;
+Layer NDif;  Box  Len 2200  Wid 400  Center 2900,7800 ;
+Layer NPol;  Box  Len 2600  Wid 400  Center 3100,600 ;
+Call 13 Trans 3000,3400;
+Layer NDif;  Box  Len 400  Wid 1600  Center 3000,3600 ;
+Layer NDif;  Box  Len 1000  Wid 400  Center 3300,2800 ;
+Call 4 Rot 0,-1  Trans 3400,4400;
+Call 4 Rot 0,1  Trans 3400,5800;
+Call 13 Trans 3800,7000;
+Layer NPol;  Box  Len 1000  Wid 400  Center 3900,4400 ;
+Layer NDif;  Box  Len 400  Wid 2000  Center 3800,6800 ;
+Layer NDif;  Box  Len 400  Wid 1200  Center 3800,2400 ;
+Layer NDif;  Box  Len 2000  Wid 400  Center 4600,1400 ;
+Call 13 Rot 0,1  Trans 4400,5800;
+Call 13 Rot 0,1  Trans 4400,1800;
+Layer NDif;  Box  Len 1600  Wid 400  Center 4800,5600 ;
+Layer NPol;  Box  Len 400  Wid 1600  Center 4400,5000 ;
+Layer NPol;  Box  Len 400  Wid 1400  Center 4400,1100 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 5200,5800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 5200,5800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 5200,1800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 5200,1800 ;
+Layer NMet;  Box  Len 800  Wid 8200  Center 5200,4100 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 5200,5800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 5200,1800 ;
+DF;
+
+
+DS 77;     ( Name: PC-REGISTER-2 );
+( 68 Items. );
+Layer NDif;  Box  Len 800  Wid 800  Center 40200,-19200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 40200,-19200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 40200,-19200 ;
+Layer NMet;  Box  Len 800  Wid 10400  Center 40200,-14000 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 37400,-18000 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 37400,-18000 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 37400,-18000 ;
+Layer NMet;  Box  Len 800  Wid 9200  Center 37400,-13400 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 30600,-16800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 30600,-16800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 30600,-16800 ;
+Layer NMet;  Box  Len 800  Wid 8000  Center 30600,-12800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 27800,-15600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 27800,-15600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 27800,-15600 ;
+Layer NMet;  Box  Len 800  Wid 6800  Center 27800,-12200 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 21000,-14400 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 21000,-14400 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 21000,-14400 ;
+Layer NMet;  Box  Len 800  Wid 5600  Center 21000,-11600 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 18200,-13200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 18200,-13200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 18200,-13200 ;
+Layer NMet;  Box  Len 800  Wid 4400  Center 18200,-11000 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 11400,-12000 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 11400,-12000 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 11400,-12000 ;
+Layer NMet;  Box  Len 800  Wid 3200  Center 11400,-10400 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 8600,-10800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 8600,-10800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 8600,-10800 ;
+Layer NMet;  Box  Len 800  Wid 2000  Center 8600,-9800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 1800,-9600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1800,-9600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 1800,-9600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1800,-9200 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 400,-100 ;
+Layer NPol;  Box  Len 400  Wid 10800  Center 43400,-14400 ;
+Layer NPol;  Box  Len 400  Wid 10800  Center 600,-14400 ;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-19200 ;
+Layer NMet;  Box  Len 800  Wid 11800  Center 43600,-14700 ;
+Call 76 Mir X  Rot -1,0  Trans 38400,-600;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-18000 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 38800,-100 ;
+Call 76 Rot -1,0  Trans 39200,-600;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-16800 ;
+Layer NMet;  Box  Len 800  Wid 11800  Center 34000,-14700 ;
+Call 76 Mir X  Rot -1,0  Trans 28800,-600;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-15600 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 29200,-100 ;
+Call 76 Rot -1,0  Trans 29600,-600;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-14400 ;
+Layer NMet;  Box  Len 800  Wid 11800  Center 24400,-14700 ;
+Call 76 Mir X  Rot -1,0  Trans 19200,-600;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-13200 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 19600,-100 ;
+Call 76 Rot -1,0  Trans 20000,-600;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-12000 ;
+Layer NMet;  Box  Len 800  Wid 11800  Center 14800,-14700 ;
+Call 76 Mir X  Rot -1,0  Trans 9600,-600;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-10800 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 10000,-100 ;
+Call 76 Rot -1,0  Trans 10400,-600;
+Layer NDif;  Box  Len 44000  Wid 400  Center 22000,-9600 ;
+Layer NMet;  Box  Len 800  Wid 11800  Center 5200,-14700 ;
+Call 76 Mir X  Rot -1,0  Trans 0,-600;
+Layer NMet;  Box  Len 44000  Wid 800  Center 22000,-20600 ;
+Layer NMet;  Box  Len 44000  Wid 800  Center 22000,400 ;
+DF;
+
+
+DS 78;     ( Name: PC-REGISTER );
+( 61 Items. );
+Layer NDif;  Box  Len 800  Wid 800  Center 37400,-18000 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 37400,-18000 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 37400,-18000 ;
+Layer NMet;  Box  Len 800  Wid 9200  Center 37400,-13400 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 30600,-16800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 30600,-16800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 30600,-16800 ;
+Layer NMet;  Box  Len 800  Wid 8000  Center 30600,-12800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 27800,-15600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 27800,-15600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 27800,-15600 ;
+Layer NMet;  Box  Len 800  Wid 6800  Center 27800,-12200 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 21000,-14400 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 21000,-14400 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 21000,-14400 ;
+Layer NMet;  Box  Len 800  Wid 5600  Center 21000,-11600 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 18200,-13200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 18200,-13200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 18200,-13200 ;
+Layer NMet;  Box  Len 800  Wid 4400  Center 18200,-11000 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 11400,-12000 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 11400,-12000 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 11400,-12000 ;
+Layer NMet;  Box  Len 800  Wid 3200  Center 11400,-10400 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 8600,-10800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 8600,-10800 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 8600,-10800 ;
+Layer NMet;  Box  Len 800  Wid 2000  Center 8600,-9800 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 1800,-9600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1800,-9600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 1800,-9600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 1800,-9200 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 400,-100 ;
+Layer NPol;  Box  Len 400  Wid 9600  Center 38600,-13800 ;
+Layer NPol;  Box  Len 400  Wid 9600  Center 600,-13800 ;
+Layer NDif;  Box  Len 39200  Wid 400  Center 19600,-18000 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 38800,-100 ;
+Call 76 Rot -1,0  Trans 39200,-600;
+Layer NDif;  Box  Len 39200  Wid 400  Center 19600,-16800 ;
+Layer NMet;  Box  Len 800  Wid 10600  Center 34000,-14100 ;
+Call 76 Mir X  Rot -1,0  Trans 28800,-600;
+Layer NDif;  Box  Len 39200  Wid 400  Center 19600,-15600 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 29200,-100 ;
+Call 76 Rot -1,0  Trans 29600,-600;
+Layer NDif;  Box  Len 39200  Wid 400  Center 19600,-14400 ;
+Layer NMet;  Box  Len 800  Wid 10600  Center 24400,-14100 ;
+Call 76 Mir X  Rot -1,0  Trans 19200,-600;
+Layer NDif;  Box  Len 39200  Wid 400  Center 19600,-13200 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 19600,-100 ;
+Call 76 Rot -1,0  Trans 20000,-600;
+Layer NDif;  Box  Len 39200  Wid 400  Center 19600,-12000 ;
+Layer NMet;  Box  Len 800  Wid 10600  Center 14800,-14100 ;
+Call 76 Mir X  Rot -1,0  Trans 9600,-600;
+Layer NDif;  Box  Len 39200  Wid 400  Center 19600,-10800 ;
+Layer NMet;  Box  Len 800  Wid 1000  Center 10000,-100 ;
+Call 76 Rot -1,0  Trans 10400,-600;
+Layer NDif;  Box  Len 39200  Wid 400  Center 19600,-9600 ;
+Layer NMet;  Box  Len 800  Wid 10600  Center 5200,-14100 ;
+Call 76 Mir X  Rot -1,0  Trans 0,-600;
+Layer NMet;  Box  Len 39200  Wid 800  Center 19600,-19400 ;
+Layer NMet;  Box  Len 39200  Wid 800  Center 19600,400 ;
+DF;
+
+
+DS 79;     ( Name: nheq );
+( 53 Items. );
+Layer NDif;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 400,4800 ;
+Layer NMet;  Box  Len 9000  Wid 800  Center 4500,800 ;
+Layer NMet;  Box  Len 9000  Wid 600  Center 4500,2100 ;
+Layer NMet;  Box  Len 2800  Wid 600  Center 1400,3500 ;
+Layer NMet;  Box  Len 9000  Wid 600  Center 4500,4700 ;
+Layer NMet;  Box  Len 3200  Wid 800  Center 1600,6200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 400,4800 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 800,2200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 800,2200 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 800,2200 ;
+Layer NPol;  Box  Len 2400  Wid 400  Center 2200,4600 ;
+Layer NPol;  Box  Len 1600  Wid 400  Center 2000,2200 ;
+Layer NDif;  Box  Len 800  Wid 2200  Center 1800,3700 ;
+Layer NDif;  Box  Len 400  Wid 2800  Center 1600,6200 ;
+Layer NDif;  Box  Len 1600  Wid 1200  Center 2200,4600 ;
+Layer NDif;  Box  Len 6600  Wid 400  Center 4900,7400 ;
+Layer NMet;  Box  Len 4600  Wid 600  Center 4100,3300 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 2600,3000 ;
+Layer NDif;  Box  Len 800  Wid 800  Center 2800,6200 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 2800,6200 ;
+Layer NMet;  Box  Len 800  Wid 1600  Center 2800,7000 ;
+Layer NPol;  Box  Len 400  Wid 1400  Center 2600,3100 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 2800,6200 ;
+Layer NMet;  Box  Len 4200  Wid 800  Center 4900,7400 ;
+Call 11 Rot 0,1  Trans 5000,6000;
+Layer NDif;  Box  Len 2600  Wid 3000  Center 4300,1900 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 3600,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 3600,800 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 3600,800 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 3800,4600 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 3800,4600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 3800,4600 ;
+Layer NPol;  Box  Len 1800  Wid 400  Center 5100,4400 ;
+Layer NDif;  Box  Len 1200  Wid 800  Center 5000,800 ;
+Layer NMet;  Box  Len 1200  Wid 800  Center 5000,800 ;
+Layer NPol;  Box  Len 2000  Wid 400  Center 5600,6800 ;
+Layer NCut;  Box  Len 800  Wid 400  Center 5000,800 ;
+Layer NDif;  Box  Len 400  Wid 2200  Center 5000,4500 ;
+Layer NDif;  Box  Len 400  Wid 2600  Center 5400,4700 ;
+Layer NDif;  Box  Len 1400  Wid 800  Center 6300,2200 ;
+Layer NPol;  Box  Len 800  Wid 800  Center 6200,3400 ;
+Layer NMet;  Box  Len 800  Wid 800  Center 6200,3400 ;
+Call 12 Trans 6600,6800;
+Layer NMet;  Box  Len 600  Wid 400  Center 6100,3600 ;
+Layer NCut;  Box  Len 400  Wid 400  Center 6200,3400 ;
+Layer NPol;  Box  Len 400  Wid 1600  Center 6200,2200 ;
+Layer NDif;  Box  Len 800  Wid 1400  Center 6600,6100 ;
+Layer NMet;  Box  Len 2800  Wid 600  Center 7600,3500 ;
+Layer NMet;  Box  Len 800  Wid 1600  Center 6600,6600 ;
+Layer NMet;  Box  Len 2400  Wid 800  Center 7800,6200 ;
+Layer NDif;  Box  Len 400  Wid 4000  Center 7200,3800 ;
+Layer NDif;  Box  Len 400  Wid 8000  Center 8200,4000 ;
+DF;
+
+Call 73 Trans -83400,-46000;
+End
+  

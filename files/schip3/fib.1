@@ -1,0 +1,10 @@
+
+(define (fib k)
+	(labels ((- (lambda (x y) (if (eq y 0) x (- (1- x) (1- y)))))
+		 (+ (lambda (x y) (if (eq y 0) x (+ (1+ x) (1- y)))))
+		 (f (lambda (n)
+			    (cond ((eq n 0) 0)
+				  ((eq n 1) 1)
+				  (t (+ (f (- n 1))
+					(f (- n 2))))))))
+		(f k)))

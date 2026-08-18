@@ -1,0 +1,73 @@
+;;; -*- mode: LISP; package: USER -*-
+
+
+;;; Don't change this file unless the pathnames are
+;;; known to work!!!
+
+
+(defsystem data-path
+  (:pathname-default "ai:schip3;")
+  (:package dpl)
+  (:module composer ("composer"))
+  (:module cells ("registers" "drivers"))
+  (:module declarations ("specifications"))
+  (:module scheme-main-data-path ("mainregisters"))
+  (:module uargs ("uargstacks"))
+  (:compile-load composer)
+  (:readfile cells (:fasload composer))
+  (:readfile declarations (:fasload composer))
+  (:readfile scheme-main-data-path (:fasload composer))
+  (:readfile uargs (:fasload composer))
+  (:zwei-load composer)
+  (:zwei-load cells)
+  (:zwei-load declarations)
+  (:zwei-load uargs)
+  (:zwei-load scheme-main-data-path)
+  (:zwei-load uargs))
+
+(defsystem fake
+  (:package dpl)
+  (:Pathname-default "ai:schip3;")
+  (:module fake ("batali;fake"))
+  (:module fakobj ("schip3;fakobj"))
+  (:module comps ("batali;paddy" "schip3;layutl"
+		  "batali;match" "batali;feeled" "schip3;srout"
+		  "schip3;pthtrn" "batali;plarep" "batali;plaedg"
+		  "schip3;rprep" "schip3;erout" "schip3;hrout"
+		  "batali;drout"))
+  (:module reads ("schip3;pads" "schip3;fakobj" "schip3;fldefs" "batali;plaprt"
+		  "batali;pladrv" "batali;plapu" "schip3;hog" "schip3;scpads"
+		  "schip3;lsd" "schip3;logo" "schip3;nsrout" "schip3;uarout"))
+  (:compile-load fake)
+  (:readfile fakobj (:fasload fake))
+  (:compile-load comps)
+  (:readfile reads (:fasload comps))
+  (:fasload ("ic;dpath"))
+  (:zwei-load fake)
+  (:zwei-load fakobj)
+  (:zwei-load comps)
+  (:zwei-load reads)
+  (:zwei-load ("schip3;sysdef")))
+
+(defsystem schip
+  (:package dpl)
+  (:Pathname-default "ai:schip3;")
+  (:module comps ("batali;paddy" "schip3;layutl" "dpl1;dplast"
+		  "batali;match" "batali;feeled" "schip3;srout"
+		  "schip3;pthtrn" "schip3;rprep" "schip3;hrout"
+		  "batali;drout" "schip3;erout" "schip3;bnode"))
+  (:module reads ("schip3;pads" "schip3;fldefs"
+		  "schip3;hog" "schip3;scpads" "schip3;logo" "schip3;lsd"
+		  "schip3;nsrout" "schip3;uarout"))
+  (:compile-load comps)
+  (:readfile reads (:fasload comps))
+  (:zwei-load comps)
+  (:zwei-load reads)
+  (:zwei-load ("schip3;sysdef")))
+
+(defsystem make-fake
+  (:module loads ("ai:batali;fake" "ai:schip3;layutl"))
+  (:module zweis ("ai:schip3;fakobj" "ai:schip3;hog"))
+  (:compile-load loads)
+  (:zwei-load loads)
+  (:zwei-load zweis))

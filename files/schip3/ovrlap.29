@@ -1,0 +1,137 @@
+;;; -*-LISP-*-
+
+;;; This program decides whether or not two statements can be merged, and if so
+;;; it produces a statement which is their merge.
+
+
+(defun overlap? (s1 s2)
+  (cond ((not (unconditional-transfer-of-control? s1))
+	 (overlap-statement s1 s2))
+	(t (break "Strange left statement -- OVERLAP?"))))
+
+(defun overlap-statement (s1 s2)
+  (setq *conflicts* nil)
+  (let ((m (check-data-acts (set-difference  (get s1 'primitive-data-actions)
+					     '((predicate true)))
+			    (get s2 'primitive-data-actions)
+			    (get s2 'primitive-protection-actions)))
+	(c (merge-control-acts 'true s1 s2)))
+    (if (null *conflicts*)
+	(let* ((*current-pc* (get s1 'pc-name))
+	       (s (make-atomic-statement (set-difference (union (statement-type s1)
+								(statement-type s2))
+							 '(goto)))))
+	  
+	  (putprop s m 'primitive-data-actions)
+	  (putprop s
+		   (merge-protection-acts s1 s2)
+		   'primitive-protection-actions)
+	  (putprop s c 'primitive-control-actions)
+	  (copy-statement 'left-source s1 s)
+	  (copy-statement 'right-source s2 s)
+	  s)
+	'nil)))
+
+
+
+
+(defun overlap-predicate? (p cn an cof aof)
+  (if (eq cof 't)
+      (let ((m1 (simple-merge-predicate p cn 'true)))
+	(if (not (null m1))
+	    (if (eq aof 't)
+		(let ((m2 (simple-merge-predicate m1 an 'false)))
+		  (if (not (null m2))
+		      `(,m2 t t)
+		      `(,m1 t nil)))
+		`(,m1 t nil))
+	    (if (eq aof 't)
+		(let ((m2 (simple-merge-predicate p an 'false)))
+		  (if (not (null m2))
+		      `(,m2 nil t)
+		      'nil))
+		'nil)))
+      (if (eq aof 't)
+	  (let ((m2 (simple-merge-predicate p an 'false)))
+	    (if (not (null m2))
+		`(,m2 nil t)
+		'nil))
+	  'nil)))
+
+(defun simple-merge-predicate (s1 s2 branch)
+  (setq *conflicts* nil)
+  (let ((m (check-data-acts (get s1 'primitive-data-actions)
+			    (set-difference (get s2 'primitive-data-actions)
+					    '((predicate true)))
+			    (get s2 'primitive-protection-actions)))
+	(c (merge-control-acts branch s1 s2)))
+    (if (null *conflicts*)
+	(let* ((*current-pc* (get s1 'pc-name))
+	       (s (make-atomic-statement (set-difference (union (statement-type s1)
+								(statement-type s2))
+							 '(goto)))))
+	  
+	  (putprop s m 'primitive-data-actions)
+	  (putprop s
+		   (merge-protection-acts s1 s2)
+		   'primitive-protection-actions)
+	  (putprop s c 'primitive-control-actions)
+	  (copy-statement 'left-source s1 s)
+	  (copy-statement 'right-source s2 s)
+	  s)
+	'nil)))
+
+(defvar *resources-gobbled* nil)
+(defvar *conflicts* nil)
+
+(defun check-data-acts (a1 a2 p2)
+  (mapc #'(lambda (r) (remprop r 'gobbled))		;unmark
+	*resources-gobbled*)
+  (setq *resources-gobbled* nil)
+  (let ((*cycle* 1))
+    (mapc #'mark-resources-used a1))
+  (let ((*cycle* 2))
+    (mapc #'mark-resources-used a2)
+    (mapc #'mark-resources-used p2))
+   (union a1 a2))
+
+(defun mark-resources-used (*action*)
+  (try-rules *action* *resource-marking-rules*))
+
+(defun gobble (&rest resources)
+  (mapc #'(lambda (resource)
+	    (let ((g (get resource 'gobbled)))
+	      (if (null g)
+		  (progn (addprop resource *action* 'gobbled)
+			 (setq *resources-gobbled*
+			       (cons resource *resources-gobbled*)))
+		  (let ((m (get resource 'mediator)))
+		    (if (and (not (null m))
+			     (funcall m resource *action* g))
+			(progn (addprop resource *action* 'gobbled)
+			       (setq *resources-gobbled*
+				     (cons resource *resources-gobbled*)))
+			(setq *conflicts*
+			      (cons (list resource g *action*)
+				    *conflicts*)))))))
+	resources))
+
+(defun second-cycle? ()
+  (= *cycle* 2))
+
+
+
+(defun copy-statement (which-copy source target)
+  (mapc #'(lambda (type)
+	    (let ((proc (get type which-copy)))
+	      (if (not (null proc)) (funcall proc source target))))
+	(statement-type source)))
+
+(defun (call right-source) (src trg)
+  (copy-property 'call-stacks src trg))
+
+(defun (return right-source) (src trg)
+  (copy-property 'return-stacks src trg))
+
+(defun copy-property (name src trg)
+  (putprop trg (get src name) name))

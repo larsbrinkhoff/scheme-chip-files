@@ -1,0 +1,584 @@
+;;; -*- mode:lisp -*-
+
+;;; SCHEME-81 Field and Wiring Specifications
+
+;;;; Field Definitions
+
+;;; A bit
+(deffield bit (width 1))
+
+;;; Used, eg, as the fold bit of a PLA
+(deffield selector
+  (subfield one (width 1))
+  (subfield zero (width 1)))
+
+;;; State input to control PLA
+(deffield control-pla-state)
+
+;;; Predicate Select output from control PLA
+;;; Also one of the input fields to the predicate select box.
+(deffield control-pla-predicate-select)
+
+;;; The uarg specifier
+(deffield uarg-spec)
+
+;;; Result field of the control PLA
+(deffield control-pla-result
+  (subfield explicit-ns (same-field control-pla-state))
+  (subfield ns-control (same-field ns-control-field))
+  (subfield global-bus-control (same-field global-bus-control-field))  
+  (subfield other-register-operations
+	    (same-field local-register-operation-control)))
+
+;;; Output of global-bus-control-decoder
+;;; Input to register array
+(deffield global-bus-control-register-control)
+
+;;; Sense line output of register array.
+;;; Input to Predicate select box.
+(deffield register-sense-lines)
+
+;;; Connected to TYPE field of some registers. Probably defined elsewhere
+(deffield dispatch-type)
+
+;;; Non-global register operations
+(deffield local-register-operation-control)
+
+
+
+;;; Global Bus control
+
+(deffield global-bus-control-field
+  (subfield control-lines
+	    (subfield arg1
+		      (subfield push-top (width 1))
+		      (subfield push-trans (width 1))
+		      (subfield push-data (width 1))
+		      (subfield pop (width 1))
+		      (subfield source-trans (width 1))
+		      (subfield source-read (width 1)))
+	    (subfield arg2
+		      (subfield push-top (width 1))
+		      (subfield push-trans (width 1))
+		      (subfield push-data (width 1))
+		      (subfield pop (width 1))
+		      (subfield source-trans (width 1))
+		      (subfield source-read (width 1)))
+	    (subfield target
+		      (subfield push-top (width 1))
+		      (subfield push-trans (width 1))
+		      (subfield push-data (width 1))
+		      (subfield pop (width 1))
+		      (subfield source-trans (width 1))
+		      (subfield souce-read (width 1))
+		      (subfield source-write (width 1)))
+	    (subfield explicit
+		      (subfield source-read (width 1))
+		      (subfield source-write (width 1))))
+  (subfield data
+	    (subfield arg1)
+	    (subfield arg2)
+	    (subfield target)
+	    (subfield explicit-read)
+	    (subfield explicit-write)))
+
+
+;;; NS control
+
+;;; All NS sources have these two control lines:
+(deffield ns-source
+  (subfield source (width 1))
+  (subfield disable (width 1)))
+
+;;; Controls the NS machine
+(deffield ns-control-field
+  (subfield ns-source-control
+	    (subfield pc (same-field ns-source))
+	    (subfield incremented-pc (same-field ns-source))
+	    (subfield top-of-stack (same-field ns-source))
+	    (subfield external-state (same-field ns-source))
+	    (subfield dispatch-user-type-state (same-field ns-source))
+	    (subfield dispatch-extra-type-cont-state (same-field ns-source))
+	    (subfield explicit-ns (same-field ns-source)))
+  (subfield ns-stack-control
+	    (subfield push-ns-stack (width 1))
+	    (subfield pop-ns-stack (width 1))))
+
+	     
+;;;; PLA specifications
+
+;;; The Biggie
+(defpla control-pla
+  ((field state-input (same-field control-pla-state)
+	  (mode 'input)
+	  (clocked 'phi1))
+   (field predicate-input (same-field selector)
+	  (mode 'input)
+	  (clocked nil))
+   (field predicate-select (same-field predicate-select)
+	  (mode 'output)
+	  (clocked nil))
+   (field result (same-field control-pla-result)
+	  (mode 'output)
+	  (clocked nil))
+   (field mem-wait (same-field bit) (mode 'output) (clocked nil)))
+  *control-pla-program*)
+
+;;; uarg Decoder
+(defpla global-bus-control-decoder
+  ((field read-spec (same-field uarg-spec) (mode 'input) (clocked nil))
+   (field write-spec (same-field uarg-spec) (mode 'inpue) (clocked nil))
+   (field register-control (same-field global-bus-control-register-control)
+	  (mode 'output) (clocked nil)))
+  *global-bus-control-decoder-program*)
+
+;;; Predicate Select box
+(defpla predicate-select-box
+  ((field predicate-select (same-field control-pla-predicate-select)
+	  (mode 'input) (clocked nil))
+   (field register-sense-lines (same-field register-sense-lines)
+	  (mode 'input) (clocked 'phi1))
+   (field sbus-error (same-field bit) (mode 'input) (clocked nil))
+   (field 'true-false (>> selector) (mode 'output) (clocked nil)))
+  *predicate-select-program*)
+
+;;; Dispatch Decoders
+
+(defpla dispatch-user-type-decoder
+  ((field input (same-field dispatch-type) (mode 'input) (clocked nil))
+   (field output (same-field control-pla-state) (mode 'output) (clocked nil)))
+  *dispatch-user-type-decoder-program*)
+
+(defpla dispatch-extra-type-cont-decoder
+  ((field input (same-field dispatch-type) (mode 'input) (clocked nil))
+   (field output (same-field control-pla-state) (mode 'output) (clocked nil)))
+  *dispatch-extra-type-cont-decoder-program*)
+
+
+
+;;;; Part Definitions
+
+;;; assume d-fet, e-fet has source, drain, gate.
+;;; the following nodes are available globally.
+
+;;; "Global" nodes:
+(node '*zero*)
+(node '*one*)
+(node '*phi1*)
+(node '*phi2*)
+(node '*internal-freeze*)
+(node '*load&freeze*)
+
+(defckt pullup ()
+  (node 'source)
+  (element 'd (>> d-fet))
+  (== (>> *one*) (>> drain d))
+  (== (>> source) (>> source d))
+  (== (>> source) (>> gate d)))
+
+(defckt pulldown ()
+  (node 'gate)
+  (node 'drain)
+  (element 'e (>> e-fet))
+  (== (>> *zero*) (>> source e))
+  (== (>> drain) (>> drain e))
+  (== (>> gate) (>> gate e)))
+
+(defckt inverter ()
+  (node 'input)
+  (node 'output)
+  (element 'pu (>> pullup))
+  (element 'pd (>> pulldown))
+  (== (>> input) (>> gate pd))
+  (== (>> output) (>> drain pd))
+  (== (>> output) (>> source pu)))
+
+(defckt pass-gate (field)
+  (element 'b (make-bunch (>> field)))
+  (do ((i 0 (1+ i))) ((= i (width-of-field (>> field))))
+    (assign-to-bunch (element nil (>> e-fet)) (>> b) i)))
+
+
+
+(defckt nand-gate ()
+  (node 'input-1)
+  (node 'input-2)
+  (node 'output)
+  (element 'pu (>> pullup))
+  (element 'p1 (>> e-fet))
+  (element 'p2 (>> e-fet))
+  (== (>> source pu) (>> drain p1))
+  (== (>> source p1) (>> drain p2))
+  (== (>> source p2) (>> *zero*))
+  (== (>> input-1) (>> gate p1))
+  (== (>> input-2) (>> gate p2))
+  (== (>> output) (>> source pu)))
+
+(defckt and-gate ()
+  (node 'input-1)
+  (node 'input-2)
+  (node 'output)
+  (element 'nand (>> nand-gate))
+  (== (>> input-1) (>> input-1 nand))
+  (== (>> input-2) (>> input-2 nand))
+  (element 'iv (>> inverter))
+  (== (>> output nand) (>> input iv))
+  (== (>> output iv) (>> output)))
+
+(defckt nor-gate ()
+  (node 'input-1)
+  (node 'input-2)
+  (node 'output)
+  (element 'pu (>> pullup))
+  (element 'p1 (>> e-fet))
+  (element 'p2 (>> e-fet))
+  (== (>> source pu) (>> drain p1))
+  (== (>> source pu) (>> drain p2))
+  (== (>> source p1) (>> *zero*))
+  (== (>> source p2) (>> *zero*))
+  (== (>> input-1) (>> gate p1))
+  (== (>> input-2) (>> gate p2))
+  (== (>> output) (>> source pu)))
+
+(defckt or-gate ()
+  (node 'input-1)
+  (node 'input-2)
+  (node 'output)
+  (element 'nor (>> nor-gate))
+  (== (>> input-1) (>> input-2 nor))
+  (== (>> input-2) (>> input-2 nor))
+  (element 'iv (>> inverter))
+  (== (>> output nor) (>> input iv))
+  (== (>> output iv) (>> output)))
+
+;;; mem-done latch
+(defckt phi-latch ()
+  (node 'clock)
+  (node 'input)
+  (node 'output)
+  (element 'nand (>> nand-gate))
+  (== (>> input-1 nand) (>> input))
+  (== (>> input-2 nand) (>> clock))
+  (element 'iv (>> inverter))
+  (element 'pass (>> e-fet))
+  (== (>> output nand) (>> source pass))
+  (== (>> gate pass) (>> clock))
+  (== (>> drain pass) (>> input iv))
+  (== (>> output iv) (>> output)))
+
+
+;;; These are mostly fantasy: they depend on the real cells used in the
+;;; data-path generator. The field definitions above specify how
+;;; the register cells most look from the outside.
+  
+(defckt regcell ()
+  (node 'phi1-hold)
+  (node 'input)
+  (node 'output)
+  (element 'in1 (>> inverter))
+  (element 'in2 (>> inverter))
+  (element 'phi2-gate (>> e-fet))
+  (element 'phi1-hold-gate (>> e-fet))
+  (== (>> output in1) (>> source phi2-gate))
+  (== (>> input in2) (>> drain phi2-gate))
+  (== (>> *phi2*) (>> gate phi2-gate))
+  (== (>> output) (>> source phi1-hold-gate))
+  (== (>> input) (>> drain phi1-hold-gate))
+  (== (>> phi1-hold) (>> gate phi1-hold-gate))
+  (== (>> output) (>> output in2))
+  (== (>> input) (>> input in1)))
+
+(defckt reg-driver ()
+  (node 'load-1)
+  (node 'load-2)
+  (node 'phi1-load-1)
+  (node 'phi1-load-2)
+  (node 'phi1-hold)
+  (element 'o1 (>> nor-gate))
+  (element 'nl1 (>> inverter))
+  (== (>> load-1) (>> input nl1))
+  (== (>> output nl1) (>> input-1 o1))
+  (element 'o2 (>> nor-gate))
+  (element 'nl2 (>> inverter))
+  (== (>> load-2) (>> input nl2))
+  (== (>> output nl2) (>> input-1 o2))
+  (element 'a1 (>> nand-gate))
+  (element 'n1 (>> inverter))
+  (== (>> output o1) (>> input-1 a1))
+  (== (>> *phi1*) (>> input-2 a1))
+  (== (>> output a1) (>> input n1))
+  (== (>> output n1) (>> phi1-load-1))
+  (element 'o (>> nor-gate))				
+  (element 'ah (>> nand-gate))
+  (element 'nh (>> inverter))
+  (== (>> output o1) (>> input-1 o))
+  (== (>> output o2) (>> input-2 o))
+  (== (>> output o) (>> input-1 ah))
+  (== (>> *phi1*) (>> input-2 ah))
+  (== (>> output ah) (>> input nh))
+  (== (>> output nh) (>> phi1-hold))
+  (element 'a2 (>> nand-gate))
+  (element 'n2 (>> inverter))
+  (== (>> output o2) (>> input-1 a2))
+  (== (>> *phi1*) (>> input-2 a2))
+  (== (>> output a2) (>> input n2))
+  (== (>> output n2) (>> phi1-load-2)))
+
+
+(defckt stack (depth field)
+  (node 'push)
+  (node 'pop)
+  (defckt stack-bit-slice ()
+    (node 'input)
+    (node 'output)
+    (element 'driver (>> reg-driver))
+    (node 'phi1-hold)
+    (node 'phi1-push)
+    (node 'phi1-pop)
+    (== (>> push) (>> load-1 driver))
+    (== (>> phi1-push) (>> phi1-load-1 driver))
+    (== (>> pop) (>> load-2 driver))
+    (== (>> phi1-pop) (>> phi1-load-2 driver))
+    (== (>> phi1-hold) (>> phi1-hold driver))
+    (defckt stack-cell ()
+      (node 'phi1-push-source)
+      (node 'phi1-pop-source)
+      (element 'r (>> regcell))
+      (element 'phi1-push-gate (>> e-fet))
+      (element 'phi1-pop-gate (>> e-fet))
+      (== (>> input r) (>> drain phi1-push-gate))
+      (== (>> phi1-push-source) (>> source phi1-push-gate))
+      (== (>> phi1-push) (>> gate phi1-push-gate))
+      (== (>> input r) (>> drain phi1-pop-gate))
+      (== (>> phi1-pop-source) (>> source p1-pop-gate))
+      (== (>> phi1-pop) (>> gate phi1-pop-gate))
+      (== (>> phi1-hold) (>> phi1-hold r)))
+    (defckt stack-bit-segment (depth)
+      (node 'output)
+      (node 'phi1-push-source)
+      (element 'top (>> stack-cell))
+      (== (>> output) (>> output r top))
+      (== (>> phi1-push-source) (>> phi1-push-source top))
+      (if (= (>> depth) 1)
+	  (== (>> *zero*) (>> phi1-pop-source top))
+	  (progn (element 'rest (>> stack-bit-segment)
+			  (depth (- (>> depth) 1)))
+		 (== (>> phi1-pop-source top)
+		     (>> output rest))
+		 (== (>> output top)
+		     (>> phi1-push-source rest)))))
+    (element 'seg (>> stack-bit-segment) (depth (>> depth)))
+    (== (>> input) (>> phi1-push-source seg))
+    (== (>> output) (>> output seg)))
+  (element 'bits (make-bunch (>> field)))
+  (do ((i 0 (1+ i))) ((= i (width-of-field (>> field))))
+    (assign-to-bunch (element () (>> stack-bit-slice)) i)))
+
+
+
+;;;; Global Bus Controller
+
+;;; Assume that a UARG-STACK has an input field named CONTROL-LINES
+;;; which is set up the same as the CONTROL-LINES subfields of the
+;;; global-bus control fields. And DATA-BUS and TRANS-BUS inputs, READ-BUS
+;;; and WRITE-BUS outputs.
+
+(defsystem global-bus-control ()
+  (element 'arg1-stack (>> uarg-stack)
+	   (depth (>> arg1-stack-depth))
+	   (field (>> uarg-spec)))
+  (element 'arg2-stack (>> uarg-stack)
+	   (depth (>> arg2-stack-depth))
+	   (field (>> uarg-spec)))
+  (element 'target-stack (>> uarg-stack)
+	   (depth (>> target-stack-depth))
+	   (field (>> uarg-spec)))
+
+  (let-my ((gbc (>> global-bus-control result-field control-pla)))
+	  (== (>> arg1 control-lines gbc) (>> control-lines arg1-stack))
+	  (== (>> arg2 control-lines gbc) (>> control-lines arg2-stack))
+	  (== (>> target control-lines gbc) (>> control-lines target-stack))
+
+	  (== (>> arg1 data gbc) (>> data-bus arg1-stack))
+	  (== (>> arg2 data gbc) (>> data-bus arg2-stack))
+	  (== (>> target data gbc) (>> data-bus target-stack))
+
+	  (element 'read-explicit-uarg-gate (>> pass-gate) (field (>> uarg-spec)))
+	  (== (>> gate read-explicit-uarg-gate)
+	      (>> source-read explicit control-lines gbc))
+	  (== (>> source read-explicit-uarg-gate)
+	      (>> explicit-read data gbc))
+	  (== (>> drain read-explicit-uarg-gate)
+	      (>> read-spec global-bus-control-decoder))
+
+	  (element 'write-explicit-uarg-gate (>> pass-gate) (field (>> uarg-spec)))
+	  (== (>> gate write-explicit-uarg-gate)
+	      (>> source-write explicit control-lines gbc))
+	  (== (>> source write-explicit-uarg-gate)
+	      (>> explicit-write data gbc))
+	  (== (>> drain write-explicit-uarg-gate)
+	      (>> write-spec global-bus-control-decoder))
+
+	  (== (>> trans-bus arg1-stack)
+	      (>> trans-bus arg2-stack)
+	      (>> trans-bus target-stack))
+
+	  (== (>> read-spec global-bus-control-decoder)
+	      (>> read-bus arg1-stack)
+	      (>> read-bus arg2-stack)
+	      (>> read-bus target-stack))
+
+	  (== (>> write-spec global-bus-control-decoder)
+	      (>> write-bus target-stack))))
+
+
+;;;; The Next State Machine
+
+;;; Each element of the NS data-path has two control signals
+;;; (defined as the NS-SOURCE field): SOURCE, which causes its
+;;; value to be placed onto the NS bus unless DISABLE is high.
+;;; Only one member of the path gets to source the NS bus, that 
+;;; value will be the input to the control PLA. 
+
+;;; PC is a psuedo register that always gets the value from the
+;;; NS bus. Its SOURCE signal is *INTERNAL-FREEZE*, its DISABLE is
+;;; *LOAD&FREEZE*. Note that if PC is sourced onto the NS bus, it also
+;;; refreshes its value.
+
+;;; EXTERNAL-STATE is connected to the state pads. Its SOURCE is
+;;; *LOAD&FREEZE* and it cannot be disabled.
+
+;;; The rest of the members of the NS data-path have their SOURCE
+;;; signals coming from the control-pla. The DISABLE signal for all
+;;; of them is *LOAD&FREEZE*.
+
+;;; INC contains the incremented value of PC.
+
+;;; EXPLICIT-NS is connected to the EXPLICIT-NS output of the control-pla.
+
+;;; TOP-OF-STACK is the top of the NS stack. The stack may be loaded only
+;;; from the value in INC.
+
+;;; DISPATCH-USER-TYPE and DISPATCH-EXTRA-TYPE-CONT are connected to the
+;;; appropriate decoders.
+
+;;; The NS-DATA-PATH is assumed to have inputs SOURCE-CONTROL-LINES which 
+;;; consist of the SOURCE and DISABLE control signals for all the registers;
+;;; STACK-CONTROL input; EXPLICIT-NS input; DISPATCH-USER-TYPE-STATE input; 
+;;; DISPATCH-EXTRA-TYPE-CONT-STATE input; EXTERNAL-STATE input; and NS-BUS output. 
+
+(defsystem next-state-control ()
+  
+  (element ns-data-path (>> ns-data-path))
+  (== (>> sourc-control-lines ns-data-path)
+      (>> ns-source-control result control-pla))
+  (== (>> stack-control ns-data-path)
+      (>> ns-stack-control result control-pla))
+  (== (>> explicit-ns ns-data-path)
+      (>> explicit-ns result-field control-pla))
+  (== (>> dispatch-user-type-state ns-data-path)
+      (>> output dispatch-user-type-decoder))
+  (== (>> dispatch-extra-type-cont-state ns-data-path)
+      (>> output dispatch-extra-type-cont-decoder))
+  (== (>> external-state ns-data-path)
+      (>> data state))			                  ; pads
+  (== (>> ns-bus ns-data-path)
+      (>> state-input control-pla))
+
+  (== (>> source pc ns-data-path) (>> *internal-freeze*))
+  (== (>> disable pc ns-data-path) (>> *load&freeze*))
+
+  (== (>> source external-state ns-data-path)
+      (>> *load&freeze*))
+  (== (>> disable external-state ns-data-path)
+      (>> *zero*))			  ; can't be disabled.
+  (== (>> input pc) (>> state-input control-pla)))
+
+
+;;;; Global Wiring
+
+;;; Connections to the REGISTER-FILE data path.
+
+;;; The REGISTER-FILE has inputs GLOBAL-BUS-CONTROL and
+;;; LOCAL-REGISTER-OPERATION-CONTROL; outputs: REGISTER-SENSE-LINES;
+;;; DISPATCH-USER-TYPE and DISPATCH-EXTRA-TYPE-CONT; and a DATA-BUS.
+
+(element 'register-file (>> register-file))
+(== (>> register-control global-bus-control-decoder)
+    (>> global-bus-control register-file))
+(== (>> other-register-operations result control-pla)
+    (>> local-register-operation-control register-file))
+(== (>> register-sense-lines register-file)
+    (>> register-sense-lines predicate-select-box))
+(== (>> dispatch-user-type register-file)
+    (>> input dispatch-user-type-decoder))
+(== (>> dispatch-extra-type-cont register-file)
+    (>> input dispatch-extra-type-cont-decoder))
+
+;;; Connect predicate select box to control pla
+(== (>> true-false predicate-select-box)
+    (>> predicate-input control-pla))
+
+
+
+
+;;; FREEZE and MEM-DONE randomness
+(element 'mem-done-latch (>> phi-latch))
+(== (>> input mem-done-latch) (>> output not-mem-done))	  ; a pad
+(== (>> clock mem-done-patch) (>> *phi2*))
+
+(element 'mem-wait-and (>> and-gate))
+(== (>> output mem-done-latch) (>> input-1 mem-wait-and))
+(== (>> mem-wait control-pla) (>> input-2 mem-wait-and))
+
+(element 'internal-freeze-or (>> or-gate))
+(== (>> input-1 internal-freeze-or) (>> output freeze))	  ; a pad
+(== (>> input-2 internal-freeze-or) (>> output mem-wait-and))
+(== (>> output internal-freeze-or) (>> *internal-freeze*))
+
+;;; Load gets anded with freeze
+(element 'load&freeze-and (>> and-gate))
+(== (>> input-1 load&freeze-and) (>> output load))	  ; a pad
+(== (>> input-2 load&freeze-and) (>> output freeze))	  ; a pad
+(== (>> output load&freeze-and) (>> *load&freeze*))
+
+;;; sbus-error
+(== (>> output sbus-error-flag)		                  ; a pad
+    (>> sbus-error predicate-select-box))
+
+;;; The state pads
+(== (>> enable-input state)		                  ; pads
+    (>> *load&freeze*))
+(== (>> enable-output state)
+    (>> output nand load&freeze-and))
+(== (>> data state) (>> state-input control-pla))
+
+
+;;;; Pads
+
+(defpad -somebody-isnt-ready-to-gc input 1)
+(defpad -somebody-needs-gc input 1)
+(defpad dma-interrupt-grant output 1)
+(defpad dma-interrupt-request input 1)
+(defpad cons-server-interrupt-grant output 1)
+(defpad cons-server-interrupt-request input 1)
+(defpad external-interrupt-grant output 1)
+(defpad external-interrupt-request input 1)
+(defpad relocate-from-me-acknowledged output 1)
+(defpad relocate-request-to-me input 1)
+(defpad sbus-error-flag input 1)
+(defpad not-mem-done input 1)
+(defpad mem-control output 3)
+
+(defpad data tri-state 36)
+(defpad freeze input 1)
+(defpad load input 1)
+(defpad state tri-state 9)
+
+(defpad vdd vdd 1)
+(defpad gnd gnd 1)
+(defpad phi1 clock 1)
+(defpad phi2 clock 1)
+(defpad vss vss 1)
+
+

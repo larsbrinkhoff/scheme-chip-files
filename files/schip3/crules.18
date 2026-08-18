@@ -1,0 +1,450 @@
+;;; -*- mode: LISP; package: DPL -*-
+
+(defvar *control-rule-list* nil)
+
+(defmacro control-rule (name pattern filter &body body)
+  (let ((name (:join 'control '- name)))
+    `(progn
+       (defprop ,name ,pattern rule-pattern)
+       (defprop ,name ,filter rule-filter)
+       (defprop ,name (progn . ,body) rule-body)
+       (setq *control-rule-list* (cons-new ',name *control-rule-list*))
+       ',name)))
+
+;;; Collections of registers
+
+(defvar split-registers
+  '(cont-stack exp val free temporary
+    temp-reg-0 constant-register-0 constant-register-1))
+
+(defvar whole-registers
+  '(cont thargs env env-stack wind-forms memtop
+    errcode interrupt-enables scan machine-number constant-register-2))
+
+(defvar flagged-registers
+  '(thargs-stack cont-stack))
+
+(defvar output-registers
+  '(read-mar write-mar write-mbr sbus-output-cons 
+    sbus-output-relocated-value sbus-output-relocate-request))
+
+(defvar input-registers
+  '(read-mbr sbus-error-code interrupt-number
+    sbus-input-relocate-request sbus-input-relocated-value))
+
+(defvar pclsr-registers
+  '(exp val env env-stack thargs thargs-stack
+    cont cont-stack wind-forms))
+
+(defvar uarg-stacks
+  '(arg1-stack arg2-stack target-stack))		     
+
+
+;;; Explicit Uargs
+
+;;; Note: all of these need the appropriate LOAD-/or/READ-/GLOBAL 
+;;; bits when they are output from the decoder.
+
+(control-rule explicit-load-split
+	   (load (? reg) global-control)
+	   (memq (? reg) split-registers)
+  (add-assertion '(explicit load-source))
+  (push `(type ,(? reg) main-registers) *ex-load*)
+  (push `(datum ,(? reg) main-registers) *ex-load*))
+
+(control-rule explicit-read-split
+	   (read (? reg) global-control)
+	   (memq (? reg) split-registers)
+  (add-assertion '(explicit read-source))
+  (push `(type ,(? reg) main-registers) *ex-read*)
+  (push `(datum ,(? reg) main-registers) *ex-read*))
+
+(control-rule explicit-load-whole
+	   (load (? reg) global-control)
+	   (memq (? reg) whole-registers)
+  (add-assertion '(explicit load-source))
+  (push `(,(? reg) main-registers) *ex-load*))
+
+(control-rule explicit-read-whole
+	   (read (? reg) global-control)
+	   (memq (? reg) whole-registers)
+  (add-assertion '(explicit read-source))
+  (push `(,(? reg) main-registers) *ex-read*))
+
+(control-rule explicit-load-split-1
+	   (load (? subfield) (? reg) global-control)
+	   (memq (? reg) split-registers)
+  (add-assertion '(explicit load-source))
+  (push `(,(? subfield) ,(? reg) main-registers) *ex-load*))
+
+(control-rule explicit-read-split-1
+	   (read (? subfield) (? reg) global-control)
+	   (memq (? reg) split-registers)
+  (add-assertion '(explicit read-source))
+  (push `(,(? subfield) ,(? reg) main-registers) *ex-read*))
+
+(control-rule explicit-load-thargs-stack
+	   (load thargs-stack global-control)
+	   t
+  (add-assertion '(explicit load-source))
+  (push '(word thargs-stack main-registers) *ex-load*))
+
+(control-rule explicit-load-thargs-stack-cdr-bit
+	   (load cdr-bit thargs-stack global-control)
+	   t
+  (add-assertion '(explicit load-source))
+  (push '(cdr-bit thargs-stack main-registers) *ex-load*))
+
+(control-rule explicit-read-thargs-stack
+	   (read thargs-stack global-control)
+	   t
+  (add-assertion '(explicit read-source))
+  (push '(word thargs-stack main-registers) *ex-read*))
+
+
+;;; Non-uarg Global bus operations
+
+(control-rule cdr-bit
+	   ((? value) cdr-bit global-control)
+	   (memq (? value) '(zero one))
+  (push `(read-global ,(? value) cdr-bit main-registers) *non-uargs*))
+
+(control-rule read-array-index-adder
+	   (read array-index-adder global-control)
+	   t
+  (push '(shift index-preparer exp main-registers) *non-uargs*)
+  (push '(cdr-bit val main-registers) *non-uargs*)
+  (push '(read-global index-adder main-registers) *non-uargs*)
+  (add-assertion '(carry-chain random-signals)))
+
+(control-rule read-subtractor
+	   (read subtractor global-control)
+	   t
+  (push '(negate index-preparer exp main-registers) *non-uargs*)
+  (push '(cdr-bit val main-registers) *non-uargs*)
+  (push '(read-global index-adder main-registers) *non-uargs*)
+  (add-assertion '(carry-chain random-signals)))
+
+(control-rule read-adder
+	   (read adder global-control)
+	   t
+  (push '(read-global index-adder main-registers) *non-uargs*)
+  (add-assertion '(carry-chain random-signals)))
+
+(control-rule array-index-test
+	   (array-index-test local-control)
+	   t
+  (push '(negate index-preparer exp main-registers) *non-uargs*)  ;cdr bit is off
+  (add-assertion '(carry-chain random-signals)))
+
+;;; External Registers
+
+(control-rule explicit-load-output
+	   (load (? reg) global-control)
+	   (memq (? reg) output-registers)
+  (push '(enable-output external-registers) *non-uargs*)
+  (push `(load-global ,(? reg) external-registers) *non-uargs*))
+
+(control-rule explicit-read-input
+	   (read (? reg) global-control)
+	   (memq (? reg) input-registers)
+  (push '(enable-input external-registers) *non-uargs*)
+  (push `(read-global ,(? reg) external-registers) *non-uargs*))
+
+
+;;; Constant Sources
+
+(control-rule source-enable
+	   (enable (? source-name))
+	   (memq (? source-name) '(type-source datum-source))
+  (push `(read-global ,(? source-name) main-registers) *non-uargs*))
+
+(control-rule source-value
+	   ((? data) value (? source-name))
+	   (memq (? source-name) '(type-source datum-source))
+  (push `(,(? data) value ,(? source-name) main-registers) *constant-codes*))
+
+;;; Local bus operations
+
+(control-rule local-control-operation 
+	   ((? op) (? field) (? reg) local-control)
+	   (and (memq (? op)
+		  '(increment decrement right-shift-0 left-shift-0 left-shift-1))
+		(eq (? field) 'datum)
+		(neq (? field) 'count))
+  (push `(read-local ,(? op) ,(? reg) main-registers) *non-uargs*)
+  (push `(load-local ,(? field) ,(? reg) main-registers) *non-uargs*)
+  (if (and (memq (? op) '(increment decrement))
+	   (neq (? field) 'count))
+      (add-assertion '(carry-chain random-signals))))
+
+(control-rule int-dec-count ((? op) count (? reg) local-control)
+	      (memq (? op) '(increment decrement))
+  (push `(read-local ,(? op) count ,(? reg) main-registers) *non-uargs*)
+  (push `(load-local ,(? reg) main-registers) *non-uargs*))
+
+(control-rule type-to-datum
+	   (type-to-datum val local-control)
+	   t
+  (push '(load-local datum val main-registers) *non-uargs*)
+  (push '(read-local type-to-datum val main-registers) *non-uargs*))
+
+(control-rule increment-scan
+	   (increment scan local-control)
+	   t
+  (push '(load-local scan main-registers) *non-uargs*)
+  (push '(read-local increment scan main-registers) *non-uargs*)
+  (add-assertion '(carry-chain random-signals)))
+
+(control-rule pclsr-save
+	   (pclsr-save (? reg) local-control)
+	   (memq (? reg) pclsr-registers)
+  (push `(load shadow ,(? reg) main-registers) *non-uargs*))
+
+(control-rule pclsr-restore
+	   (pclsr-restore (? reg) local-control)
+	   (memq (? reg) pclsr-registers)
+  (push `(read-local shadow ,(? reg) main-registers) *non-uargs*)
+  (cond ((memq (? reg) whole-registers)
+	 (push `(load-local ,(? reg) main-registers) *non-uargs*))
+	((memq (? reg) split-registers)
+	 (push `(load-local type ,(? reg) main-registers) *non-uargs*)
+	 (push `(load-local datum ,(? reg) main-registers) *non-uargs*))
+	((eq (? reg) 'thargs-stack)
+	 (push '(load-local word thargs-stack main-registers) *non-uargs*))
+	(t (break "Pclsr-restore?")))
+  (cond ((memq (? reg) flagged-registers)
+	 (push `(load-local cdr-bit ,(? reg) main-registers) *non-uargs*))))
+
+
+;; These are taken care of by cdr-bit
+
+(control-rule pclsr-save-flags
+	   (pclsr-save (? flag) local-control)
+	   (memq (? flag) '(thargs-flag cont-flag))
+  'ignore)
+
+(control-rule pclsr-restore-flags
+	   (pclsr-restore (? flag) local-control)
+	   (memq (? flag) '(thargs-flag cont-flag))
+  'ignore)
+
+;;; Outputs from the control pla
+
+(control-rule flags-control
+	   ((? op) (? which) flag-control)
+	   (memq (? which) '(i-am-ready-to-gc i-need-gc))
+  (add-assertion `(,(? op) ,(? which) gc-flags)))
+
+(control-rule flag-value
+	   ((? val) flag-bit-value flag-control)
+	   (member (? val) '(0 1))
+  (add-assertion `(,(? val) flag-bit-value gc-flags)))
+
+(control-rule random-signals
+	   ((? which) random-signals)
+	   (memq (? which)
+		 '(cons-server-interrupt-grant dma-interrupt-grant
+                   external-interrupt-grant halted))
+  (add-assertion `(,(? which) random-signals)))
+
+(control-rule wait-outputs
+	       ((? what) wait-outputs)
+	       (memq (? what) '(relocate-requested-or-returned? wait-for-memdone))
+  (add-assertion `(,(? what) memory-wait)))
+
+;;; Uarg operations
+;;; Remember noops
+
+(control-rule read-uarg-stack				; signal is really on stack
+	   (read (? where) global-control)
+	   (memq (? where) '(arg1-stack arg2-stack))
+  (add-assertion `(,(? where) read-source)))
+
+(control-rule load-target-stack				; ibid
+	   (load target-stack global-control)
+	   t
+  (add-assertion `(target-stack load-source)))
+
+
+(defmacro plane-push (item plane if-true if-false)
+  `(if (eq ,plane 'true)
+       (push ,item ,if-true)
+       (push ,item ,if-false)))
+
+(control-rule pop-arg-stack
+	       (pop-arg-stack (? where) (? plane))
+	       (memq (? where) uarg-stacks)
+  (plane-push `(pop-arg-stack ,(? where) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*)
+  (plane-push `(load-local ,(? where) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*))
+
+(control-rule push-arg-stack
+	       ((? which) push-arg-stack (? stack) (? plane))
+	       (and (memq (? stack) uarg-stacks)
+		    (not (eq (? which) 'self))
+		    (not (eq (? which) 'transfer-bus)))
+  (plane-push `(push-arg-stack ,(? stack) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*)
+  (plane-push `(load-local ,(? stack) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*)
+  (plane-push `(load ,(? which) push-source ,(? stack) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*))
+
+(control-rule push-arg-stack-from-transfer
+	       (transfer-bus push-arg-stack (? stack) (? plane))
+	       (memq (? stack) uarg-stacks)
+  (plane-push `(push-arg-stack ,(? stack) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*)
+  (plane-push `(load transfer-bus push-source ,(? stack) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*))
+
+(control-rule push-self
+	       (self push-arg-stack (? stack) (? plane))
+	       (memq (? stack) uarg-stacks)
+  (plane-push `(push-arg-stack ,(? stack) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*)
+  (putprop *state-code* 't 'pushes-self))
+
+(control-rule transfer-source
+	   ((? source-stack) transfer-bus (? plane))
+	   (memq (? source-stack) uarg-stacks)
+  (plane-push `(read transfer-bus ,(? source-stack) uarg-stacks)
+	      (? plane) *true-uarg-ops* *false-uarg-ops*))
+
+(control-rule arg1-data-whole
+	   ((? reg) uarg-data arg1-stack (? plane))
+	   (memq (? reg) whole-registers)
+  (plane-push `(,(? reg) main-registers)
+	      (? plane) *arg1-true* *arg1-false*))
+
+(control-rule arg2-data-whole
+	   ((? reg) uarg-data arg2-stack (? plane))
+	   (memq (? reg) whole-registers)
+  (plane-push `(,(? reg) main-registers)
+	      (? plane) *arg2-true* *arg2-false*))
+
+(control-rule target-data-whole
+	   ((? reg) uarg-data target-stack (? plane))
+	   (memq (? reg) whole-registers)
+  (plane-push `(,(? reg) main-registers)
+	      (? plane) *target-true* *target-false*))
+
+(control-rule arg1-data-split
+	   ((? reg) uarg-data arg1-stack (? plane))
+	   (memq (? reg) split-registers)
+  (plane-push `(type ,(? reg) main-registers)
+	      (? plane) *arg1-true* *arg1-false*)
+  (plane-push `(datum ,(? reg) main-registers)
+	      (? plane) *arg1-true* *arg1-false*))
+
+(control-rule arg2-data-split
+	   ((? reg) uarg-data arg2-stack (? plane))
+	   (memq (? reg) split-registers)
+  (plane-push `(type ,(? reg) main-registers)
+	      (? plane) *arg2-true* *arg2-false*)
+  (plane-push `(datum ,(? reg) main-registers)
+	      (? plane) *arg2-true* *arg2-false*))
+
+(control-rule target-data-split
+	   ((? reg) uarg-data target-stack (? plane))
+	   (memq (? reg) split-registers)
+  (plane-push `(type ,(? reg) main-registers)
+	      (? plane) *target-true* *target-false*)
+  (plane-push `(datum ,(? reg) main-registers)
+	      (? plane) *target-true* *target-false*))
+
+
+(control-rule arg1-data-thargs-stack
+	   (thargs-stack uarg-data arg1-stack (? plane))
+	   t
+  (plane-push `(word thargs-stack main-registers)
+	      (? plane) *arg1-true* *arg1-false*))
+
+(control-rule arg2-data-thargs-stack
+	   (thargs-stack uarg-data arg2-stack (? plane))
+	   t
+  (plane-push `(word thargs-stack main-registers)
+	      (? plane) *arg2-true* *arg2-false*))
+
+(control-rule target-data-thargs-stack
+	   (thargs-stack uarg-data target-stack (? plane))
+	   t
+  (plane-push `(word thargs-stack main-registers)
+	      (? plane) *target-true* *target-false*))
+
+;;; Next-state operations
+
+(control-rule next-state-select
+	   ((? where) next-state-select (? plane))
+	   (not (eq (? where) 'explicit))
+  (plane-push `(read ,(? where) next-state-machine)
+	      (? plane) *true-ns-ops* *false-ns-ops*))
+
+(control-rule next-state-select-explicit
+	   (explicit next-state-select (? plane))
+	   t
+  (plane-push `(read ,(:join (? plane) '-explicit-ns) next-state-machine)
+	      (? plane) *true-ns-ops* *false-ns-ops*))
+
+(control-rule explicit-ns
+	   ((? what) explicit (? plane))
+	   t
+  (add-assertion `(,(? what) ,(:join (? plane) '- 'explicit-ns))))
+
+(control-rule pop-pc-stack
+	       (pop-arg-stack pc-stack (? plane))
+	       t
+  (plane-push `(pop-arg-stack pc-stack next-state-machine)
+	      (? plane) *true-ns-ops* *false-ns-ops*))
+
+(control-rule push-pc-stack
+	       (uarg-data push-arg-stack pc-stack (? plane))
+	       t
+  (plane-push `(push-arg-stack pc-stack next-state-machine)
+	      (? plane) *true-ns-ops* *false-ns-ops*))
+
+(control-rule pc-uarg-data
+	       ((? data) uarg-data pc-stack)
+	       t
+  (add-assertion `(,(? data) pc-explicit-ns)))
+
+;;; Predicates
+
+(defconst *control-input-preds*
+	  '(relocate-request-to-me
+	     -somebody-needs-gc
+	     -somebody-isnt-ready-to-gc))
+
+(defconst *external-preds*
+	  '(external-interrupt-request
+	     dma-interrupt-request
+	     cons-server-interrupt-request
+	     sbus-error-flag))
+
+(defun translate-pred (pred)
+  (cond ((null pred) nil)
+	((atom pred) pred)
+	((and (eq (car pred) 'sense)
+	      (memq (cadr pred) *control-input-preds*))
+	 `(sense ,(cadr pred) control-inputs pad-senses))
+	((and (eq (car pred) 'sense)
+	      (memq (cadr pred) *external-preds*))
+	 `(sense ,(cadr pred) external-predicates pad-senses))
+	((eq (car pred) 'sense)
+	 `(sense ,@(cdr pred) data-senses))
+	(t (cons (translate-pred (car pred))
+		 (translate-pred (cdr pred))))))
+
+(control-rule predicate
+	   (predicate (? pred))
+	   t
+  (push (translate-pred (make-disj-norm-form (? pred))) *predicate*))
+
+;;; Entry Points
+
+(control-rule entry
+	   (entry-point (? name))
+	   t
+  (putprop *state-code* (? name) 'entry-point))

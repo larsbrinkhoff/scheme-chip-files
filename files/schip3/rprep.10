@@ -1,0 +1,88 @@
+;;; -*- mode: LISP; package: DPL -*-
+
+;;; Preparation functions for routing
+
+;;;; drout preparation
+
+(defun collect-non-uarg-connections (*me*)
+  (dolist (ff (list-fringe
+		(find-subfield-named 'main-registers *non-uarg-output-field*)))
+    (collect-connection
+      (make-drout-connection
+	(>> (*path ff) outputs non-uarg-decoder decoders)
+	(>> (*path (translate-to-dpath-path (nbutlast ff))) main-regs)))))
+
+(defun collect-uarg-read-connections (*me*)
+  (dolist (ff (list-fringe *uarg-read-output-field*))
+    (collect-connection
+      (make-drout-connection
+	(>> (*path ff) outputs uarg-read-decoder decoders)
+	(>> (*path (translate-to-dpath-path (cons 'read (nbutlast ff))))
+	    main-regs)))))
+
+(defun collect-uarg-load-connections (*me*)
+  (dolist (ff (list-fringe *uarg-load-output-field*))
+    (collect-connection
+      (make-drout-connection
+	(>> (*path ff) outputs uarg-load-decoder decoders)
+	(>> (*path (translate-to-dpath-path (cons 'load-global (nbutlast ff))))
+	    main-regs)))))
+
+(defun collect-clock-connections (*me*)
+  (collect-connection
+    (make-drout-connection
+      (>> end-pt phi1 clocking-to-main-regs)
+      (>> (*path '(clock phi1)) main-regs)))
+  (collect-connection
+    (make-drout-connection
+      (>> end-pt phi2 clocking-to-main-regs)
+      (>> (*path '(clock phi2)) main-regs)))
+  (collect-connection
+    (make-drout-connection
+      (>> end-pt freeze clocking-to-main-regs)
+      (>> (*path '(clock freeze)) main-regs))))
+
+(defun collect-connection (c)
+  (add-drout-connection c))
+
+(declare (special *drout-bottom-y* *drout-connection-list*))
+
+(defun drout-scheme-81 (*me*)
+  (let ((*drout-connection-list* nil)
+	(*drout-maximum-channels-used*)
+	(*drout-bottom-y* (+ (>> top main-regs) *metal-pitch*)))
+    (collect-non-uarg-connections *me*)
+    (print 'non-uarg-collected)
+    (collect-uarg-load-connections *me*)
+    (print 'uarg-load-collected)
+    (collect-uarg-read-connections *me*)
+    (print 'uarg-read-collected)
+    (drout-rout-list)
+    (format t "~&Channels used: ~D" *drout-maximum-channels-used*)
+    (do-drout-wiring)))
+
+;;;; Prout preparation
+
+(defun prout-spec-sorter (x y)
+  (> (x-of-pt (cadr x)) (x-of-pt (cadr y))))
+
+;;; Each conn =
+;;; (bottom-pt top-pt)
+(defun prout (list-of-conns side-x bottom-y pitch)
+  (let ((bot-y bottom-y)
+	(sid-x side-x)
+	(switched? nil))
+    (dolist (conn list-of-conns)
+      (if (and (not switched?)
+	       (< (x-of-pt (cadr conn)) sid-x))
+	  (setq switched? t
+		bot-y (- bot-y pitch)))
+      (wire () (run-layer 'poly)
+	    (from (car conn))
+	    (to-x sid-x)
+	    (to-y bot-y)
+	    (jog-x (cadr conn)))
+      (if switched?
+	  (setq bot-y (- bot-y pitch))
+	  (setq bot-y (+ bot-y pitch)))
+      (setq sid-x (- sid-x pitch)))))

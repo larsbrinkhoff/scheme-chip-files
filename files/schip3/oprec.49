@@ -1,0 +1,215 @@
+;;; -*-LISP-*-
+
+(declare (*expr union addprop statement-type))
+(defvar *pc-list*)
+(defvar *the-hardware-mapping-rules*)
+(defvar *statement*)      
+(defvar *bindings*)
+(defvar *incumbents*)
+(defvar *incumbent*)
+(defvar *invaders*)
+(defvar *invader*)
+(defvar *conflicts*)
+
+(defvar *matchers*)					;for debugging only.
+
+(defun oprec ()
+  (mapc #'(lambda (pc)
+	    (mapc #'map-operation
+		  (get pc 'primitive-operations)))
+	*pc-list*)
+  'done)
+
+(defun map-operation (*statement*)
+  (mapc #'(lambda (type)
+	    (let ((proc (get type 'hardware-control-mapper)))
+	      (if (not (null proc))
+		  (funcall proc *statement*))))
+	(statement-type *statement*))
+  (if (not (get *statement* 'next-state))
+      (standard-next-state *statement*))
+  (try-rules (get *statement* 'expression)
+	     *the-hardware-mapping-rules*))
+
+(defun map-suboperation (source target)
+  (map-operation source)
+  (compress-stmt source target))
+
+
+(defun try-rules (expression rules)
+  (if (not (null expression))
+      (let ((*matchers* nil))
+	(mapc #'(lambda (rule)
+		  (if (apply-rule rule expression)
+		      (setq *matchers* (cons rule *matchers*))))
+	      rules)
+	(cond ((> (length *matchers*) 1)
+	       (break "Too many rules matched -- TRY-RULES"))
+	      ((null *matchers*)
+	       (break "No rule matches -- TRY-RULES"))))))
+      
+
+(defun apply-rule (r expression)
+  (let ((*bindings* nil))
+    (if (and (internal-match (rule-pattern r) expression)
+	     (eval (rule-filter r)))
+	(progn (eval (rule-skeleton r))
+	       't)					;rule applied
+	'nil)))
+
+;;; Pattern may contain "variables".
+
+(defun match (pat exp)
+  (let ((*bindings* nil))				;a fluid variable
+    (if (internal-match pat exp)
+	(list *bindings*)
+	'nil)))
+
+(defun internal-match (pat exp)
+  (cond ((atom pat)
+	 (cond ((eq exp pat) 't)
+	       (t 'nil)))
+	((pat-variable? pat)
+	 (cond ((pat-bound? pat)
+		(equal (pat-value pat) exp))
+	       (t (pat-bind pat exp))))
+	((atom exp) 'nil)
+	((internal-match (car pat) (car exp))
+	 (internal-match (cdr pat) (cdr exp)))
+	(t 'nil)))
+
+(defun pat-variable? (e)
+  (eq (car e) '?))
+
+(defun pat-bound? (v)
+  (assoc v *bindings*))
+
+(defun pat-value (v)
+  (cadr (assoc v *bindings*)))
+
+(defun pat-bind (v e)
+  (setq *bindings*
+	(cons (list v e) *bindings*)))
+
+(defun rule-pattern (r) (cadr r))
+
+(defun rule-filter (r) (caddr r))
+
+(defun rule-skeleton (r) (cadddr r))
+
+
+;;; Skeleton procedures may access *statement* and *bindings*
+
+;;; Pattern variables are accessed in the skeleton and in the
+;;; filter using ?.
+
+(eval-when (eval load) (defmacro ? (&rest l) `(pat-value '(? ,@l))))
+
+(defun install (&rest primitive-data-actions)
+  (mapc #'(lambda (act)
+	    (addprop *statement* act 'primitive-data-actions))
+	primitive-data-actions))
+
+(defun protect (&rest primitive-protection-actions)
+  (mapc #'(lambda (act)
+	    (addprop *statement* act 'primitive-protection-actions))
+	primitive-protection-actions))
+
+(defun install-control (&rest primitive-control-actions)
+  (mapc #'(lambda (act)
+	    (addprop *statement* act 'primitive-control-actions))
+	primitive-control-actions))
+
+
+(defun predicate-selection? (act)
+  (eq (car act) 'predicate))
+
+(defun compress-stmt (source-stmt target-stmt)
+  (compress-data-acts source-stmt target-stmt)
+  (compress-protection-acts source-stmt target-stmt)
+  (compress-control-acts source-stmt target-stmt))
+
+(defun compress-data-acts (source-stmt target-stmt)
+  (putprop target-stmt
+	   (merge-data-acts source-stmt target-stmt)
+	   'primitive-data-actions))
+
+(defun merge-data-acts (stmt1 stmt2)
+  (let ((a1 (get stmt1 'primitive-data-actions))
+	(a2 (get stmt2 'primitive-data-actions)))
+    (if (predicate? stmt1)
+	(if (predicate? stmt2)
+	    (break "Merging predicates together -- MERGE-DATA-ACTS")
+	    (union a1 (set-difference a2 '((predicate true)))))
+	(if (predicate? stmt2)
+	    (union a2 (set-difference a1 '((predicate true))))
+	    (union a1 a2)))))
+
+
+(defun compress-protection-acts (source-stmt target-stmt)
+  (putprop target-stmt
+	   (merge-protection-acts source-stmt target-stmt)
+	   'primitive-protection-actions))
+
+(defun merge-protection-acts (stmt1 stmt2)
+  (union (get stmt1 'primitive-protection-actions)
+	 (get stmt2 'primitive-protection-actions)))
+
+
+(defun compress-control-acts (source-stmt target-stmt)
+  (setq *conflicts* nil)
+  (putprop target-stmt
+	   (merge-control-acts 'true source-stmt target-stmt)
+	   'primitive-control-actions)
+  (if (not (null *conflicts*))
+      (break "Conflict -- COMPRESS-CONTROL-ACTS")))
+
+(defun merge-control-acts (branch inferior superior)
+  (union-control-acts branch
+		      (get inferior 'primitive-control-actions)
+		      (get superior 'primitive-control-actions)))
+
+(defun union-control-acts (branch infacts supacts)
+  (merge-control-iter infacts
+		      (if (eq branch 'true)
+			  supacts
+			  (subst 'false 'true supacts))))
+
+(defun merge-control-iter (*incumbents* *invaders*)
+  (mapc #'(lambda (*invader*)
+	    (try-rules *invader* *control-merge-rules*))
+	*invaders*)
+  (union *incumbents* *invaders*))
+
+
+;;; The control merging rules use the following procedures:
+
+(defun exists-assertion? fexpr (l)
+  (let ((pat (car l)))
+    (do ((il *incumbents* (cdr il)))
+	((null il) nil)
+      (let ((*incumbent* (car il)) (saved-bindings *bindings*))
+	(if (internal-match pat *incumbent*)
+	    (return t)
+	    (setq *bindings* saved-bindings))))))
+
+(defun remove-assertion fexpr (l)
+  (setq *incumbents*
+	(remassertion (car l)
+		      *incumbents*)))
+
+(defun remassertion (pat asslist)
+  (if (null asslist)
+      nil
+      (let ((saved-bindings *bindings*))
+	(if (internal-match pat (car asslist))
+	    (progn (setq *bindings* saved-bindings)
+		   (remassertion pat (cdr asslist)))
+	    (progn (setq *bindings* saved-bindings)
+		   (cons (car asslist)
+			 (remassertion pat (cdr asslist))))))))
+
+(defun conflict (resource)
+  (setq *conflicts*
+	(cons (list resource (list *incumbent*) *invader*)
+	      *conflicts*)))

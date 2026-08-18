@@ -1,0 +1,189 @@
+;;; Stipple pattern stuff, swiped from H;DAEDAL and modified
+
+;;; A stipple pattern is stored as a numeric array, typically ART-16B,
+;;; whose 32-bit data words contain a 2-dimensional stipple patch, a multiple
+;;; of 32 bits wide and some number of bits high.  As usual with screens,
+;;; the width dimension varies the fastest.  To stipple a region of screen,
+;;; BITBLT this into the region; it will be replicated as many times as necessary.
+
+;;; This function creates a stipple pattern with a horizontal period of
+;;; up to 16 bits.  The rest args are the successive rows of pattern.
+;;; The pattern arguments are strings.
+
+(defun make-stipple (height width byte-size &rest patterns
+			    &aux rwidth stipple)
+       (check-arg height (= height (length patterns)) "equal to number of patterns")
+       (check-arg byte-size ( byte-size 16.) "less than or equal to 16.")
+       ;;Convert strings to binary for each row of stipple
+       ;;CROCK: losing RPLACA
+       (do l patterns (cdr l) (null l)
+	   (rplaca l (do ((w 0 (+ w 1))
+			  (r 0 (+ (lsh r 1) (if (or (= (aref (car l) w) 40)
+						    (= (aref (car l) w) 60))
+						0 1))))
+			 ((= w byte-size) r))))
+       ;;Fill 16B array from stipple pattern
+       (setq rwidth					;Number of 16-bit words wide
+	     (* 2 (max 1 (\ (+ (* width byte-size) 31.) 32.))))
+       (setq stipple (make-array nil 'art-16b (list rwidth height)))
+       (do ((l patterns (cdr l))
+	    (idx 0 (1+ idx))
+	    (pattern)
+	    (n height (1- n)))
+	   ((zerop n))
+	   (setq pattern (car l))
+	   ;;Fill in one row with repeats of pattern byte packed into 16 bit chunks
+	   (do ((i 0 (1+ i))
+		(m rwidth (1- m))
+		(bitsoff 0 (\ (+ bitsoff 16.) byte-size)))	;Bit offset of start of hwd
+	       ((zerop m))
+	       ;;Pack bytes into a 16 bit chunk
+	       (do ((byte (lsh pattern (- bitsoff))
+			  (dpb pattern (+ (lsh pos 6) byte-size) byte))
+		    (pos (- byte-size bitsoff) (+ pos byte-size)))
+		   ((>= pos 16.) (aset byte stipple i idx)))))
+       ;;Convert result into 1B array
+       (make-array nil 'art-1b (list (* rwidth 16.) height) stipple))
+
+(declare (special poly diffusion metal cuts implant overglass))
+
+(setq metal (make-stipple 4 1 4
+			  "  * "
+			  "*   "
+			  "    "
+			  "    "))
+(setq poly (make-stipple  4 1 4
+			  "*   "
+			  " *  "
+			  "  * "
+			  "   *"))
+(setq diffusion (make-stipple 4 1 4
+			      " *  "
+			      "   *"
+			      "*   "
+			      "  * "))
+(setq cuts (make-stipple 4 1 4
+			 "   *"
+			 "  * "
+			 "   *"
+			 "*   "))
+(setq implant (make-stipple 4 1 4
+			      "    "
+			      "    "
+			      " *  "
+			      " *  "))
+(setq overglass (make-stipple 4 1 4
+			      " * *"
+			      "  * "
+			      "    "
+			      "  * "))
+
+(declare (special checks hstripes vstripes diag antidiag bigchecks squares holes mesh faces))
+(setq checks (make-stipple 4 1 4
+			   "* * "
+			   " * *"
+			   "* * "
+			   " * *"))
+(setq hstripes (make-stipple 4 1 4
+			     "****"
+			     "    "
+			     "****"
+			     "    "))
+(setq vstripes (make-stipple 4 1 4
+			     "* * "
+			     "* * "
+			     "* * "
+			     "* * "))
+(setq diag (make-stipple 4 1 4
+			 "*   "
+			 " *  "
+			 "  * "
+			 "   *"))
+(setq antidiag (make-stipple 4 1 4
+			     "   *"
+			     "  * "
+			     " *  "
+			     "*   "))
+(setq bigchecks (make-stipple 4 1 4
+			      "**  "
+			      "**  "
+			      "  **"
+			      "  **"))
+(setq squares (make-stipple 4 1 4
+			    "**  "
+			    "**  "
+			    "    "
+			    "    "))
+(setq holes (make-stipple 4 1 4
+			  "****"
+			  "****"
+			  "  **"
+			  "  **"))
+(setq mesh (make-stipple 4 1 4
+			  " *  "
+			  "****"
+			  " *  "
+			  " *  "))
+(setq faces (make-stipple 16. 1 16.
+			  "     ******     "
+			  "   **      **   "
+			  "  *          *  "
+			  " *            * "
+			  " *  **    **  * "
+			  "*   **    **   *"
+			  "*              *"
+			  "*              *"
+			  "*  *        *  *"
+			  "*  *        *  *"
+			  "*   *      *   *"
+			  " *   *    *   * "
+			  " *    ****    * "
+			  "  *          *  "
+			  "   **      **   "
+			  "     ******     "))
+
+
+
+(defun stipple (x0 y0 x1 y1
+		   &OPTIONAL
+		   (stipple poly)
+		   (alu tv-alu-ior)
+		   (screen (screen-buffer-pixel-array tv-default-screen)))
+       (bitblt alu
+	       (- x1 x0) (- y1 y0)
+	       stipple					;from
+	       (logand x0 17) (\ y0 (array-dimension-n 2 stipple))	;align correctly
+	       screen					;to
+	       x0 y0))
+
+(defun d-rect (layer len width center-x center-y)
+   (stipple (- center-x (// width 2))
+            (- center-y (// len 2))
+            (+ center-x (// width 2))
+            (+ center-y (// len 2))
+            layer))
+
+(defun invert ()
+       (tv-clear-all)
+       (d-rect poly 40 300 400 500)			;gate
+       (d-rect diffusion 400 60 500 400)		;vertical diff
+       (d-rect diffusion 50 300 650 400)		;output diffusion
+       (d-rect poly 120 120 500 300)			;pullup poly
+       (d-rect contact 30 30 500 350)			;contact
+       (d-rect metal 60 500 500 600)			;vcc
+       (d-rect contact 30 30 500 600)			;contact
+       (d-rect diffusion 70 70 500 600)			;contact
+       (d-rect implant 150 110 500 300)			;implant
+       (d-rect metal 60 500 500 200)			;vdd
+       (d-rect contact 30 30 500 200)			;contact
+       (d-rect diffusion 70 70 500 200)			;contact
+       )
+
+(defun stcruft ()
+       (tv-clear-all)
+       (let ((crap (list checks hstripes vstripes diag antidiag
+			 bigchecks squares holes mesh faces)))
+	    (do i 0 (+ i 1) (= i 10.)
+		(do j 0 (+ j 1) (= j 10.)
+		    (stipple (* i 70) (* j 70) (* (+ i 1) 70) (* (+ j 1) 70)
+			     (nth (\ (+ i j) 10.) crap))))))

@@ -1,0 +1,103 @@
+;selector low order stuff is at bottom:
+
+(deflayout selector (nbits)
+   (let ((nrows (expt 2 nbits))
+	 (row-space 5)
+	 (col-space 14)
+	 (q1-offset-x 4)
+	 (q-offset-y 3)
+	 (q2-offset-x 11))
+	(set-the' v-pitch (+ (* nrows row-space) 1))
+	(set-the' h-pitch (+ (* nbits col-space) 2))
+	(do ((row 0 (1+ row)))
+	    ((= row nrows))
+	    (boxes diff (pt 2 (+ q-offset-y (* row row-space))) (X (the h-pitch)))
+	    (set-the (concat 'row row) *XY))
+	(do ((col 0 (1+ col)))
+	    ((= col nbits))
+	    (boxes poly (pt (+ q1-offset-x (* col col-space)) (the v-pitch)) (Y 0))
+	    (set-the (concat 'lcol col) *XY)
+	    (boxes poly (pt (+ q2-offset-x (* col col-space)) (the v-pitch)) (Y 0))
+	    (set-the (concat 'rcol col) *XY)
+	    (if (oddp col)
+		(progn (set-the (concat 'driver- col)
+				(call 'complementary-pair-driver '() 'mirror 'x))
+		       (align (the-1 `(,(concat 'driver- col)))
+			      (the-point-relative `(-A ,(concat 'driver- col)) nil)
+			      (the-point-relative `(,(concat 'lcol col)) nil)))
+		(progn (set-the (concat 'driver- col)
+				(call 'complementary-pair-driver '()))
+		       (align (the-1 `(,(concat 'driver- col)))
+			      (the-point-relative `(A ,(concat 'driver- col)) nil)
+			      (the-point-relative `(,(concat 'lcol col)) nil))))
+	    (set-the (concat 'input col)
+		     (the-point-relative `(input ,(concat 'driver- col)) nil)))		     
+	(do ((row 0 (1+ row)))
+	    ((= row nrows))
+	    (let ((base 2))
+		 (do ((col 0 (1+ col))
+		      (binexp (reverse (explode row)) (cdr binexp)))	;leading zero
+		     ((= col nbits))
+		     (if (xor (oddp col)			       	;driver is mirrored
+			      (and binexp (eq (car binexp) '/1)))
+			 (boxes (implant 6)
+				(pt (+ q1-offset-x (* col col-space))
+				    (+ q-offset-y (* row row-space) -3))
+				(+Y 6))
+			 (boxes (implant 6)
+				(pt (+ q2-offset-x (* col col-space))
+				    (+ q-offset-y (* row row-space) -3))
+				(+Y 6))))))
+	(boxes diff (pt 1 (- q-offset-y 1)) (+Y (+ (* (- nrows 1) row-space) 2)))
+	(set-the' output (pt 0 (+ q-offset-y (* (- nrows 1) row-space))))
+	(set-the' v-pitch (+ (the v-pitch) (the v-pitch driver-0)))
+	(set-the' lower-left (pt 0 (- 0 (the v-pitch driver-0))))))
+
+;Origin is in upper right, box overlaps 1 unit over right boundary
+
+(deflayout complementary-pair-driver nil
+           (set-the' vdd (wire (metal 4.0) (pt -14.0 -16.0) (+x 15.0)))	;VDD
+	   (set-the' gnd (wire (metal 4.0) (pt -14.0 -34.0) (+x 15.0)))	;GND
+
+           (boxes (poly 4.0) (pt -13.0 -26.0) (+x 4.0))
+           (boxes (poly 6.0) (pt -13.0 -22.0) (+x 2.0))
+           (boxes (poly 6.0) (pt -13.0 -10.0) (+x 2.0))
+           (boxes (poly 4.0) (pt -13.0 -6.0) (+x 4.0))
+           (boxes (metal 4.0) (pt -12.0 -26.0) (+x 6.0))
+           (boxes (implant 6.0) (pt -12.0 -20.0) (+x 6.0))
+           (boxes (poly 2.0) (pt -12.0 -20.0) (+x 9.0))
+           (boxes (implant 6.0) (pt -12.0 -12.0) (+x 6.0))
+           (boxes (poly 2.0) (pt -12.0 -12.0) (+x 6.0))
+           (boxes (metal 4.0) (pt -12.0 -6.0) (+x 6.0))
+
+	   (boxes (poly 2) (pt -11 -5) (Y -1) (+X 2))		;non-invert output
+	   (set-the' A (pt -10 0))
+
+           (boxes (cuts 2.0) (pt -11.0 -26.0) (+x 4.0))
+           (boxes (diff 4.0) (pt -11.0 -16.0) (+x 4.0))
+           (boxes (cuts 2.0) (pt -11.0 -6.0) (+x 4.0))
+           (boxes (diff 6.0) (pt -10.0 -25.0) (+x 4.0))
+           (boxes (diff 6.0) (pt -10.0 -20.0) (+x 2.0))
+           (boxes (diff 1.0) (pt -10.0 -22.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt -10.0 -16.0) (+x 2.0))
+           (boxes (diff 6.0) (pt -10.0 -13.0) (+x 2.0))
+           (boxes (diff 1.0) (pt -10.0 -9.5) (+x 2.0))
+           (boxes (diff 6.0) (pt -10.0 -7.0) (+x 4.0))
+
+	   (set-the' input (pt -3 -43))
+	   (set-the' v-pitch 43)
+	   (set-the' h-pitch 14)
+           (boxes (diff 16.0) (pt -7.0 -33.0) (+x 8.0))
+           (boxes (diff 8.0) (pt -5.0 -7.0) (+x 6.0))
+	   (boxes (diff 6.0) (pt -6.0 -7.0) (+x 2.0))
+	   (boxes (poly 2) (pt -4 -43) (Y -23))
+
+	   (boxes (poly 2) (pt -3 -21) (Y 0))
+	   (boxes (poly 2) (pt -4 -2) (Y 0))
+	   (set-the' -A *xy)				;inverting output
+
+           (boxes (diff 4.0) (pt -2.0 -34.0) (+x 4.0))
+           (boxes (diff 20.0) (pt -1.0 -16.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt -1.0 -34.0) (+x 2.0)))
+
+(defun xor (a b) (and (or a b) (not (and a b))))

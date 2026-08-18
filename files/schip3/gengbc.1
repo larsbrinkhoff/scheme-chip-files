@@ -1,0 +1,77 @@
+;;; -*- mode:lisp -*-
+
+;;;; Alternate Register Controller
+
+;;; More general than the global-bus-controller
+;;; Championed by Nedhue
+;;; May be flushed if we don't use this
+  
+(deffield register-specification)		;input to the register-op-controller
+
+(deffield register-control-signals)		;input to the register array
+
+(deffield register-control-field
+  (subfield stack-control
+	    (subfield uarg1
+		      (subfield push (width 1))
+		      (subfield pop (width 1)))
+	    (subfield uarg2
+		      (subfield push (width 1))
+		      (subfield pop (width 1)))
+	    (subfield target
+		      (subfield push (width 1))
+		      (subfield pop (width 1))))
+  (subfield data
+	    (subfield explicit-data (same-field register-specification))
+	    (subfield uarg1-data (same-field register-specification))
+	    (subfield uarg2-data (same-field register-specification))
+	    (subfield target-data (same-field register-specification))))
+
+(defpla register-control-decoder-prototype
+	((field 'input (same-field data stack-control register-control-field))
+	 (field 'output (same-field register-control-signals))))
+
+(element 'register-control-decoder (>> register-control-decoder-prototype))
+
+(defckt register-controller ()
+  
+  (element 'uarg1-stack (>> stack)
+	   (depth (>> uarg-stack-depth))
+	   (field (>> register-specification)))
+
+  (element 'uarg2-stack (>> stack)
+	   (depth (>> uarg-stack-depth))
+	   (field (>> register-specification)))
+
+  (element 'target-stack (>> stack)
+	   (depth (>> uarg-stack-depth))
+	   (field (>> register-specification)))
+
+;;; Assume that the control PLA has a "register-control" field.
+  (let-my ((rc (>> register-control control-pla)))
+	  (== (>> explicit-data data stack-control rc)
+	      (>> explicit-data input register-control-decoder))
+	  (== (>> uarg1-data data stack-control rc)
+	      (>> input uarg1-stack))
+	  (== (>> output uarg-1 stack)
+	      (>> uarg1 input register-control-decoder))
+	  (== (>> uarg2-data data stack-control rc)
+	      (>> input uarg21-stack))
+	  (== (>> output uarg-2 stack)
+	      (>> uarg2 input register-control-decoder))
+	  (== (>> target-data data stack-control rc)
+	      (>> input target-stack))
+	  (== (>> output target stack)
+	      (>> target input register-control-decoder))
+	  (== (>> push uarg1 stack-control rc)
+	      (>> push uarg1-stack))
+	  (== (>> pop uarg1 stack-control rc)
+	      (>> pop uarg1-stack))
+	  (== (>> push uarg2 stack-control rc)
+	      (>> push uarg2-stack))
+	  (== (>> pop uarg2-stack-control rc)
+	      (>> pop uarg2-stack))
+	  (== (>> push target stack-control rc)
+	      (>> push target-stack))
+	  (== (>> pop target stack-control rc)
+	      (>> pop target-stack))))

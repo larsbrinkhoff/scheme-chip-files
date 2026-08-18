@@ -1,0 +1,303 @@
+-*-text-*-
+
+Documentation for the language used to define NEWIN3.
+
+The main objects of the machine are registers, busses, adders, PLAs and state-machines.
+These are defined by defregister, defbus, defadder, defpla and defmachine.
+
+The purpose of NEWIN3 is to say what objects exist, how wide they are,
+and how they are connected.
+
+
+*) Local names
+
+Every object and language construct can be associated with an
+individual state-machine, or it can be global (the name refers to the
+same thing for all state-machines in the system).
+
+Every definition of an object or a language construct specifies the
+name of the state-machine in which the name is to be accessible; or it
+specifies "all", which makes the name global.
+
+The actual code for the state-machines, defined by defpc and
+defdispatch, does not specify the name of the machine to which it
+applies.  Instead, it applies to the most recently defined machine.
+The same is true of DEFCONNECT, which makes random wiring connections.
+See DEFMACHINE.
+
+
+*) Definition of data types
+
+Each object (register, bus, etc) is defined with a data type.  The
+data type says how wide the object is.  In addition, a data type can
+have subfields.  If so, the subfields of the objects of that data type
+are automatically accessible.
+
+A data type is defined by defvector:
+
+    (DEFVECTOR typename machine ...typedefinition...)
+
+typename is the name of the type being defined, and machine specifies
+which machines the name is defined in.
+The elements meaningful in a typedefinition include
+
+    (WIDTH number)
+
+which specifies the width of (number of bits in) the type being
+defined.  The value is evaluated.
+
+    (POSITION number)
+
+which specifies the position of a subfield relative to the containing
+data type one level up.  It is not allowed in the top level type
+definition.  0 refers to the high order bit, but this is really only a
+convention except when dealing with an adder.
+
+    (SAME-TYPE ...type-path)
+
+which says that this field has the same width and subfields as the
+other type specified by the type-path.  An example of a type-path is
+(same-type foo bar) which refers to the foo subfield of the bar data
+type.
+
+    (SUBFIELD name ...typedefinition)
+
+defines a subfield.  It contains another typedefinition, which defines
+that subfield.  That typedefinition should specify both the width (or
+a same-type) and the position; but if the position is omitted, the
+subfield is positioned after the last bit allocated to any other
+subfield of this type.
+
+    (DISPATCH-CLASS dispatch-name (VALUES-FROM subfield-names))
+
+says that values which will fit in this field will be assigned to
+individual uses of DEFDISPATCH which specify dispatch-name as the type
+of dispatch.  In other words, a table is kept of which codes are in
+use, and each (DEFDISPATCH ... dispatch-name ...) allocates one.
+The VALUES-FROM clause says which subfields of this field may be
+restricted in the DEFDISPATCH.
+
+    (VALUES (name1 number1) (name2 number2) ... (name5 first5 last-plus-one5) ...)
+
+is used in a subfield of a dispatch field named in the VALUES-FROM for
+that dispatch field.  Its purpose is to allow each defdispatch to
+constrain this subfield of the entire dispatch field.  Each name in
+the VALUES defines one subclass of the dispatch: namely, the class of
+dispatch codes which have, in this subfield, the number corresponding
+in the VALUES to the name, or one of the range of numbers.  Each
+individual defdispatch can list the names of one or more subclasses,
+to require that the dispatch code assigned to it be in all those
+subclasses.
+
+If a dispatch-class has more than one subfield named in its
+VALUES-FROM, then a given defdispatch may name a subclass from any one
+of those subfields' VALUES specs, or more than one, if they do not
+overconstrain the dispatch code.  Two overlapping subfields may be
+used, but there is no attempt to relate them to each other; each
+subclass constrains one subfield or the other.  However, no dispatch
+code will be given out more than once this way.
+
+The function (width-of-type ...type-path...) can be used, in specifying
+the width or position of a field, to refer to the width of some other
+field.  The type-path is not evaluated.
+
+
+*) Busses
+
+A bus is simply a named vector of electrical nodes.  It will be
+connected to two or more other busses.  Each bus has a data type which
+controls how many bits it contains and how its bits correspond to
+those of other busses it connects to.
+
+A bus can be defined by
+
+    (DEFBUS name data-type machine
+      (CONNECTS ...connections...)
+      (CONTROL-BITS (bit1 ...connections...)
+		    (bit2 ...connections...)
+		    ...)
+      (STATUS-BITS (bit1 definition1)
+		   (bit2 definition2)
+		   ...))
+
+The name need not be a symbol; it can be a list instead.
+machine specifies which state-machine the bus name is accessible in.
+Busses are also implicitly defined as part of the definition of a
+register, adder, etc.  Also, use of the VAND, VOR, VNOT, etc. logic
+functions implicitly creates output busses for the gates thus defined.
+
+The bus is referred to with the BITVEC construct:
+
+    (BITVEC name)
+
+Inside the definition of a bus, *ME* can be used instead of the name
+of the bus.
+
+A subfield of the bus can be referred to as
+
+    (BITVEC subfieldname busname)
+
+If the bus data type has a subfield FOO which has a subfield BAR,
+both names must be given in the BITVEC to refer to BAR:
+
+    (BITVEC BAR FOO busname)
+
+The CONNECTS clause is optional and specifies one or more connections.
+To be reasonable, this bus or some subfield of it should be part of
+these connections.  A connection is simply a list of
+bus-specifications.  All those busses are connected together.  All of
+the busses connected should be of the same length; if they are more
+than one bit long, they should be of the same data type.  For example,
+this connection connects *ME* to FOO, rotating one bit around:
+
+    (CONNECTS ((BITVEC ALL-BUT-LOW-BIT *ME*) (BITVEC ALL-BUT-HIGH-BIT FOO))
+	      ((BITVEC LOW-BIT *ME*) (BITVEC HIGH-BIT FOO)))
+
+CONTROL-BITS creates conditional connections, routed through pass
+transistors, and defines single bit busses, associated with the bus
+which the DEFBUS is about, to control those pass transistors.
+For example,
+
+    (CONTROL-BITS (FOO connections))
+
+defines a one-bit bus (or "signal") which can be referred to as
+(BITVEC FOO bus-name), and says that this signal controls the
+connections: they are in effect if the signal is 1.
+
+STATUS-BITS creates "output signals" associated with the bus, and
+connects them to the specified definitions, which can be single-bit
+buses (such as subfields of the bus being defined) or can be outputs
+of combinational logic (see below).
+
+
+*) Combinational logic
+
+Logic gates are specified by operations which act on entire busses in
+parallel to produce entire vectors of outputs.  Each such logical
+operation applies to one or more busses, which are its inputs, and
+each one effectively defines a new bus, which is the output.  This
+implicitly defined bus is used by putting it in a connection.
+
+In other words, the logic specification is contained in a connection,
+which connects the output of the logic to other things, and inside the
+logic specification are the busses to use as the inputs.
+
+For example, to connect bus FOO to the OR of BAR and the UGH field of
+BLETCH, do
+
+    (CONNECTS ((BITVEC FOO) (VOR (BITVEC BAR) (BITVEC UGH BLETCH))))
+
+VOR specifies a bitwise OR.  Similarly, there are VAND, VNOT, VXOR and
+VEQV.
+
+One logical operation can be used as the input of another.  This
+follows from the fact that the logical expression acts as the name of
+the output bus from the gates: it can be used wherever a bus is
+expected.
+
+Logic need not always be bitwise in parallel.  It can also be used to
+combine the bits of a bus.  The VREDUCE operator, named after APL
+reduction, applies an associative logical operation to all the bits of
+a bus and produces a one-bit bus as output.  Example:
+
+    (VREDUCE VAND (BITVEC FOO))
+
+specifies the AND of all the bits of FOO.
+
+Some simple arithmetic can be specified just like boolean operations.
+The operations VINCREMENT and VDECREMENT output a number one greater
+or less than the number on the input bus.
+
+
+*) Constants
+
+A constant value can be used in a connection or as an input to a
+logical operation (essentially, wherever a bus can be used).  The
+number represents its binary expansion, in ones and zeros, filled out
+with zeros to the size of the other busses that the constant is
+connected to or operated on with.  If the number is too large (would
+require truncation), it is an error.  A negative number means fill
+with ones.
+
+One consequence is that 1 cannot be used to connect all the bits of a
+bus to 1.  -1 should be used for that.
+
+A symbol defined with a numeric value (such as a label for an
+instruction in a state machine) can be used just like a number.
+
+Example:
+
+    (CONTROL-BITS (USE-REGISTER-A (BITVEC REGISTER-NUMBER) REGISTER-A-NUMBER))
+
+
+*) Additional connections
+
+To define a connection in which all the busses involved are on an
+equal conceptual footing, use DEFCONNECT.  The inside of a DEFCONNECT
+is just like the inside of a CONNECTS clause in a DEFBUS, but the
+connection is a separate entity in the file, and not regarded as a
+part of the definition of any one of the busses involved.
+
+    (DEFCONNECT ((BITVEC FOO) (BITVEC BAR)))
+
+
+*) Registers
+
+A register is a vector of storage cells, which has an
+output bus which contains the outputs of the cells, and an input bus
+which contains their inputs.  Defining the register implicitly defines
+these two busses.  The registers are assumed to be controlled by a
+clock, and may loaded on any clock cycle, but the clock is ignored in
+the definition of the register since such details are at a low level
+which the description language ignores.  Their outputs are available
+"at all times" (though at a low level in the hardware this may not
+actually be true).
+
+Registers are defined with DEFREGISTER:
+
+    (DEFREGISTER name data-type machine
+      (CONNECTS ...)
+      (CONTROL-BITS ...)
+      (STATUS-BITS ...)
+      (PCLSR))			;optional
+
+Like a bus, a register can have symbol or a list as its name.
+
+The input bus of the register is called (BITVEC INPUT name) and the
+output bus is called (BITVEC OUTPUT name).  Within the register's
+definition, *ME* can be used instead of the name of the register.
+Multiple-arg BITVEC here does not have quite the same meaning it has
+when used to refer to a subfield of a larger bus.  The two uses of
+multiple-arg BITVEC can be combined, as in
+
+    (BITVEC UGH INPUT FOO)
+
+which refers to the UGH subfield of the inputs for register FOO.
+There can be no ambiguity even if INPUT is a subfield name, because if
+the last thing in the BITVEC is a register name, the thing before it
+must specify which bus, and any previous arguments to BITVEC must be
+subfields.  If the last thing in the BITVEC is a bus name, then any
+other arguments must all be subfields.
+
+The CONTROL-BITS and STATUS-BITS clauses work the same as they do in a
+DEFBUS.  However, the signals defined by them have names based on the
+name of the register.  Thus, a control signal named LOAD would be
+referred to elsewhere as (BITVEC LOAD registername).
+
+In general, the input and output of the register must both be
+connected to something if the register is to be of any use.  The
+connections to the input will usually be conditional ones.  If so,
+then on any cycle on which no connection to the input bus is turned
+on, the register contents do not change.  This actually requires
+nontrivial hardware, but it is all generated automatically.
+
+If the (PCLSR) clause appears in the DEFREGISTER, then the register is
+really two registers: a main register, and an auxiliary register.  For
+the most part the existence of the auxiliary register is invisible,
+and the input and output busses apply to the main register only.
+However, data can be transferred between the main register and the
+auxiliary register under control of two special signals, named
+(BITVEC PCLSR-SAVE registername) and (BITVEC PCLSR-RESTORE
+registername).  PCLSR-SAVE copies data from the main register to the
+auxiliary register, and PCLSR-RESTORE goes the other way.
+

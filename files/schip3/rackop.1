@@ -1,0 +1,122 @@
+
+;;; Assumptions:  The type field of the CONT stack (a push-optimizer) is
+;;; used for holding retpc.  Hence all retpc's are types of PAIR class.
+;;; Push-optimizers have a special bit allocated for IN-USE -- avoiding crap.
+;;; The IN-USE bit for the push-counter implementation is NOT ZEROP of the 
+;;; count field.  The count field resides in the type field of the
+;;; stack pointer.  (That means no one else can use the type field of a
+;;; push-counter to hold cruft.)  In addition, we assume that PCONS returns a
+;;; pointer (list) of zero type.  This causes the stack push for a counter
+;;; rack to automatically create the correct state, but it causes trouble
+;;; for initialization.
+
+(defmicrofun in-use? (rack) () eval
+  `(asserted? (the in-use stack ,rack)))
+
+(defmicrostatement mark-in-use! (rack) () eval
+  `(assert (the set-in-use stack ,rack)))
+
+(defmicrostatement clear-in-use! (rack) () eval
+  `(assert (the clear-in-use stack ,rack)))
+
+
+(defmicrofun at-max-count? (rack) () eval 
+  `(same-cycle (read-reg (the rack-stack ,rack))
+	       (asserted? (the at-max-count? evalbus))))
+
+(defmicrofun non-zero-count? (rack) () eval 
+  `(same-cycle (read-reg (the rack-stack ,rack))
+	       (asserted? (the non-zero-count? evalbus))))
+
+(defmicrostatement increment-count (rack) () eval
+  `(assert (the inc stack ,rack)))
+
+(defmicrostatement decrement-count (rack) () eval
+  `(assert (the dec stack ,rack)))
+
+(defmicrofun fetch (rack) () eval
+  (caseq (get rack 'register-type)
+	 ((register) `(read-reg ,rack))
+	 ((push-optimizer push-counter) `(read-reg (the buffer ,rack)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement assign (rack source) () eval
+  (caseq (get rack 'register-type)
+	 ((register) `(load-reg ,rack ,source))
+	 ((push-optimizer)
+	  `(block (if (in-use? ,rack) (same-cycle (rack-push ,rack) (clear-in-use! ,rack)))
+		  (load-reg (the buffer ,rack) ,source)))
+	 ((push-counter)
+	  `(block (if (non-zero-count? ,rack) (rack-push ,rack))
+		  (load-reg (the buffer ,rack) ,source)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement assign-type (rack source) () eval
+  (caseq (get rack 'register-type)
+	 ((register) `(load-reg (the type ,rack) ,source))
+	 ((push-optimizer)
+	  `(block (if (in-use? ,rack) (same-cycle (rack-push ,rack) (clear-in-use! ,rack)))
+		  (load-reg (the type buffer ,rack) ,source)))
+	 ((push-counter)
+	  `(block (if (non-zero-count? ,rack) (rack-push ,rack))
+		  (load-reg (the type buffer ,rack) ,source)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement assign-extra-type (rack source) () eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer)
+	  `(block (if (in-use? ,rack) (same-cycle (rack-push ,rack) (clear-in-use! ,rack)))
+		  (load-reg (the type stack ,rack) ,source)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement save (rack) () eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer)
+	  `(if (in-use? ,rack) (rack-push ,rack) (mark-in-use! ,rack)))
+	 ((push-counter)
+	  `(block (if (at-max-count? ,rack) (rack-push ,rack))
+		  (increment-count ,rack)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement duplicate (rack) () eval
+  `(save ,rack))
+
+(defmicrostatement restore (rack) () eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer)
+	  `(if (in-use? ,rack) (clear-in-use! ,rack) (rack-pop ,rack)))
+	 ((push-counter)
+	  `(block (if (non-zero-count? rack) (rack-pop ,rack))
+		  (decrement-count ,rack)))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement rack-push (rack) rackpc eval
+  `(load-reg (the stack ,rack)
+	     (pcons (read-reg (the buffer ,rack))
+		    (read-reg (the stack ,rack)))))
+
+(defmicrostatement rack-pop (rack) rackpc eval
+  `(block (load-reg (the buffer ,rack) (left (the stack ,rack)))
+	  (load-reg (the stack ,rack) (right (the stack ,rack)))))
+
+;;; Not carefully checked here down.
+
+(defmicrostatement reset (rack) () eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer) `(push-optimizer-reset ,rack))	;unwritten
+	 ((push-counter) `(push-counter-reset ,rack))		;unwritten
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrofun get-state (rack) () eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer push-counter)
+	  `(pcons (read-reg (the buffer ,rack))
+		  (read-reg (the stack ,rack))))
+	 (t (error '|Unknown register type| rack 'fail-act))))
+
+(defmicrostatement set-state (rack source) () eval
+  (caseq (get rack 'register-type)
+	 ((push-optimizer push-counter)
+	  `(block (load-reg (the buffer ,rack) (left ,source))
+		  (load-reg (the stack ,rack) (right ,source))))
+	 (t (error '|Unknown register type| rack 'fail-act))))

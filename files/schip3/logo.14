@@ -1,0 +1,53 @@
+;;; -*- package: DPL; mode: LISP -*-
+
+(defvar big)
+(defvar 40vg)
+(defvar 31vg)
+(defvar 20vg)
+
+(defun load-logo-fonts ()
+  (setq big (load-ast-font "batali;mitbig ast"))
+  (setq 40vg (load-ast-font "batali;40vg ast"))
+  (setq 31vg (load-ast-font "batali;31vg ast"))
+  (setq 20vg (load-ast-font "batali;20vg ast")))
+
+(defcell scheme-81-logo ()
+  (or (boundp '40vg)
+      (load-logo-fonts))
+  (partq manus font-string (font big) (string "A"))
+  (partq scheme font-string (font 40vg) (string "SCHEME-81")
+	 (top-left (pt-to-right (>> top-right manus) 15)))
+  (partq mitai font-string (font 31vg) (string "MIT AI LAB")
+	 (top-center (pt-below (>> bottom-center scheme) 5)))
+  (group names
+	 (do ((strl
+		'("Gerald Jay Sussman" "Richard M. Stallman"
+		  "Howard E. Shrobe" "Christopher Hanson"
+		  "Edmund Goodhue" "John Batali")
+		(cdr strl))
+	      (y (>> bottom manus) (+ y 23))
+	      (x (>> x center scheme)))
+	     ((null strl))
+	   (part () font-string (font 20vg) (string (car strl))
+		 (layer 'poly)
+		 (bottom-center (pt x y))))))
+
+(defcell bakman ()
+  (or (boundp '40vg)
+      (load-logo-fonts))
+  (partq topp font-string
+	 (font 20vg)
+	 (layer 'poly)
+	 (string "Simulation and Analysis by"))
+  (partq mid font-string
+	 (font 20vg)
+	 (layer 'poly)
+	 (string "Clark Baker & Chris Terman,"))
+  (partq bot font-string
+	 (font 20vg)
+	 (layer 'poly)
+	 (string "MIT LCS."))
+  (align (>> mid) (>> top-center mid)
+	 (pt-below (>> bottom-center topp) 10))
+  (align (>> bot) (>> top-center bot)
+	 (pt-below (>> bottom-center mid) 10)))

@@ -1,0 +1,30 @@
+;;; -*-LISP-*-
+
+(define (y* f)
+	((lambda (g) (f (lambda () (g g))))
+	 (lambda (g) (f (lambda () (g g))))))
+
+; This y operator must be used slightly differently, however.
+; The kernel f must be called in place to extract the function
+; because this y operator was derived by a call-by-name
+; transformation from the original one -- see ! lines below.
+
+(define (fib* k)
+	(labels ((- (lambda (x y) (if (eq y 0) x (- (1- x) (1- y)))))
+		 (+ (lambda (x y) (if (eq y 0) x (+ (1+ x) (1- y))))))
+		((y* (lambda (f)
+			     (lambda (n)
+				     (cond ((eq n 0) 0)
+					   ((eq n 1) 1)
+					   (t (+ ((f) (- n 1))		;!
+						 ((f) (- n 2))))))))	;!
+		 k)))
+
+(define (app l1 l2)
+	((y* (lambda (f)
+		(lambda (l1 l2)
+			(cond ((null l1) l2)
+			      (t (cons (car l1)
+				       ((f) (cdr l1) l2)))))))	;!
+	 l1
+	 l2))

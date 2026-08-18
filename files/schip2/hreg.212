@@ -1,0 +1,1788 @@
+;;; -*- LISP -*-
+
+(deflayout pass-transistor (length width)
+	   (box 'poly
+		(- 0 *poly-overhang* (// width 2.0))
+		(+ *poly-overhang* (// width 2.0))
+		(- 0 (// length 2.0))
+		(// length 2.0))
+	   (box 'diff
+		(- 0 (// width 2.0))
+		(// width 2.0)
+		(- 0 *diffusion-overhang* (// length 2.0))
+		(+ *diffusion-overhang* (// length 2.0))))
+
+(deflayout general-pullup (length width)
+	   (boxes (poly (+ (* 2 *poly-overhang*) width)) (pt 0 0) (+Y length))
+	   (boxes (diff width) (pt 0 -1) (+Y (+ length 2)))
+	   (boxes (implant (+ (* 2 *implant-overhang*) width))
+		  (pt 0 (- 0 *implant-overhang*))
+		  (+Y (+ length (* 2 *implant-overhang*)))))
+
+(deflayout pullup-without-contact (length)
+	   (boxes (poly 6) (pt 0 0) (+Y length))
+	   (boxes diff (pt 0 0) (+Y length))
+	   (boxes (implant (+ (* 2 *implant-overhang*) 2))	;default width
+		  (pt 0 (- 0 *implant-overhang*))
+		  (+Y (+ length (* 2 *implant-overhang*)))))
+
+(deflayout pullup (length)
+   (call 'butting-contact nil)
+   (boxes (poly 6) (pt 0 0) (+Y (1+ length)))
+   (boxes diff (pt 0 0) (+Y (1+ length)))
+   (set-the' top *XY)
+   (boxes (implant (+ (* 2 *implant-overhang*) 2))	;default width
+	  (pt 0 (- 0 *implant-overhang*))
+	  (+Y (+ length (* 2 *implant-overhang*) 1)))
+   (boxes implant (pt 0 0) (+Y (1+ length))))
+
+(deflayout pullup-without-extra-length (length)
+   (call 'butting-contact nil)
+   (boxes (poly 6) (pt 0 0) (+Y length))
+   (boxes diff (pt 0 (- 0 *diffusion-overhang*))
+	  (+Y (+ length (* 2 *diffusion-overhang*))))
+   (set-the' top *XY)
+   (boxes (implant (+ (* 2 *implant-overhang*) 2))	;default width
+	  (pt 0 (- 0 *implant-overhang*))
+	  (+Y (+ length (* 2 *implant-overhang*) 1)))
+   (boxes implant (pt 0 0) (+Y length)))
+
+;Vertical butting contact with Poly on top
+(deflayout butting-contact ()
+   (boxes (diff 4) (pt 0 1) (-Y 4))
+   (boxes (poly 4) (pt 0 0) (+Y 3))
+   (boxes (metal 4) (pt 0 -3) (+Y 6))
+   (boxes (cuts 2) (pt 0 -2) (+Y 4)))
+
+;;; Simple Steele register cell
+
+(deflayout regcell ()
+   (set-the' v-pitch 40)
+   (set-the' h-pitch 38)
+   (set-the' gnd-height 4)
+   (set-the' bus-height 24)
+   (set-the' left-bus-contact (pt 2 (the bus-height)))
+   (set-the' right-bus-contact (pt 40 (the bus-height)))
+   (set-the' vdd-height 31)
+   (set-the' boundary (pt 42 40))
+   (set-the' q1-gate-contact (pt 9 13))
+   (set-the' q1 (pt 16 13))
+   (set-the' q1-gate (pt 16 8))
+   (set-the' q2-output-contact (pt 34 16))
+   (set-the' q2 (pt 24 17))
+   (set-the' q2-gate (pt (- (the-x q2) .5) 12))
+
+   (set-the' ph1-to
+	     (wire poly (pt 4 0) (+Y 20) (+X 2) (+Y 8) (-X 2) (Y (the-y boundary))))
+   (set-the' ph2 (wire poly (pt 30 0) (Y (the-y boundary))))
+   (set-the' ph1-from (wire poly (pt 38 0) (+Y 20) (-X 2) (+Y 8) (+X 2) (Y (the-y boundary))))
+   ;Q1
+   (set-the' q1-pullup (call 'pullup '(8) 'trans (the q1)))
+   (boxes (diff 4) (pt (the-x q1) (1+ (the-y q1))) (Y (the gnd-height)))
+   (contact S diff *xy)
+   (boxes diff (the-pt top q1-pullup) (Y (the vdd-height)))
+   (contact S diff *xy)
+   ;Q1 to Q2
+   (boxes poly (pt (the-x q1) (1+ (the-y q1)))
+	  (+X 4) (Y (the-y q2-gate)) (X (+ 1.5 *poly-overhang* (the-x q2-gate))))
+   ;Q2
+   (set-the' q2-pullup (call 'pullup '(5) 'trans (the q2)))
+   (boxes metal (pt (the-x q2-output-contact) (- (the-y q2-output-contact) .5))
+	  (X (- (the-x q2) 2)))
+   (boxes (diff 3) (pt (- (the-x q2) .5) (+ (the-y q2) 1))
+	  (Y (the gnd-height)))
+   (contact S diff (pt (the-x q2) (the gnd-height)))
+   (boxes diff (the-pt top q2-pullup) (Y (the vdd-height)))
+   (contact S diff *XY)
+   
+   ;feedback
+   (call 'butting-contact '() 'mirror 'Y 'trans (the q1-gate-contact))
+   (boxes poly (pt (+ (the-x q1-gate-contact) 1) (the-y q1-gate-contact))
+	  (Y (the-y q1-gate)) (X (+ 2 *poly-overhang* (the-x q1-gate))))
+   (boxes diff (the q1-gate-contact)
+	  (+Y 24) (X (1- (the-x q2-output-contact))) (Y (the-y q2-output-contact)))
+   (contact S diff (the q2-output-contact))
+
+   ;From and To pass gates
+   (boxes (diff 4) (the left-bus-contact) (X (the-x q1-gate-contact)))
+   (boxes (diff 4) (the right-bus-contact) (X (the-x q2-output-contact)))
+
+   ;The busses
+   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the-x boundary))))
+   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the-x boundary))))
+   (set-the' bus (wire metal (pt 0 (+ .5 (the-y left-bus-contact)))
+		       (X (the-x right-bus-contact))))
+   (contact S diff (the left-bus-contact))
+   (contact S diff (the right-bus-contact))
+
+   (boxes (diff 4) (pt (- (the-x q1) 2) (the vdd-height)) (X (+ 2 (the-x q2))))
+   (boxes (diff 4) (pt (- (the-x q1) 2) (the gnd-height)) (X (+ 2 (the-x q2))))
+  )
+
+; Register cell which interfaces with HEQ and HINC.
+
+(deflayout hbit ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 40)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   (set-the' left-bus-contact (pt 2 (the bus-height)))
+	   (set-the' q-height 18)
+	   (set-the' not-q-height 11)
+	   (set-the' q1-gate-contact (pt 9 12))
+	   (set-the' q1 (pt 16 6))
+	   (set-the' q1-b-contact (pt 17 (the not-q-height)))
+	   (set-the' q1-pullup (pt 15 14))
+	   (set-the' q2 (pt 22.5 10))
+	   (set-the' q2-pullup (pt 23 25))
+	   (set-the' q2-b-contact (pt (1+ (the-x q2-pullup)) (the q-height)))
+	   (set-the' feedback-contact (pt 34 (1- (the q-height))))
+	   
+	   (set-the' ph1-to
+		     (wire poly (pt 4 0) (+Y 20) (+X 2) (+Y 8) (-X 2) (Y (the v-pitch))))
+	   (set-the' ph2 
+		     (wire poly (pt 30 0) (Y (the v-pitch))))
+	   (set-the' ph1-from
+		     (wire poly (pt 38 0) (Y (the v-pitch))))
+
+;The busses
+   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+   (set-the' bus (wire metal (pt 0 (+ .5 (the-y left-bus-contact)))
+		       (X (the h-pitch))))
+
+
+
+;feedback
+(contact s diff (the left-bus-contact))
+(boxes (diff 4) (the left-bus-contact) (X (the-x q1-gate-contact)))
+(boxes diff (the q1-gate-contact) (Y (- (the h-pitch) 3)) (X (1- (the-x feedback-contact)))
+       (Y (the-y feedback-contact)))
+(contact s diff (the feedback-contact))
+
+(boxes (diff 4) (pt (the-x feedback-contact) (the bus-height)))
+
+;q1 cruft
+(call 'butting-contact '() 'mirror 'y 'trans (the q1-gate-contact))
+(boxes poly (pt (1+ (the-x q1-gate-contact)) (the-y q1-gate-contact)) (Y  (the-y q1))
+       (X (+ (the-x q1) 4)))
+(contact h diff (pt (the-x q2-b-contact) (the gnd-height)))
+(boxes (diff 2) (pt (the-x q2-b-contact) 3) (X (the-x q1)))
+(boxes (diff 4) (pt (the-x q1) 2) (Y (the not-q-height)))
+(boxes (diff 3) (pt (the-x q2) (the gnd-height)) (Y (1- (the bus-height))))
+(boxes (diff 4) (pt (the-x feedback-contact) (the bus-height)) (X (the h-pitch)))
+(boxes diff (pt (the-x q2-pullup) (1- (the bus-height))) (Y (1+ (the vdd-height)))
+       (X (the-x q1-pullup)) (Y (the not-q-height)))
+(contact h diff (pt (the-x q1) (the vdd-height)))
+(call 'pullup-without-contact '(8) 'trans (the q1-pullup))
+(boxes poly (pt 26 (the-y q2)) (X (the-x q1-b-contact)))
+(boxes (poly 3) (pt (+ *x 1.5) *y) (+Y 12))
+(boxes poly (pt (+ (the-x q2-b-contact) 2) (the-y q2-b-contact)) (Y (- (the vdd-height) 1)))
+(call 'butting-contact '() 'rot '(0 -1) 'trans (the q1-b-contact))
+
+;rest of q2
+(call 'pullup-without-contact '(5) 'trans (the q2-pullup))
+(call 'butting-contact '() 'rot '(0 -1) 'trans (the q2-b-contact))
+
+(boxes metal (pt (the-x q2-b-contact) (- (the q-height) .5)) (X (the h-pitch)))
+(boxes metal (pt (the-x q1-b-contact) (- (the not-q-height) .5)) (X (the h-pitch))))
+
+(deflayout hinc ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 43)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   (set-the' q-height 18)
+	   (set-the' not-q-height 11)
+
+	   (set-the' left-bus-contact (pt 2 (the bus-height)))
+	   (set-the' not-q-contact (pt 8 (the not-q-height)))
+	   (set-the' q-contact (pt 16 (the q-height)))
+	   (set-the' inv-1-g-contact (pt 14 (the gnd-height)))
+	   (set-the' inv-2-g-contact (pt 37 (the gnd-height)))
+	   (set-the' vdd-contact (pt 36 (the vdd-height)))
+	   (set-the' in-gate-contact (pt 24 (the not-q-height)))
+	   (set-the' inv-1-but-contact (pt 26 (the q-height)))
+	   (set-the' inv-2-but-contact (pt 38 17))
+
+	   (contact S diff (the left-bus-contact))
+	   (contact S diff (the not-q-contact))
+	   (contact S diff (the q-contact))
+	   (contact H diff (the inv-1-g-contact))
+	   (contact H diff (the inv-2-g-contact))
+	   (contact H diff (the vdd-contact))
+	   (contact S poly (the in-gate-contact))
+	   (call 'butting-contact '() 'rot '(0 1) 'trans (the inv-1-but-contact))
+	   (call 'pullup '(5) 'trans (the inv-2-but-contact))
+	   (call 'pullup-without-contact '(8) 'trans (pt 29 21))
+
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire metal (pt 0 (+ .5 (the-y left-bus-contact))) (X (the h-pitch))))
+
+	   (boxes metal (pt 0 (- (the q-height) .5)) (X (the-x q-contact)))
+	   (boxes metal (pt 0 (- (the not-q-height) .5)) (X (the-x not-q-contact)))
+	   (boxes (metal 4) (the in-gate-contact) (X (the-x q-contact)))
+
+;	   (boxes (metal 4) (the not-q-contact) (X (the-x q-contact)))		;decrement
+;	   (boxes (metal 4) (the q-contact) (Y (- (the-y in-gate-contact) 2)))	;increment
+
+	   (set-the' ph1-from+
+		     (wire poly (pt 2 0) (+Y 20) (+X 4) (+Y 8) (-X 4) (Y (the v-pitch))))
+	   (set-the' -cin
+		     (wire poly (pt 33 (- (the v-pitch) 1)) (-X 21) (-Y 19)))
+	   (set-the' cin
+		     (wire poly (pt 42 (the v-pitch)) (-Y 5) (X 20) (Y 2)))
+		   (boxes poly (pt 20 14) (-X 8) (+Y 2) (-X 6))
+	   (boxes poly (the in-gate-contact) (Y 2))
+	   (set-the' -cout (wire poly (pt 32 0) (Y (the-y left-bus-contact))))
+	   	(boxes poly (pt 32 10) (+X 7))
+		(boxes (poly 3) (pt (- (the-x inv-1-but-contact) 1.5)
+				    (the-y inv-1-but-contact))
+		       (Y (the-y left-bus-contact)))
+	   (set-the' cout (wire poly (pt 42 0) (Y 23)))
+	   
+	   (boxes (diff 4) (the left-bus-contact) (X (the-x q-contact)) (Y (the-y q-contact)))
+	   (boxes diff (pt (+ (the-x not-q-contact) 1) (the-y not-q-contact))
+		  (Y (the bus-height)))
+	   (boxes (diff 4) (pt (the-x inv-1-g-contact) (+ (the-y inv-1-g-contact) 2)) (X 29))
+	   (boxes diff (the inv-2-but-contact)
+		  (Y (the vdd-height)) (X (+ (the-x inv-1-but-contact) 3))
+		  (Y (the gnd-height)))
+	   (boxes (diff 3) (pt (- (the-x inv-2-g-contact) 1.5) (the-y inv-2-g-contact))
+		  (Y (- (the-y inv-2-but-contact) 3.5)) (X (+ (the-x inv-2-but-contact) 2))))
+
+(deflayout hinc-dummy ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 43)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   (set-the' q-height 18)
+	   (set-the' not-q-height 11)
+
+	   (set-the' left-bus-contact (pt 2 (the bus-height)))
+
+	   (contact S diff (the left-bus-contact))
+
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the-y left-bus-contact)) (X (the h-pitch))))
+
+	   (set-the' ph1-from+
+		     (wire poly (pt 2 0) (+Y 20) (+X 4) (+Y 8) (-X 4) (Y (the v-pitch)))))
+
+(deflayout inc ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 43)
+	   (set-the' incer (call 'hinc '()))
+	   (boxes (metal 4) (the-pt q-contact incer)
+		  (Y (- (y-of (the-pt in-gate-contact incer)) 2))))
+
+(deflayout dec ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 43)
+	   (set-the' decr (call 'hinc '()))
+	   (boxes (metal 4) (the-pt not-q-contact decr)
+		  (X (x-of (the-pt q-contact decr)))))
+
+(deflayout heq ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 45)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   (set-the' q-height 17.5)
+	   (set-the' not-q-height 10.5)
+
+	   (set-the' left-bus-contact (pt 2 (the bus-height)))
+	   (contact S diff (the left-bus-contact))
+
+	   (set-the' vdd-contact (pt 14 (the vdd-height)))
+	   (contact S diff (the vdd-contact))
+	   
+	   (set-the' pullup-contact (pt 25 (- (the vdd-height) 1)))
+	   (call 'pullup-without-extra-length '(8)
+		 'rot '(0 1) 'trans (the pullup-contact))
+
+	   (set-the' bus-contact (pt 23 (- (the bus-height) 1.0)))
+	   (contact S poly (the bus-contact))
+
+	   (set-the' q-contact (pt 31 (- (the q-height) .5)))
+	   (contact S poly (the q-contact))
+
+	   (set-the' not-q-contact (pt 10 (+ (the not-q-height) .5)))
+	   (contact S poly (the not-q-contact))
+
+	   (set-the' g-1-contact (pt 18 (the gnd-height)))
+	   (contact H diff (the g-1-contact))
+	   (set-the' g-2-contact (pt 25 (the gnd-height)))
+	   (contact H diff (the g-2-contact))
+
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height))
+			   (X (the-x vdd-contact)) (+Y 6) (+X 19) (-Y 6) (X (the h-pitch))))
+	   (set-the' bus (wire metal (pt 0 (- (the-y left-bus-contact) .5)) (X (the h-pitch))))
+	   (set-the' q (wire metal (pt 0 (the q-height))
+			   (+X 16.5) (-Y 1) (+X 14) (+Y 1) (X (the h-pitch))))
+	   (set-the' not-q (wire metal (pt 0 (the not-q-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+
+	   (set-the' eq-bus (wire diff (pt 41 0) (Y (the v-pitch))))
+	   
+	   ;The transistors
+	   (set-the' b-pass (pt 9 (the-y left-bus-contact)))
+	   (call 'pass-transistor '(2 4) 'trans (the b-pass))
+
+	   (set-the' not-b-pass (pt 33 34))
+	   (call 'pass-transistor '(2 4) 'trans (the not-b-pass))
+
+	   (set-the' q-pass (pt 33 22))
+	   (call 'pass-transistor '(2 4) 'rot '(0 1) 'trans (the q-pass))
+
+	   (set-the' not-q-pass (pt 13 17))
+	   (call 'pass-transistor '(2 4) 'rot '(0 1) 'trans (the not-q-pass))
+
+	   (set-the' binv (pt 27 24))
+	   (call 'pass-transistor '(2 2) 'trans (the binv))	   
+
+	   ;Boxes
+	   (boxes poly (the b-pass) (X (the-x binv)))
+	   (boxes poly (the q-pass) (Y (the-y q-contact)))
+	   (boxes poly (the not-q-pass) (Y (the-y not-q-contact)))
+	   (boxes poly (the not-b-pass) (X (- (the-x pullup-contact) 2)))
+	   
+	   (boxes (diff 13) (pt 21.5 2) (+Y 17))
+	   (boxes diff (pt (- (the-x b-pass) 1) (the-y b-pass))
+		  (Y 37) (X (x-of (the-pt start eq-bus))))
+	   (boxes (diff 4) (the b-pass) 
+		  (Y (the-y not-q-pass)) (X (the-x not-q-pass)))
+	   (boxes (diff 4) (the not-b-pass) (-Y 7))
+	   (boxes diff (pt (+ (the-x q-pass) 3) (- (the-y q-pass) 2)) (+Y 9))
+	   (boxes diff (pt (+ (the-x pullup-contact) 2) (the-y pullup-contact)) (-Y 12))
+	   (boxes diff (pt (the-x q-pass) (- (the-y q-pass) 1))
+		  (X (+ (the-x pullup-contact) 2))))
+
+(deflayout heq-dummy ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 45)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   (set-the' q-height 17.5)
+	   (set-the' not-q-height 10.5)
+
+	   (set-the' left-bus-contact (pt 2 (the bus-height)))
+	   (contact S diff (the left-bus-contact))
+
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire metal (pt 0 (- (the-y left-bus-contact) .5)) (X (the h-pitch))))
+	   (set-the' q (wire metal (pt 0 (the q-height))
+			   (+X 16.5) (-Y 1) (+X 14) (+Y 1) (X (the h-pitch))))
+	   (set-the' not-q (wire metal (pt 0 (the not-q-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+
+	   (set-the' eq-bus (wire diff (pt 41 0) (Y (the v-pitch)))))
+
+(deflayout nilcell ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 12)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+
+	   (set-the' left-bus-contact (pt 2 (the bus-height)))
+	   (contact S diff (the left-bus-contact))
+
+	   (set-the' gnd-contact (pt 10 (the gnd-height)))
+	   (contact S diff (the gnd-contact))
+
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the-y left-bus-contact)) (X (the h-pitch))))
+	   (set-the' ph1-from (wire poly (pt 6 0) (Y (the v-pitch))))
+	   (boxes (diff 4) (the left-bus-contact)
+		  (X (the-x gnd-contact)) (Y (the-y gnd-contact))))
+
+(deflayout zerop ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 10)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+
+	   (set-the' bus-contact (pt 6 (the bus-height)))
+	   (contact S poly (the bus-contact))
+
+	   (set-the' gnd-contact (pt 7 (the gnd-height)))
+	   (contact S diff (the gnd-contact))
+
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch))))
+	   (set-the' zerop (wire diff (pt 1 0) (Y (the v-pitch))))
+	   (boxes poly (pt (- (the-x bus-contact) 1) (the-y bus-contact)) (-Y 11))
+	   (boxes diff (pt (+ (the-x gnd-contact) 1) (the-y gnd-contact)) (+Y 12) (-X 7)))
+
+(deflayout zerop-dummy ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 10)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch))))
+	   (set-the' zerop (wire diff (pt 1 0) (Y (the v-pitch)))))
+
+(deflayout zerop-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 5)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch))))
+	   (set-the' zerop (wire diff (pt 1 0) (Y (the v-pitch)))))
+
+(deflayout one-poly-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 7)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch))))
+
+	   (set-the' left-column (wire poly (pt 1 0) (+Y (the v-pitch)))))
+
+(deflayout seven-empty-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 7)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch)))))
+
+(deflayout two-poly-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 7)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch))))
+
+	   (set-the' left-column (wire poly (pt 1 0) (+Y (the v-pitch))))
+	   (set-the' right-column (wire poly (pt 5 0) (+Y (the v-pitch)))))
+
+(deflayout narrow-one-poly-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 5)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch))))
+
+	   (set-the' column (wire poly (pt 3 0) (+Y (the v-pitch)))))
+
+
+(deflayout narrow-empty-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 5)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch)))))
+
+(deflayout wide-one-poly-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 8)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch))))
+
+	   (set-the' column (wire poly (pt 6 0) (+Y (the v-pitch)))))
+
+(deflayout wide-empty-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 8)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch)))))
+
+(deflayout diff-poly-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 6)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch))))
+
+	   (set-the' left-column (wire diff (pt 1 0) (+Y (the v-pitch))))
+	   (set-the' right-column (wire poly (pt 4 0) (+Y (the v-pitch)))))
+
+(deflayout middle-empty-column ()
+	   (set-the' v-pitch 40)
+	   (set-the' h-pitch 6)
+	   (set-the' gnd-height 4)
+	   (set-the' bus-height 24)
+	   (set-the' vdd-height 31)
+	   ;The busses
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+	   (set-the' bus (wire (metal 4) (pt 0 (the bus-height)) (X (the h-pitch)))))
+
+(deflayout one-poly-elbow ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 7)
+	   (boxes poly (pt 1 0) (Y (- (the v-pitch) 1)) (X (the h-pitch))))
+
+(deflayout two-poly-elbow ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 7)
+	   (boxes poly (pt 5 0) (Y (- (the v-pitch) 1)) (X (the h-pitch)))
+	   (boxes poly (pt 1 0) (Y (the v-pitch))))
+
+(deflayout narrow-one-poly-elbow ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 5)
+	   (boxes poly (pt 3 0) (Y (- (the v-pitch) 1)) (X (the h-pitch))))
+
+(deflayout narrow-empty-box ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 5))
+
+(deflayout wide-one-poly-elbow ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 8)
+	   (boxes poly (pt 6 0) (Y (- (the v-pitch) 1)) (X (the h-pitch))))
+
+(deflayout wide-empty-box ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 8))
+
+(deflayout diff-poly-elbow ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 6)
+	   (boxes poly (pt 4 0) (Y (- (the v-pitch) 1)) (X (the h-pitch)))
+	   (boxes diff (pt 1 0) (Y (the v-pitch))))
+
+(deflayout middle-empty-box ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 6))
+
+(deflayout zerop-elbow ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 5)
+	   (set-the' zerop (wire diff (pt 1 0) (Y (- (the v-pitch) 1)) (X (the h-pitch)))))
+
+(deflayout zerop-box ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 5)
+	   (set-the' zerop (wire diff (pt 1 0) (Y (the v-pitch)))))
+
+(deflayout to-entrance ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 40)
+	   (boxes poly (pt 30 0) (Y (the v-pitch)))
+	   (boxes poly (pt 38 0) (Y (the v-pitch)))
+	   (boxes poly (pt 0 4) (+X 5)))
+
+(deflayout hbit-coupler ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 40)
+	   (boxes poly (pt 30 0) (Y (the v-pitch)))
+	   (boxes poly (pt 38 0) (Y (the v-pitch)))
+	   (boxes poly (pt 4 0) (Y (the v-pitch))))
+
+(deflayout heq-enter ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 45)
+	   (boxes diff (pt 40 4) (X (the h-pitch))))
+
+(deflayout heq-coupler ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 45)
+	   (boxes diff (pt 41 0) (Y (the v-pitch))))
+
+(deflayout hinc-coupler ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 43)
+	   (boxes poly (pt 2 0) (Y (the v-pitch)))
+	   (boxes poly (pt 32 0) (Y (the v-pitch)))
+	   (boxes poly (pt 42 0) (Y (the v-pitch))))
+
+(deflayout regcell-coupler ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 38)
+	   (boxes poly (pt 30 0) (Y (the v-pitch)))
+	   (boxes poly (pt 38 0) (Y (the v-pitch)))
+	   (boxes poly (pt 4 0) (Y (the v-pitch))))
+
+(deflayout regcell-to-enter ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 38)
+	   (boxes poly (pt 30 0) (Y (the v-pitch)))
+	   (boxes poly (pt 38 0) (Y (the v-pitch)))
+	   (boxes poly (pt 0 4) (+X 5)))
+
+(deflayout nilcell-coupler ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 12)
+	   (set-the' ph1-from (wire poly (pt 6 0) (Y (the v-pitch)))))
+
+(deflayout zerop-enter ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 10)
+	   (set-the' zerop (wire diff (pt 0 (- (the v-pitch) 1)) (+X 2))))
+
+(deflayout zerop-coupler ()
+	   (set-the' v-pitch 5)
+	   (set-the' h-pitch 10)
+	   (set-the' zerop (wire diff (pt 1 0) (Y (the v-pitch)))))
+
+(deflayout type-field-row ()
+	   (set-the' v-pitch 40)
+	   (set-the' zerop-channel (call 'zerop-column '()))
+	   (set-the' zerop (call 'zerop-dummy '() 'trans (the-pt lower-right zerop-channel)))
+	   (set-the' exp-channel (call 'two-poly-column '() 'trans (the-pt lower-right zerop)))
+	   (set-the' exp-hbit (call 'hbit '() 'trans (the-pt lower-right exp-channel)))
+	   (set-the' exp-dec (call 'hinc-dummy '() 'trans (the-pt lower-right exp-hbit)))
+	   (set-the' exp-newcell-channel
+		     (call 'narrow-one-poly-column '() 'trans (the-pt lower-right exp-dec)))
+	   (set-the' newcell-hbit (call 'hbit '()
+					'trans (the-pt lower-right exp-newcell-channel)))
+	   (set-the' newcell-= (call 'heq-dummy '()  'trans (the-pt lower-right newcell-hbit)))
+	   (set-the' newcell-inc (call 'hinc-dummy '() 'trans (the-pt lower-right newcell-=)))
+	   (set-the' newcell-val-channel
+		     (call 'narrow-one-poly-column '()
+			   'trans (the-pt lower-right newcell-inc)))
+	   (set-the' val-hbit (call 'hbit '() 'trans (the-pt lower-right newcell-val-channel)))
+	   (set-the' val-= (call 'heq '() 'trans (the-pt lower-right val-hbit)))
+	   (set-the' val-retpc-channel
+		     (call 'diff-poly-column '() 'trans (the-pt lower-right val-=)))
+	   (set-the' retpc-bit (call 'regcell '()
+				     'trans (the-pt lower-right val-retpc-channel)))
+	   (set-the' retpc-stack-channel
+		     (call 'wide-one-poly-column '()
+			   'trans (the-pt lower-right retpc-bit)))	   
+	   (set-the' stack-bit (call 'regcell '()
+				     'trans (the-pt lower-right retpc-stack-channel)))
+	   (set-the' intermediate-argument-bit
+		     (call 'regcell '() 'trans (the-pt lower-right stack-bit)))
+	   (set-the' display-bit (call 'regcell '()
+				       'trans (the-pt lower-right intermediate-argument-bit)))
+	   (set-the' args-bit (call 'regcell '() 'trans (the-pt lower-right display-bit)))
+	   (set-the' memtop-bit (call 'regcell '() 'trans (the-pt lower-right args-bit)))
+	   (set-the' nil-bit (call 'nilcell '() 'trans (the-pt lower-right memtop-bit))))
+
+(deflayout type-displacement-row ()
+	   (set-the' v-pitch 5)
+	   (set-the' zerop-channel (call 'zerop-box '()))
+	   (set-the' zerop (call 'zerop-coupler '() 'trans (the-pt lower-right zerop-channel)))
+	   (set-the' exp-channel (call 'two-poly-elbow '() 'trans (the-pt lower-right zerop)))
+	   (set-the' exp-hbit (call 'to-entrance '() 'trans (the-pt lower-right exp-channel)))
+	   (set-the' exp-dec (call 'hinc-coupler '() 'trans (the-pt lower-right exp-hbit)))
+	   (set-the' exp-newcell-channel
+		     (call 'narrow-one-poly-elbow '() 'trans (the-pt lower-right exp-dec)))
+	   (set-the' newcell-hbit (call 'to-entrance '()
+					'trans (the-pt lower-right exp-newcell-channel)))
+	   (set-the' newcell-= (call 'heq-coupler '()
+				     'trans (the-pt lower-right newcell-hbit)))
+	   (set-the' newcell-inc (call 'hinc-coupler '()
+				       'trans (the-pt lower-right newcell-=)))
+	   (set-the' newcell-val-channel
+		     (call 'narrow-one-poly-elbow '()
+			   'trans (the-pt lower-right newcell-inc)))
+	   (set-the' val-hbit (call 'to-entrance '()
+				    'trans (the-pt lower-right newcell-val-channel)))
+	   (set-the' val-= (call 'heq-enter '() 'trans (the-pt lower-right val-hbit)))
+	   (set-the' val-retpc-channel
+		     (call 'diff-poly-elbow '() 'trans (the-pt lower-right val-=)))
+	   (set-the' retpc-bit (call 'regcell-to-enter '()
+				     'trans (the-pt lower-right val-retpc-channel)))
+	   (set-the' retpc-stack-channel
+		     (call 'wide-one-poly-elbow '()
+			   'trans (the-pt lower-right retpc-bit)))	   
+	   (set-the' stack-bit (call 'regcell-to-enter '()
+				     'trans (the-pt lower-right retpc-stack-channel)))
+	   (set-the' intermediate-argument-bit
+		     (call 'regcell-coupler '() 'trans (the-pt lower-right stack-bit)))
+	   (set-the' display-bit (call 'regcell-coupler '()
+				       'trans (the-pt lower-right intermediate-argument-bit)))
+	   (set-the' args-bit (call 'regcell-coupler '()
+				    'trans (the-pt lower-right display-bit)))
+	   (set-the' memtop-bit (call 'regcell-coupler '()
+				      'trans (the-pt lower-right args-bit)))
+	   (set-the' nil-bit (call 'nilcell-coupler '()
+				   'trans (the-pt lower-right memtop-bit)))
+	   (set-the' h-pitch (the-x lower-right nil-bit)))
+
+
+(deflayout displacement-field-row ()
+	   (set-the' v-pitch 40)
+	   (set-the' zerop-channel (call 'zerop-column '()))
+	   (set-the' zerop (call 'zerop '() 'trans (the-pt lower-right zerop-channel)))
+	   (set-the' exp-channel (call 'one-poly-column '() 'trans (the-pt lower-right zerop)))
+	   (set-the' exp-hbit (call 'hbit '() 'trans (the-pt lower-right exp-channel)))
+	   (set-the' exp-dec (call 'dec '() 'trans (the-pt lower-right exp-hbit)))
+	   (set-the' exp-newcell-channel
+		     (call 'narrow-empty-column '() 'trans (the-pt lower-right exp-dec)))
+	   (set-the' newcell-hbit (call 'hbit '()
+					'trans (the-pt lower-right exp-newcell-channel)))
+	   (set-the' newcell-= (call 'heq '()  'trans (the-pt lower-right newcell-hbit)))
+	   (set-the' newcell-inc (call 'inc '() 'trans (the-pt lower-right newcell-=)))
+	   (set-the' newcell-val-channel
+		     (call 'narrow-empty-column '() 'trans (the-pt lower-right newcell-inc)))
+	   (set-the' val-hbit (call 'hbit '() 'trans (the-pt lower-right newcell-val-channel)))
+	   (set-the' val-= (call 'heq '() 'trans (the-pt lower-right val-hbit)))
+	   (set-the' val-retpc-channel
+		     (call 'middle-empty-column '() 'trans (the-pt lower-right val-=)))
+	   (set-the' retpc-bit (call 'regcell '()
+				     'trans (the-pt lower-right val-retpc-channel)))
+	   (set-the' retpc-stack-channel
+		     (call 'wide-empty-column '() 'trans (the-pt lower-right retpc-bit)))
+	   (set-the' stack-bit (call 'regcell '()
+				     'trans (the-pt lower-right retpc-stack-channel)))
+	   (set-the' intermediate-argument-bit
+		     (call 'regcell '() 'trans (the-pt lower-right stack-bit)))
+	   (set-the' display-bit (call 'regcell '()
+				       'trans (the-pt lower-right intermediate-argument-bit)))
+	   (set-the' args-bit (call 'regcell '() 'trans (the-pt lower-right display-bit)))
+	   (set-the' memtop-bit (call 'regcell '() 'trans (the-pt lower-right args-bit)))
+	   (set-the' nil-bit (call 'nilcell '() 'trans (the-pt lower-right memtop-bit))))
+
+(deflayout displacement-frame-row ()
+	   (set-the' v-pitch 5)
+	   (set-the' zerop-channel (call 'zerop-elbow '()))
+	   (set-the' zerop (call 'zerop-enter '() 'trans (the-pt lower-right zerop-channel)))
+	   (set-the' exp-channel (call 'one-poly-elbow '() 'trans (the-pt lower-right zerop)))
+	   (set-the' exp-hbit (call 'to-entrance '() 'trans (the-pt lower-right exp-channel)))
+	   (set-the' exp-dec (call 'hinc-coupler '() 'trans (the-pt lower-right exp-hbit)))
+	   (set-the' exp-newcell-channel
+		     (call 'narrow-empty-box '() 'trans (the-pt lower-right exp-dec)))
+	   (set-the' newcell-hbit (call 'hbit-coupler '()
+					'trans (the-pt lower-right exp-newcell-channel)))
+	   (set-the' newcell-= (call 'heq-coupler '()
+				     'trans (the-pt lower-right newcell-hbit)))
+	   (set-the' newcell-inc (call 'hinc-coupler '()
+				       'trans (the-pt lower-right newcell-=)))
+	   (set-the' newcell-val-channel
+		     (call 'narrow-empty-box '()
+			   'trans (the-pt lower-right newcell-inc)))
+	   (set-the' val-hbit (call 'hbit-coupler '()
+				    'trans (the-pt lower-right newcell-val-channel)))
+	   (set-the' val-= (call 'heq-coupler '() 'trans (the-pt lower-right val-hbit)))
+	   (set-the' val-retpc-channel
+		     (call 'middle-empty-box '() 'trans (the-pt lower-right val-=)))
+	   (set-the' retpc-bit (call 'regcell-coupler '()
+				     'trans (the-pt lower-right val-retpc-channel)))
+	   (set-the' retpc-stack-channel
+		     (call 'wide-empty-box '()
+			   'trans (the-pt lower-right retpc-bit)))	   
+	   (set-the' stack-bit (call 'regcell-coupler '()
+				     'trans (the-pt lower-right retpc-stack-channel)))
+	   (set-the' intermediate-argument-bit
+		     (call 'regcell-coupler '() 'trans (the-pt lower-right stack-bit)))
+	   (set-the' display-bit (call 'regcell-coupler '()
+				       'trans (the-pt lower-right intermediate-argument-bit)))
+	   (set-the' args-bit (call 'regcell-coupler '()
+				    'trans (the-pt lower-right display-bit)))
+	   (set-the' memtop-bit (call 'regcell-coupler '()
+				      'trans (the-pt lower-right args-bit)))
+	   (set-the' nil-bit (call 'nilcell-coupler '()
+				   'trans (the-pt lower-right memtop-bit))))
+
+(deflayout frame-field-row ()
+	   (set-the' v-pitch 40)
+	   (set-the' zerop-channel (call 'zerop-column '()))
+	   (set-the' zerop (call 'zerop '() 'trans (the-pt lower-right zerop-channel)))
+	   (set-the' exp-channel (call 'seven-empty-column '()
+				       'trans (the-pt lower-right zerop)))
+	   (set-the' exp-hbit (call 'hbit '() 'trans (the-pt lower-right exp-channel)))
+	   (set-the' exp-dec (call 'dec '() 'trans (the-pt lower-right exp-hbit)))
+	   (set-the' exp-newcell-channel
+		     (call 'narrow-empty-column '() 'trans (the-pt lower-right exp-dec)))
+	   (set-the' newcell-hbit (call 'hbit '()
+					'trans (the-pt lower-right exp-newcell-channel)))
+	   (set-the' newcell-= (call 'heq '()  'trans (the-pt lower-right newcell-hbit)))
+	   (set-the' newcell-inc (call 'inc '() 'trans (the-pt lower-right newcell-=)))
+	   (set-the' newcell-val-channel
+		     (call 'narrow-empty-column '() 'trans (the-pt lower-right newcell-inc)))
+	   (set-the' val-hbit (call 'hbit '() 'trans (the-pt lower-right newcell-val-channel)))
+	   (set-the' val-= (call 'heq '() 'trans (the-pt lower-right val-hbit)))
+	   (set-the' val-retpc-channel
+		     (call 'middle-empty-column '() 'trans (the-pt lower-right val-=)))
+	   (set-the' retpc-bit (call 'regcell '()
+				     'trans (the-pt lower-right val-retpc-channel)))
+	   (set-the' retpc-stack-channel
+		     (call 'wide-empty-column '() 'trans (the-pt lower-right retpc-bit)))
+	   (set-the' stack-bit (call 'regcell '()
+				     'trans (the-pt lower-right retpc-stack-channel)))
+	   (set-the' intermediate-argument-bit
+		     (call 'regcell '() 'trans (the-pt lower-right stack-bit)))
+	   (set-the' display-bit (call 'regcell '()
+				       'trans (the-pt lower-right intermediate-argument-bit)))
+	   (set-the' args-bit (call 'regcell '() 'trans (the-pt lower-right display-bit)))
+	   (set-the' memtop-bit (call 'regcell '() 'trans (the-pt lower-right args-bit)))
+	   (set-the' nil-bit (call 'nilcell '() 'trans (the-pt lower-right memtop-bit))))
+
+(deflayout register-array ()
+	   (set-the' type-field (call 'column '(type-field-row nil 8 bit 0 7)))
+	   (set-the' type-displacement-channel
+		     (call 'type-displacement-row '() 'trans (the-pt upper-left type-field)))
+	   (set-the' h-pitch (the h-pitch type-displacement-channel))
+	   (set-the' displacement-field
+		     (call 'column '(displacement-field-row nil 12 bit 8 19)
+			   'trans (the-pt upper-left type-displacement-channel)))
+	   (set-the 'displacement-frame-channel
+		    (call 'displacement-frame-row '()
+			  'trans (the-pt upper-left displacement-field)))
+	   (set-the 'frame-field
+		    (call 'column '(frame-field-row nil 12 bit 20 31)
+			  'trans (the-pt upper-left displacement-frame-channel)))
+	   (set-the 'frame=0? (the-pt start zerop zerop-channel bit-0 type-field))
+	   (set-the 'displacement=0? (the-pt start zerop zerop bit-0 type-field))
+	   (set-the 'to-frame-exp (the-pt start left-column exp-channel bit-0 type-field))
+	   (set-the 'to-displacement-exp
+		    (the-pt start right-column exp-channel bit-0 type-field))
+	   (set-the 'to-type-exp (the-pt start ph1-to exp-hbit bit-0 type-field))
+	   (set-the 'ph2-exp (the-pt start ph2 exp-hbit bit-0 type-field))
+	   (set-the 'from-exp (the-pt start ph1-from exp-hbit bit-0 type-field))
+	   (set-the 'from-decremented-exp (the-pt start ph1-from+ exp-dec bit-0 type-field))
+	   (set-the 'to-address-newcell
+		    (the-pt start column exp-newcell-channel bit-0 type-field))
+	   (set-the 'to-type-newcell (the-pt start ph1-to newcell-hbit bit-0 type-field))
+	   (set-the 'ph2-newcell (the-pt start ph2 newcell-hbit bit-0 type-field))
+	   (set-the 'from-newcell (the-pt start ph1-from newcell-hbit bit-0 type-field))
+	   (set-the 'address-newcell=bus? (the-pt start eq-bus newcell-= bit-0 type-field))
+	   (set-the 'from-incremented-newcell
+		    (the-pt start ph1-from+ newcell-inc bit-0 type-field))
+	   (set-the 'to-address-val 
+		    (the-pt start column newcell-val-channel bit-0 type-field))
+	   (set-the 'to-type-val (the-pt start ph1-to val-hbit bit-0 type-field))
+	   (set-the 'ph2-val (the-pt start ph2 val-hbit bit-0 type-field))
+	   (set-the 'from-val (the-pt start ph1-from val-hbit bit-0 type-field))
+	   (set-the 'type-val=bus? (the-pt start eq-bus val-= bit-0 type-field))
+	   (set-the 'address-val=bus?
+		    (the-pt start left-column val-retpc-channel bit-0 type-field))
+	   (set-the 'to-address-retpc
+		    (the-pt start right-column val-retpc-channel bit-0 type-field))
+	   (set-the 'to-type-retpc (the-pt start ph1-to retpc-bit bit-0 type-field))
+	   (set-the 'ph2-retpc (the-pt start ph2 retpc-bit bit-0 type-field))
+	   (set-the 'from-retpc (the-pt start ph1-from retpc-bit bit-0 type-field))
+	   (set-the 'to-address-stack
+		    (the-pt start column retpc-stack-channel bit-0 type-field))
+	   (set-the 'to-type-stack (the-pt start ph1-to stack-bit bit-0 type-field))
+	   (set-the 'ph2-stack (the-pt start ph2 stack-bit bit-0 type-field))
+	   (set-the 'from-stack (the-pt start ph1-from stack-bit bit-0 type-field))
+	   (set-the 'to-intermediate-argument
+		    (the-pt start ph1-to intermediate-argument-bit bit-0 type-field))
+	   (set-the 'ph2-intermediate-argument
+		    (the-pt start ph2 intermediate-argument-bit bit-0 type-field))
+	   (set-the 'from-intermediate-argument
+		    (the-pt start ph1-from intermediate-argument-bit bit-0 type-field))
+	   (set-the 'to-display (the-pt start ph1-to display-bit bit-0 type-field))
+	   (set-the 'ph2-display (the-pt start ph2 display-bit bit-0 type-field))
+	   (set-the 'from-display (the-pt start ph1-from display-bit bit-0 type-field))
+	   (set-the 'to-args (the-pt start ph1-to args-bit bit-0 type-field))
+	   (set-the 'ph2-args (the-pt start ph2 args-bit bit-0 type-field))
+	   (set-the 'from-args (the-pt start ph1-from args-bit bit-0 type-field))
+	   (set-the 'to-memtop (the-pt start ph1-to memtop-bit bit-0 type-field))
+	   (set-the 'ph2-memtop (the-pt start ph2 memtop-bit bit-0 type-field))
+	   (set-the 'from-memtop (the-pt start ph1-from memtop-bit bit-0 type-field))
+	   (set-the 'from-nil (the-pt start ph1-from nil-bit bit-0 type-field))
+)
+
+(deflayout registers-with-drivers ()
+	   (set-the 'array (call 'register-array ()))
+	   (set-the 'h-pitch (the h-pitch array))
+
+	   ;First the simple cells and hbits.
+	   (set-the 'exp-driver (call 'regcell-driver ()))
+	   (align (the exp-driver)
+		  (the-pt end ph1-to ph2-driver exp-driver) (the-pt to-type-exp array))
+	   (set-the 'to-type-exp (the-pt start sig to-driver exp-driver))
+	   (set-the 'from-exp (the-pt start sig from-driver exp-driver))
+
+	   (set-the 'newcell-driver (call 'regcell-driver ()))
+	   (align (the newcell-driver)
+		  (the-pt end ph1-to ph2-driver newcell-driver) (the-pt to-type-newcell array))
+	   (set-the 'to-type-newcell (the-pt start sig to-driver newcell-driver))
+	   (set-the 'from-newcell (the-pt start sig from-driver newcell-driver))	   
+
+	   (set-the 'val-driver (call 'regcell-driver ()))
+	   (align (the val-driver)
+		  (the-pt end ph1-to ph2-driver val-driver) (the-pt to-type-val array))
+	   (set-the 'to-type-val (the-pt start sig to-driver val-driver))
+	   (set-the 'from-val (the-pt start sig from-driver val-driver))
+
+	   (set-the 'retpc-driver (call 'regcell-driver ()))
+	   (align (the retpc-driver)
+		  (the-pt end ph1-to ph2-driver retpc-driver) (the-pt to-type-retpc array))
+	   (set-the 'to-type-retpc (the-pt start sig to-driver retpc-driver))
+	   (set-the 'from-retpc (the-pt start sig from-driver retpc-driver))
+
+	   (set-the 'stack-driver (call 'regcell-driver ()))
+	   (align (the stack-driver)
+		  (the-pt end ph1-to ph2-driver stack-driver) (the-pt to-type-stack array))
+	   (set-the 'to-type-stack (the-pt start sig to-driver stack-driver))
+	   (set-the 'from-stack (the-pt start sig from-driver stack-driver))	   
+
+	   (set-the 'intermediate-argument-driver (call 'regcell-driver ()))
+	   (align (the intermediate-argument-driver)
+		  (the-pt end ph1-to ph2-driver intermediate-argument-driver)
+		  (the-pt to-intermediate-argument array))
+	   (set-the 'to-intermediate-argument
+		    (the-pt start sig to-driver intermediate-argument-driver))
+	   (set-the 'from-intermediate-argument
+		    (the-pt start sig from-driver intermediate-argument-driver))
+
+	   (set-the 'display-driver (call 'regcell-driver ()))
+	   (align (the display-driver)
+		  (the-pt end ph1-to ph2-driver display-driver) (the-pt to-display array))
+	   (set-the 'to-display (the-pt start sig to-driver display-driver))
+	   (set-the 'from-display (the-pt start sig from-driver display-driver))
+
+	   (set-the 'args-driver (call 'regcell-driver ()))
+	   (align (the args-driver)
+		  (the-pt end ph1-to ph2-driver args-driver) (the-pt to-args array))
+	   (set-the 'to-args (the-pt start sig to-driver args-driver))
+	   (set-the 'from-args (the-pt start sig from-driver args-driver))
+
+	   (set-the 'memtop-driver (call 'regcell-driver ()))
+	   (align (the memtop-driver)
+		  (the-pt end ph1-to ph2-driver memtop-driver) (the-pt to-memtop array))
+	   (set-the 'to-memtop (the-pt start sig to-driver memtop-driver))
+	   (set-the 'from-memtop (the-pt start sig from-driver memtop-driver))
+
+	   ;The metal busses are next
+	   (set-the' ph2-bus (wire (metal 3) (pt 0 0) (X (the h-pitch))))
+	   (align (the ph2-bus)
+		  (the-pt start ph2-bus) (pt 0 (the-y start ph2-in ph2-driver exp-driver)))
+
+	   (set-the' vdd-2 (wire (metal 4) (pt 0 0) (X (the h-pitch))))
+	   (align (the vdd-2)
+		  (the-pt start vdd-2) (pt 0 (the-y start vdd ph2-driver exp-driver)))
+
+	   (set-the' gnd (wire (metal 4) (pt 0 0) (X (the h-pitch))))
+	   (align (the gnd)
+		  (the-pt start gnd) (pt 0 (the-y start gnd to-driver exp-driver)))
+
+	   (set-the' ph1-bus (wire (metal 4) (pt 0 0) (X (the h-pitch))))
+	   (align (the ph1-bus)
+		  (the-pt start ph1-bus) (pt 0 (the-y start ph1-in to-driver exp-driver)))
+
+	   (set-the' vdd-1 (wire (metal 4) (pt 0 0) (X (the h-pitch))))
+	   (align (the vdd-1)
+		  (the-pt start vdd-1) (pt 0 (the-y start vdd to-driver exp-driver)))
+
+
+	   ;Now for the exciting stuff!
+	   (set-the 'ph1-driver-height (- (the-y start vdd-2) 2))
+
+	   (set-the 'to-displacement-exp-driver (call 'ph1-only '() 'mirror 'x))
+	   (align (the to-displacement-exp-driver)
+		  (the-pt sig-out to-displacement-exp-driver)
+		  (pt (the-x to-displacement-exp array) (the ph1-driver-height)))
+	   (boxes poly (the-pt to-displacement-exp array) (Y (the ph1-driver-height)))
+	   (set-the 'to-displacement-exp (the-pt sig-in to-displacement-exp-driver))
+
+	   (set-the 'from-decremented-exp-driver (call 'ph1-only '()))
+	   (align (the from-decremented-exp-driver)
+		  (the-pt sig-out from-decremented-exp-driver)
+		  (pt (the-x from-decremented-exp array) (the ph1-driver-height)))
+	   (boxes poly (the-pt from-decremented-exp array) (Y (the ph1-driver-height)))
+	   (set-the 'from-decremented-exp (the-pt sig-in from-decremented-exp-driver))
+
+	   (set-the 'to-address-newcell-driver (call 'ph1-only '() 'mirror 'x))
+	   (align (the to-address-newcell-driver)
+		  (the-pt sig-out to-address-newcell-driver)
+		  (pt (the-x to-address-newcell array) (the ph1-driver-height)))
+	   (boxes poly (the-pt to-address-newcell array) (Y (the ph1-driver-height)))
+	   (set-the 'to-address-newcell (the-pt sig-in to-address-newcell-driver))
+
+	   (set-the 'from-incremented-newcell-driver (call 'ph1-only '()))
+	   (align (the from-incremented-newcell-driver)
+		  (the-pt sig-out from-incremented-newcell-driver)
+		  (pt (the-x from-incremented-newcell array) (the ph1-driver-height)))
+	   (boxes poly (the-pt from-incremented-newcell array) (Y (the ph1-driver-height)))
+	   (set-the 'from-incremented-newcell
+		    (the-pt sig-in from-incremented-newcell-driver))
+
+	   (set-the 'to-address-val-driver (call 'ph1-only '() 'mirror 'x))
+	   (align (the to-address-val-driver)
+		  (the-pt sig-out to-address-val-driver)
+		  (pt (the-x to-address-val array) (the ph1-driver-height)))
+	   (boxes poly (the-pt to-address-val array) (Y (the ph1-driver-height)))
+	   (set-the 'to-address-val (the-pt sig-in to-address-val-driver))
+
+	   (set-the 'to-address-retpc-driver (call 'ph1-only '() 'mirror 'x))
+	   (align (the to-address-retpc-driver)
+		  (the-pt sig-out to-address-retpc-driver)
+		  (pt (the-x to-address-retpc array) (the ph1-driver-height)))
+	   (boxes poly (the-pt to-address-retpc array) (Y (the ph1-driver-height)))
+	   (set-the 'to-address-retpc (the-pt sig-in to-address-retpc-driver))
+
+	   (set-the 'from-nil-driver (call 'ph1-only '()))
+	   (align (the from-nil-driver)
+		  (the-pt sig-out from-nil-driver)
+		  (pt (the-x from-nil array) (the ph1-driver-height)))
+	   (boxes poly (the-pt from-nil array) (Y (the ph1-driver-height)))
+	   (set-the 'from-nil (the-pt sig-in from-nil-driver))
+
+	   ;to-frame-exp, to-address-stack require random wiring.
+
+	   (set-the 'to-frame-exp-driver (call 'ph1-only '()))
+	   (align (the to-frame-exp-driver)
+		  (the-pt ph1-contact driver to-frame-exp-driver)
+		  (the-pt ph1-contact driver to-displacement-exp-driver))
+	   (boxes poly (the-pt to-frame-exp array)
+		  (Y (the-y start ph2-bus)) (X (the-x sig-out to-frame-exp-driver))
+		  (Y (the-y sig-out to-frame-exp-driver)))		  
+	   (set-the 'to-frame-exp (the-pt sig-in to-frame-exp-driver))
+
+	   (set-the 'to-address-stack-driver (call 'ph1-only '()))
+	   (align (the to-address-stack-driver)
+		  (the-pt ph1-contact driver to-address-stack-driver)
+		  (the-pt ph1-contact driver to-address-retpc-driver))
+	   (boxes poly (the-pt to-address-stack array)
+		  (Y (- (the-y start vdd-1) 7)))
+	   (contact S poly *XY)
+	   (boxes metal *XY (X (- (the-x lower-left to-address-stack-driver) 1)))
+	   (contact S poly *XY)
+	   (boxes poly *XY
+		  (Y (- (the-y sig-out to-address-stack-driver) 1))
+		  (X (the-x sig-out to-address-stack-driver)))
+	   (set-the 'to-address-stack (the-pt sig-in to-address-stack-driver))
+
+	   ; Now the sense wires:
+
+	   (boxes diff (the-pt type-val=bus? array)
+		  (-Y 2) (X (+ 1 (the-x lower-right val-driver)))
+		  (Y (the-y lower-left to-frame-exp-driver)))
+	   (set-the' type-val=bus? *xy)
+	   
+	   (boxes diff (the-pt address-val=bus? array)
+		  (-Y 7) (X (+ 6 (the-x lower-right val-driver)))
+		  (Y (the-y lower-left to-frame-exp-driver)))
+	   (set-the' address-val=bus? *xy)
+
+	   (boxes diff (the-pt address-newcell=bus? array)
+		  (Y (the-y lower-left to-frame-exp-driver)))
+	   (set-the' address-newcell=bus? *xy)
+
+	   (boxes diff (the-pt displacement=0? array)
+		  (-Y 6) (X (- (the-x lower-left to-frame-exp-driver) 1))
+		  (Y (the-y lower-left to-frame-exp-driver)))
+	   (set-the' displacement=0? *xy)
+
+	   (boxes diff (the-pt frame=0? array)
+		  (+Y 1) (X (- (the-x lower-left to-frame-exp-driver) 6))
+		  (Y (the-y lower-left to-frame-exp-driver)))
+	   (set-the' frame=0? *xy)
+
+	   (set-the' ph1-gen (call 'ph1-and-not-freeze-gen ()))
+	   (align (the ph1-gen)
+		  (the-pt freeze-in ph1-gen)
+		  (pt (- (the-x address-newcell=bus?) 5)
+		      (the-y address-newcell=bus?)))
+	   (set-the' freeze (the-pt freeze-in ph1-gen))
+	   (set-the' ph1-input (the-pt start sig ph1-gen))
+
+	   ;Now fix up 0,0.  (note: the previous two steps are right!)
+	   (set-the' lower-left
+		    (pt (the-x lower-left to-frame-exp-driver)
+			(- (the-y lower-left to-frame-exp-driver) 7)))
+	   (set-the' h-pitch
+		     (- (the-x lower-right from-nil-driver)
+			(the-x lower-left)))
+	   (set-the' v-pitch
+		     (- (the-y upper-left frame-field array)
+			(the-y lower-left))))
+
+
+(deflayout complete-registers ()
+	   (set-the' vdd-width 20)
+	   (set-the' gnd-width 20)
+	   (set-the' regs (call 'registers-with-drivers '()))
+	   (set-the' vdd-bus
+		     (wire (metal (the vdd-width))
+			   (pt (// (the vdd-width) 2) 0) (Y (the v-pitch regs))))
+	   (align (the regs)
+		  (the-pt lower-left regs)
+		  (pt (+ (the vdd-width) 3) 0))
+	   (set-the' gnd-bus
+		     (wire (metal (the gnd-width))
+			   (pt (+ (the-x lower-right regs) (// (the gnd-width) 2) 5) 0)
+			   (Y (the v-pitch regs))))
+	   (set-the' h-pitch (+ (the-x start gnd-bus) (// (the gnd-width) 2)))
+	   (set-the' v-pitch (the v-pitch regs))
+	   (boxes (metal 4) (the-pt start vdd-2 regs) (X (the-x start vdd-bus)))
+	   (boxes (metal 4) (the-pt start vdd-1 regs) (X (the-x start vdd-bus)))
+	   (boxes (metal 4) (the-pt end gnd regs) (X (the-x start gnd-bus)))
+	   (do ((i 0 (+ i 1)))
+	       ((= i 8))
+	       (let ((row `(,(concat 'bit '- i) type-field array regs)))
+		    (boxes (metal 4)
+			   (the-point-relative row '(start vdd zerop-channel))
+			   (X (the-x start vdd-bus)))
+		    (boxes (metal 4)
+			   (the-point-relative row '(end gnd nil-bit))
+			   (X (the-x start gnd-bus)))
+		    (set-the (concat 'left-bit i)
+			     (the-point-relative row '(start bus zerop-channel)))
+		    (set-the (concat 'right-bit i)
+			     (the-point-relative row '(end bus nil-bit)))))
+	   (do ((i 8 (+ i 1)))
+	       ((= i 20))
+	       (let ((row `(,(concat 'bit '- i) displacement-field array regs)))
+		    (boxes (metal 4)
+			   (the-point-relative row '(start vdd zerop-channel))
+			   (X (the-x start vdd-bus)))
+		    (boxes (metal 4)
+			   (the-point-relative row '(end gnd nil-bit))
+			   (X (the-x start gnd-bus)))
+		    (set-the (concat 'left-bit i)
+			     (the-point-relative row '(start bus zerop-channel)))
+		    (set-the (concat 'right-bit i)
+			     (the-point-relative row '(end bus nil-bit)))))
+	   (do ((i 20 (+ i 1)))
+	       ((= i 32))
+	       (let ((row `(,(concat 'bit '- i) frame-field array regs)))
+		    (boxes (metal 4)
+			   (the-point-relative row '(start vdd zerop-channel))
+			   (X (the-x start vdd-bus)))
+		    (boxes (metal 4)
+			   (the-point-relative row '(end gnd nil-bit))
+			   (X (the-x start gnd-bus)))
+		    (set-the (concat 'left-bit i)
+			     (the-point-relative row '(start
+						       bus zerop-channel)))
+		    (set-the (concat 'right-bit i)
+			     (the-point-relative row '(end bus nil-bit)))))
+	   (inherit-names '(regs)
+			  '(frame=0? to-frame-exp to-displacement-exp
+			    to-type-exp from-exp from-decremented-exp
+			    to-address-newcell to-type-newcell from-newcell
+			    address-newcell=bus? from-incremented-newcell
+			    to-address-val
+			    to-type-val from-val address-val=bus?
+			    to-address-stack to-address-retpc to-type-retpc
+			    from-retpc
+			    to-type-stack from-stack to-intermediate-argument
+			    from-intermediate-argument to-display from-display
+			    to-args
+			    from-args to-memtop from-memtop from-nil
+			    ph1-input freeze))
+
+	  (set-the' v=0 (call 'pullup-a nil))
+	  (align (the v=0) (the-pt input v=0) (the-pt type-val=bus? regs))
+	  (set-the' type-val=bus? (the-pt output v=0))
+	  
+	  (set-the' d=0 (call 'pullup-a nil 'mirror 'x))
+	  (align (the d=0) (the-pt input d=0)
+		 (the-pt displacement=0? regs))
+	  (set-the' displacement=0? (the-pt output d=0))
+
+	  (set-the' av (call 'pullup-b nil))
+	  (align (the av) (the-pt input av)
+		 (the-pt end eq-bus val-= bit-31 frame-field array regs))
+	  (set-the' an (call 'pullup-b nil))
+	  (align (the an) (the-pt input an)
+		 (the-pt end eq-bus newcell-= bit-31 frame-field array regs))
+	  (set-the' f (call 'pullup-b nil))
+	  (align (the f) (the-pt input f)
+	    (the-pt end zerop zerop-channel bit-31 frame-field array regs))
+
+	  (contact s poly
+		   (pt (+ 20 (the-x start vdd decr exp-dec bit-31
+				    frame-field array regs))
+		       (the-y start vdd decr exp-dec bit-31
+			      frame-field array regs)))
+	  (contact s poly
+		   (pt (+ 20 (the-x start vdd incer newcell-inc bit-31
+				    frame-field array regs))
+		       (the-y start vdd incer newcell-inc bit-31
+			      frame-field array regs)))
+	  (boxes (metal 4) (the-pt end vdd-bus) (+y 12) (X (the h-pitch)))
+	  (set-the'aux-gnd-height *y)
+	  (boxes poly
+		 (pt  (- (the-x start -cin incer newcell-inc bit-31 frame-field
+				array regs)
+			 1)
+		      (the-y start -cin incer newcell-inc bit-31 frame-field
+			     array regs))
+		 (Y (the aux-gnd-height)))
+	  (boxes poly
+		 (pt  (- (the-x start -cin decr exp-dec bit-31 frame-field
+				array regs)
+			 1)
+		      (the-y start -cin decr exp-dec bit-31 frame-field
+			     array regs))
+		 (Y (the aux-gnd-height)))
+
+)
+
+(deflayout pullup-a ()
+	   (call 'pullup '(8) 'rot '(0 1))
+	   (boxes diff (pt -9 0) (-X 2) (+y 7) (+X 3))
+	   (boxes diff (pt 2 -3) (+y 8))
+	   (set-the 'input *xy)
+	   (set-the' output (pt 2 -3)))
+
+(deflayout pullup-b ()
+	   (call 'pullup '(8) 'rot '(0 -1))
+	   (boxes diff (pt -2 0) (-y 5))
+	   (set-the 'input *xy)
+	   (boxes diff (pt 0 0) (+x 12))
+	   (contact s diff *xy)
+	   (boxes metal *xy (-y 12)))
+
+(deflayout regcell-driver ()
+	   (set-the 'h-pitch 38)
+	   (set-the 'to-driver (call 'ph1-driver '()))
+	   (set-the 'from-driver (call 'ph1-driver '() 'mirror 'x 'trans (the-pt lower-right)))
+	   (set-the 'ph2-driver (call 'ph2-driver '() 'trans (the-pt upper-left to-driver)))
+	   (set-the 'v-pitch (the-y upper-left ph2-driver)))
+
+(deflayout ph1-only ()
+	   (set-the' v-pitch 54)
+	   (set-the' h-pitch 19)
+	   (set-the' driver (call 'ph1-driver ()))
+	   (boxes (diff 4) (pt 7 (- (the v-pitch) 2)) (+X 9))
+	   (contact H diff (pt 8 (- (the v-pitch) 2)))
+	   (set-the' sig-in (the-pt start sig driver))
+	   (set-the' sig-out (the-pt end ph1-sig driver)))
+
+(deflayout ph2-driver ()
+	   (set-the' v-pitch 22)
+	   (set-the' h-pitch 38)
+	   
+	   (set-the' vdd-height 2)
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+
+	   (set-the' ph2-in-height 9)
+	   (set-the' ph2-in
+		     (wire (metal 3) (pt 0 (- (the ph2-in-height) .5)) (X (the h-pitch))))
+	   
+	   (set-the' gnd-height 24)
+
+	   (set-the' ph1-to-x 2)			;bussed thru
+	   (set-the' ph1-to (wire poly (pt (the ph1-to-x) 0) (Y (- (the v-pitch) 2))))
+	   
+	   (set-the' ph1-from-x 36)			;bussed thru
+	   (set-the' ph1-from (wire poly (pt (the ph1-from-x) 0) (Y (- (the v-pitch) 2))))
+
+	   (set-the' ph2-out-x 28)
+	   (set-the' output-contact (pt (- (the ph2-out-x) 1) 16))
+	   (call 'butting-contact () 'rot '(0 -1) 'trans (the output-contact))
+	   
+	   (set-the' ph2-out (wire poly (pt (the ph2-out-x) (the-y output-contact))
+				   (Y (the v-pitch))))
+
+	   (set-the' pullup-contact (pt (the ph2-out-x) (the ph2-in-height))) ;coincidence
+	   (contact S poly (the pullup-contact))
+
+	   (set-the' output-pullup (pt 23.5 5))
+	   (call 'general-pullup '(6 3) 'trans (the output-pullup))
+
+	   (set-the' q2 (pt 21 20))
+	   (call 'pass-transistor '(2 4) 'trans (the q2))
+
+	   (boxes (diff 3) (the q2)
+		  (Y (the-y output-contact)) (X (the-x output-pullup)) (Y (the vdd-height)))
+	   
+	   (set-the' input-pullup (pt 14 5))
+	   (call 'general-pullup '(4 2) 'trans (the input-pullup))
+
+	   (boxes poly (pt (+ (the-x input-pullup) 3) (the-y input-pullup))
+		  (Y (+ (the-y q2) 1)))
+
+	   (set-the' input-pullup-contact (pt 15 15))
+	   (call 'butting-contact () 'rot '(0 -1) 'trans (the input-pullup-contact))
+	   
+	   (set-the' q1 (pt 8 15))
+	   (call 'pass-transistor '(2 4) 'rot '(0 1) 'trans (the q1))
+
+	   (set-the'input-contact (pt (- (the-x q1) 1) (the ph2-in-height)))
+	   (contact S poly (the input-contact))
+
+	   (boxes diff (pt 14 (- (the gnd-height) 3)) (X 5) (Y (- (the-y q1) 2)))
+	   (boxes (diff 4) (the q1) (+X 4))
+	   (boxes (diff 3) (pt (- (the-x input-pullup-contact) 1.5)
+			       (the-y input-pullup-contact))
+		  (-Y 5))
+
+	   (set-the' vd1-contact (pt 10 (the vdd-height)))
+	   (contact H diff (the vd1-contact))
+	   (boxes (diff 4) (the vd1-contact) (+X 18))
+	   (contact H diff *XY))
+
+(deflayout ph1-driver ()
+	   (set-the' h-pitch 19)
+	   (set-the' v-pitch 50)
+
+	   (set-the' gnd-height 30)
+	   (set-the 'gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+
+	   (set-the' ph1-in-height 23)
+	   (set-the 'ph1-in (wire (metal 4) (pt 0 (the ph1-in-height))
+				  (X (the h-pitch))))
+	   (set-the' vdd-height 2)
+	   (set-the 'vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   	   
+	   (set-the' vdd-contact (pt 7 (the vdd-height)))
+	   (contact H diff (the vdd-contact))
+
+	   (set-the' q1-pullup-contact (pt 5 13))
+	   (call 'butting-contact '() 'rot '(0 1) 'trans (the q1-pullup-contact))
+	   (call 'general-pullup '(5 2) 'trans (pt 7 5))
+
+	   (set-the' q1-ph1 (pt 12 (the ph1-in-height)))
+	   (call 'pass-transistor '(2 6) 'trans (the q1-ph1))
+	   
+	   (set-the' ph1-contact (pt (the h-pitch) (the ph1-in-height)))
+	   (contact S poly (the ph1-contact))
+
+	   (set-the' gnd-contact (pt 11 (the gnd-height)))
+	   (contact H diff (the gnd-contact))
+	   (boxes (diff 6) (pt 12 (the-y q1-pullup-contact)) (Y (the gnd-height)))
+	   (boxes (diff 4) (pt 6 (the gnd-height)) (+X 11))
+	   (boxes (diff 4) (the q1-pullup-contact) (+X 10))
+	   
+
+	   (set-the' q2-height 34)	   
+	   (set-the' q2-1 (pt 8 (the q2-height)))
+	   (call 'pass-transistor '(2 4) 'trans (the q2-1))
+	   (set-the' q2-2 (pt 14.5 (the q2-height)))
+	   (call 'pass-transistor '(2 3) 'trans (the q2-2))
+	   (boxes poly (pt 3 (+ (the q2-height) 1)) (Y 5))
+
+	   (set-the' output-contact (pt 7 39))
+	   (call 'butting-contact () 'rot '(0 1) 'trans (the output-contact))
+	   
+	   (set-the' q2-2-pullup-contact (pt 15 43))
+	   (call 'butting-contact () 'trans (the q2-2-pullup-contact))
+	   (call 'general-pullup '(6 2) 'trans (the q2-2-pullup-contact))
+
+	   (set-the 'q2-1-pullup (pt 8.5 (the-y q2-2-pullup-contact)))
+	   (call 'general-pullup '(6 3) 'trans (the q2-1-pullup))
+	   
+	   (boxes (diff 3) (the q2-1-pullup) (Y (the-y q2-1)))
+	   (boxes (diff 3) (the q2-2) (Y (the-y q2-2-pullup-contact)))
+
+	   (set-the' q1-sig (pt 12 17))
+	   (call 'pass-transistor '(2 6) 'trans (the q1-sig))
+
+	   (set-the' sig-x (- (the h-pitch) 2))
+	   (set-the' sig (wire poly (pt (the sig-x) 0) (Y (+ (the-y q1-sig) 1))))
+
+	   (set-the' ph1-sig-x 2)
+	   (set-the' ph1-sig (wire poly (the output-contact)
+				   (X (the ph1-sig-x)) (Y (the v-pitch)))))
+
+
+
+(deflayout pc-regcell ()
+	   (set-the' v-pitch 41)
+	   (set-the' h-pitch 28)
+	   (set-the' gnd-x 26)
+	   (set-the' sig-x 9)
+	   (set-the' vdd-x 2)
+	   
+	   (set-the' ph2-y 17)
+	   (set-the' ph1-last-y 35)
+
+	   (set-the' q1-contact (pt (the sig-x) 2))
+	   (contact S poly (the q1-contact))
+
+	   (set-the' q1 (pt 22 9))
+	   (call 'pass-transistor '(2 2) 'rot '(0 1) 'trans (the q1))
+
+	   (set-the' q1-vdd-contact (pt (the vdd-x) (the-y q1)))
+	   (contact S diff (the q1-vdd-contact))
+
+	   (set-the' q1-gnd-contact (pt (the gnd-x) (the-y q1)))
+	   (contact S diff (the q1-gnd-contact))
+
+	   (set-the' q1-pullup (pt 17 (the-y q1)))
+	   (call 'pullup '(8) 'rot '(0 1) 'trans (the q1-pullup))
+
+	   (boxes diff (the q1-vdd-contact) (X (the gnd-x)))
+	   (boxes poly (the q1) (Y (+ (the-y q1-contact) 1)) (X (the-x q1-contact)))
+	   
+	   (set-the' ph2-pass (pt 15 (the ph2-y)))
+	   (call 'pass-transistor '(2 2) 'trans (the ph2-pass))
+	   
+	   (set-the' ph2 (wire poly (pt 0 (the ph2-y)) (X (the h-pitch))))
+
+	   (set-the' q2-contact (pt (the-x q1-pullup) 22))
+	   (call 'butting-contact '() 'rot '(0 -1) 'trans (the q2-contact))
+
+	   (boxes diff (pt (+ 2 (the-x q1-pullup)) (the-y q1-pullup))
+		  (+Y 5) (X (the-x ph2-pass)) (Y (the-y q2-contact)))
+
+	   (set-the' q2 (pt (the-x q1) 29))
+	   (call 'pass-transistor '(2 2) 'rot '(0 1) 'trans (the q2))
+
+	   (boxes poly (the q2) (Y (the-y q2-contact)) (X (the-x q2-contact)))
+
+	   (set-the' q2-vdd-contact (pt (the vdd-x) (the-y q2)))
+	   (contact S diff (the q2-vdd-contact))
+
+	   (set-the' q2-gnd-contact (pt (the gnd-x) (the-y q2)))
+	   (contact s diff (the q2-gnd-contact))
+
+	   (set-the' q2-pullup (pt (the-x q2-contact) (the-y q2)))
+	   (call 'pullup '(8) 'rot '(0 1) 'trans (the q2-pullup))
+
+	   (boxes diff (the q2-vdd-contact) (X (the-x q2-gnd-contact)))
+	   
+	   (set-the' ph1-last-pass (pt 19 (the ph1-last-y)))
+	   (call 'pass-transistor '(2 2) 'trans (the ph1-last-pass))
+
+	   (set-the' ph1-last (wire poly (pt 0 (the ph1-last-y)) (X (the h-pitch))))
+
+	   (set-the' output (pt (the sig-x) 39))
+	   (contact S diff (the output))
+
+	   (boxes diff (the output) (X (the-x ph1-last-pass)) (Y (the-y q2)))
+
+	   (set-the' vdd (wire (metal 4) (pt (the vdd-x) 0) (Y (the v-pitch))))
+	   (set-the' sig (wire (metal 4) (pt (the sig-x) 0) (Y (the v-pitch))))
+	   (set-the' gnd (wire (metal 4) (pt (the gnd-x) 0) (Y (the v-pitch))))
+	   (set-the' sig-start (the-pt start sig))
+	   (set-the' sig-end (the-pt end sig))
+	   (set-the' vdd-start (the-pt start vdd))
+	   (set-the' vdd-end (the-pt end vdd))
+	   (set-the' gnd-start (the-pt start gnd))
+	   (set-the' gnd-end (the-pt end gnd)))
+
+(deflayout pc-regcell-mirrored ()
+	   (set-the' cell (call 'pc-regcell '() 'mirror 'x 'trans (pt 28 0)))
+	   (set-the' v-pitch (the v-pitch cell))
+	   (set-the' h-pitch (the h-pitch cell))
+	   (set-the' sig-start (the-pt start sig cell))
+	   (set-the' sig-end (the-pt end sig cell))
+	   (set-the' vdd-start (the-pt start vdd cell))
+	   (set-the' vdd-end (the-pt end vdd cell))
+	   (set-the' gnd-start (the-pt start gnd cell))
+	   (set-the' gnd-end (the-pt end gnd cell)))
+
+(deflayout switch-yard (n)
+	   (make-row 'switch-yard-column `(,n) n 'bit 0 (- n 1))
+	   (set-the' v-pitch (the v-pitch bit-0))
+	   (do i 0 (1+ i) (= i n)
+	       (contact S diff (pt (- (* (- n i) 14) 7) (+ (* i 6) 3))))
+	   (set-the' not-frz-not-dispatch-ph1
+		     (wire poly (pt 3 0) (Y (the v-pitch))))
+	   (set-the' not-frz-dispatch-ph1
+		     (wire poly (pt (- (the h-pitch) 3) 0) (Y (the v-pitch)))))
+
+(deflayout switch-yard-column (n)
+	   (make-column 'switch-yard-element '() n 'bit (- n 1) 0)
+	   (set-the' h-pitch (the h-pitch bit-0)))
+
+(deflayout switch-yard-element ()
+	   (set-the' v-pitch 6) (set-the' h-pitch 14)
+	   (wire diff (pt 0 3) (X (the h-pitch)))
+	   (wire (metal 4) (pt 7 0) (Y (the v-pitch))))
+
+(deflayout pc-register (n)
+	   (set-the 'vdd-height 2)
+	   (set-the 'first-vdd 2)
+	   (set-the 'reg (invoke 'pc-regcell nil))
+	   (set-the 'vdd
+		    (wire (metal 4) (pt (- (the first-vdd) 2) (the vdd-height))
+			  (X (+ (* n (- (the gnd-x reg) (the vdd-x reg))) 4))))
+	   (set-the 'gnd-height
+		    (- (the vdd-height) 5 (the v-pitch reg) (* n 6) 5))
+	   (set-the' gnd
+		     (wire (metal 4) (pt (- (the first-vdd) 2)
+					 (the gnd-height))
+			   (X (+ (* n (- (the gnd-x reg)
+					 (the vdd-x reg))) 4))))
+	   (set-the' v-pitch (+ (- (the vdd-height) (the gnd-height)) 4))
+	   (set-the' h-pitch (- (the-x end gnd) (the-x start gnd)))
+	   (set-the' lower-left (pt (the-x start gnd) (- (the-y start gnd) 2)))
+	   (boxes (metal 4) (pt (the first-vdd) (the vdd-height)) (-Y 5))
+	   (do ((i 0 (1+ i))
+		(cell-name) (mpt) (bus-x)
+		(mx (the first-vdd)) (regy *Y))
+	       ((= i n))
+	       (setq cell-name (concat 'reg-bit- i))
+	       (cond ((oddp i)
+		      (set-the cell-name (call' pc-regcell nil 'mirror 'Y 'mirror 'X))
+		      (align (the-1 `(,cell-name))
+			     (the-point-relative `(,cell-name) '(start gnd))
+			     (pt mx regy))
+		      (setq mpt (the-point-relative `(,cell-name) '(start vdd)))
+		      (setq mx (x-of mpt))
+		      (wire (metal 4) mpt (Y (the vdd-height))))
+		     (t
+		      (set-the cell-name (call' pc-regcell nil 'mirror 'Y))
+		      (align (the-1 `(,cell-name))
+			     (the-point-relative `(,cell-name) '(start vdd))
+			     (pt mx regy))
+		      (setq mpt (the-point-relative `(,cell-name) '(end gnd)))
+		      (setq mx (x-of mpt))
+		      (wire (metal 4) mpt (Y (the gnd-height)))))
+	       (set-the (concat 'poly-out- i)
+			(the-point-relative `(,cell-name) '(start sig)))
+	       (boxes (metal 4) (the-point-relative `(,cell-name) '(end sig))
+		      (-Y (+ 4 (* i 6))))
+	       (contact S diff *xy)
+	       (set-the (concat 'diff- i)
+			(wire diff (pt (the-x start vdd) *y)
+			      (X (the-x end vdd))))
+	       (set-the (concat 'diff- i '-end) *xy)
+	       (set-the (concat 'diff- i '-start) (pt (the-x start vdd) *y)))
+	   (set-the' pass-1 (wire poly (pt (+ (the-x start vdd) 3)
+					   (+ (the-y start diff-0) 3))
+				  (Y (- (y-of (the-point-relative
+					       `(start ,(concat 'diff-
+								(- n 1)))
+					       nil))
+					3))))
+	   (set-the' pass-2 (wire poly (pt (- (the-x end vdd) 3)  (+ (the-y start diff-0) 3))
+				  (Y (- (y-of (the-point-relative
+					       `(start ,(concat 'diff- (- n 1)))
+					       nil))
+					3)))))
+
+
+;selector low order stuff is at bottom:
+
+(deflayout selector (nbits)
+   (let ((nrows (expt 2 nbits))
+	 (row-space 7)
+	 (col-space 14)
+	 (q1-offset-x 4)
+	 (q-offset-y 3)
+	 (q2-offset-x 11))
+	(set-the' v-pitch (+ (* nrows row-space) 1))
+	(set-the' h-pitch (+ (* nbits col-space) 2))
+	(do ((row 0 (1+ row)))
+	    ((= row nrows))
+	    (boxes diff (pt 2 (+ q-offset-y (* row row-space))) (X (the h-pitch)))
+	    (set-the (concat 'row row) *XY))
+	(do ((col 0 (1+ col)))
+	    ((= col nbits))
+	    (boxes poly (pt (+ q1-offset-x (* col col-space)) (the v-pitch)) (Y 0))
+	    (set-the (concat 'lcol col) *XY)
+	    (boxes poly (pt (+ q2-offset-x (* col col-space)) (the v-pitch)) (Y 0))
+	    (set-the (concat 'rcol col) *XY)
+	    (if (oddp col)
+		(progn (set-the (concat 'driver- col)
+				(call 'complementary-pair-driver '() 'mirror 'x))
+		       (align (the-1 `(,(concat 'driver- col)))
+			      (the-point-relative `(-A ,(concat 'driver- col)) nil)
+			      (the-point-relative `(,(concat 'lcol col)) nil)))
+		(progn (set-the (concat 'driver- col)
+				(call 'complementary-pair-driver '()))
+		       (align (the-1 `(,(concat 'driver- col)))
+			      (the-point-relative `(A ,(concat 'driver- col)) nil)
+			      (the-point-relative `(,(concat 'lcol col)) nil))))
+	    (set-the (concat 'input col)
+		     (the-point-relative `(input ,(concat 'driver- col)) nil)))		     
+	(do ((row 0 (1+ row)))
+	    ((= row nrows))
+	    (let ((base 2))
+		 (do ((col 0 (1+ col))
+		      (binexp (reverse (explode row)) (cdr binexp)))	;leading zero
+		     ((= col nbits))
+		     (if (xor (oddp col)			       	;driver is mirrored
+			      (and binexp (eq (car binexp) '/1)))
+			 (boxes (implant 6)
+				(pt (+ q1-offset-x (* col col-space))
+				    (+ q-offset-y (* row row-space) -3))
+				(+Y 6))
+			 (boxes (implant 6)
+				(pt (+ q2-offset-x (* col col-space))
+				    (+ q-offset-y (* row row-space) -3))
+				(+Y 6))))))
+	(boxes diff (pt 1 (- q-offset-y 1)) (+Y (+ (* (- nrows 1) row-space) 2)))
+	(set-the' output (pt 0 (+ q-offset-y (* (- nrows 1) row-space))))
+	(set-the' v-pitch (+ (the v-pitch) (the v-pitch driver-0)))
+	(set-the' lower-left (pt 0 (- 0 (the v-pitch driver-0))))))
+
+;Origin is in upper right, box overlaps 1 unit over right boundary
+
+(deflayout complementary-pair-driver nil
+           (set-the' vdd (wire (metal 4.0) (pt -14.0 -16.0) (+x 16.0)))	;VDD
+	   (set-the' gnd (wire (metal 4.0) (pt -14.0 -34.0) (+x 16.0)))	;GND
+
+           (boxes (poly 4.0) (pt -13.0 -26.0) (+x 4.0))
+           (boxes (poly 6.0) (pt -13.0 -22.0) (+x 2.0))
+           (boxes (poly 6.0) (pt -13.0 -10.0) (+x 2.0))
+           (boxes (poly 4.0) (pt -13.0 -6.0) (+x 4.0))
+           (boxes (metal 4.0) (pt -12.0 -26.0) (+x 6.0))
+           (boxes (implant 6.0) (pt -12.0 -20.0) (+x 6.0))
+           (boxes (poly 2.0) (pt -12.0 -20.0) (+x 9.0))
+           (boxes (implant 6.0) (pt -12.0 -12.0) (+x 6.0))
+           (boxes (poly 2.0) (pt -12.0 -12.0) (+x 6.0))
+           (boxes (metal 4.0) (pt -12.0 -6.0) (+x 6.0))
+
+	   (boxes (poly 2) (pt -11 -5) (Y -1) (+X 2))		;non-invert output
+	   (set-the' A (pt -10 0))
+
+           (boxes (cuts 2.0) (pt -11.0 -26.0) (+x 4.0))
+           (boxes (diff 4.0) (pt -11.0 -16.0) (+x 4.0))
+           (boxes (cuts 2.0) (pt -11.0 -6.0) (+x 4.0))
+           (boxes (diff 6.0) (pt -10.0 -25.0) (+x 4.0))
+           (boxes (diff 6.0) (pt -10.0 -20.0) (+x 2.0))
+           (boxes (diff 1.0) (pt -10.0 -22.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt -10.0 -16.0) (+x 2.0))
+           (boxes (diff 6.0) (pt -10.0 -13.0) (+x 2.0))
+           (boxes (diff 1.0) (pt -10.0 -9.5) (+x 2.0))
+           (boxes (diff 6.0) (pt -10.0 -7.0) (+x 4.0))
+
+	   (set-the' v-pitch 43)
+	   (set-the' h-pitch 14)
+           (boxes (diff 16.0) (pt -7.0 -33.0) (+x 8.0))
+           (boxes (diff 8.0) (pt -5.0 -7.0) (+x 6.0))
+	   (boxes (diff 6.0) (pt -6.0 -7.0) (+x 2.0))
+	   (boxes (poly 2) (pt -4 -43) (Y -23))
+	   (set-the' input (pt -4 -43))
+
+	   (boxes (poly 2) (pt -3 -21) (Y 0))
+	   (boxes (poly 2) (pt -4 -2) (Y 0))
+	   (set-the' -A *xy)				;inverting output
+
+           (boxes (diff 4.0) (pt -2.0 -34.0) (+x 4.0))
+           (boxes (diff 20.0) (pt -1.0 -16.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt -1.0 -34.0) (+x 2.0)))
+
+(defun xor (a b) (and (or a b) (not (and a b))))
+
+(deflayout ph1-and-not-freeze-gen ()
+	   (set-the' super-b-width 19)
+	   (set-the' not-freeze-width 13)
+	   (set-the' v-pitch 50)
+	   (set-the' h-pitch (+ (the super-b-width) (the not-freeze-width)))
+	   (set-the' gnd-height 30)
+	   (set-the 'gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the h-pitch))))
+
+	   (set-the' ph1-in-height 23)
+	   (set-the 'ph1-in (wire (metal 4) (pt 0 (the ph1-in-height))
+				  (X (the h-pitch))))
+	   (set-the' vdd-height 2)
+	   (set-the 'vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+	   	   
+	   (set-the' vdd-contact (pt 7 (the vdd-height)))
+	   (contact H diff (the vdd-contact))
+
+	   (set-the' q1-pullup-contact (pt 5 13))
+	   (call 'butting-contact '() 'rot '(0 1) 'trans (the q1-pullup-contact))
+	   (call 'general-pullup '(5 2) 'trans (pt 7 5))
+
+	   (set-the' q1-ph1 (pt 12 (the ph1-in-height)))
+	   (call 'pass-transistor '(2 6) 'trans (the q1-ph1))
+	   
+;	   (set-the' ph1-contact (pt (the h-pitch) (the ph1-in-height)))
+;	   (contact S poly (the ph1-contact))
+
+	   (set-the' gnd-contact (pt 11 (the gnd-height)))
+	   (contact H diff (the gnd-contact))
+	   (boxes (diff 6) (pt 12 (the-y q1-pullup-contact)) (Y (the gnd-height)))
+	   (boxes (diff 4) (pt 6 (the gnd-height)) (+X 11))
+	   (boxes (diff 4) (the q1-pullup-contact) (+X 10))
+	   
+
+	   (set-the' q2-height 34)	   
+	   (set-the' q2-1 (pt 8 (the q2-height)))
+	   (call 'pass-transistor '(2 4) 'trans (the q2-1))
+	   (set-the' q2-2 (pt 14.5 (the q2-height)))
+	   (call 'pass-transistor '(2 3) 'trans (the q2-2))
+	   (boxes poly (pt 3 (+ (the q2-height) 1)) (Y 5))
+
+	   (set-the' output-contact (pt 7 39))
+	   (call 'butting-contact () 'rot '(0 1) 'trans (the output-contact))
+	   
+	   (set-the' q2-2-pullup-contact (pt 15 43))
+	   (call 'butting-contact () 'trans (the q2-2-pullup-contact))
+	   (call 'general-pullup '(6 2) 'trans (the q2-2-pullup-contact))
+
+	   (set-the 'q2-1-pullup (pt 8.5 (the-y q2-2-pullup-contact)))
+	   (call 'general-pullup '(6 3) 'trans (the q2-1-pullup))
+	   
+	   (boxes (diff 3) (the q2-1-pullup) (Y (the-y q2-1)))
+	   (boxes (diff 3) (the q2-2) (Y (the-y q2-2-pullup-contact)))
+
+	   (set-the' q1-sig (pt 12 17))
+	   (call 'pass-transistor '(2 6) 'trans (the q1-sig))
+
+	   (set-the' sig-x (- (the super-b-width) 2))
+	   (set-the' sig (wire poly (pt (the sig-x) 0) (Y (+ (the-y q1-sig) 1))))
+
+	   (boxes poly (the output-contact)
+		  (-X 8) (Y (the ph1-in-height)))
+	   (contact s poly *xy)
+
+	   (boxes (diff 4) (pt 7 (+ (the v-pitch) 2)) (+X 9))
+	   (contact h diff (pt (- *x 4) *y))
+
+	   (set-the' g1 (pt (+ 6 (the super-b-width)) (the gnd-height)))
+	   (set-the' v1 (pt (+ 6 (the super-b-width)) (the vdd-height)))
+	   (set-the' pu (pt (+ 6 (the super-b-width)) 14))
+	   (set-the' pd (pt (+ 6 (the super-b-width)) 25))
+
+	   (contact s diff (the g1))
+	   (contact s diff (the v1))
+	   (call 'pullup '(8) 'mirror 'y 'trans (the pu))
+	   (call 'pass-transistor '(2 2) 'trans (the pd))
+
+	   (boxes diff (the g1) (y (the v1)))
+	   
+	   (boxes poly (the q1-ph1) (x (- (the super-b-width) 1))
+		  (-y 2) (x (- (the-x pu) 4)) (Y (- (the-y pu) 2)))
+	   (boxes poly (the pd) (+x 6) (Y 0))
+	   (set-the' freeze-in *XY))
+
+
+(defun out-stuff ()
+       (set-the 'r (call 'complete-registers ()))
+       (set-the 'branch-select (call 'selector '(3)))
+       (set-the 'micro-pc (call 'pc-register '(9)))
+       (set-the 'nano-pc (call 'pc-register '(8)))
+       (uwrite)
+       (let ((^r t) (^w t)) (cifout))
+       (ufile hreg cif))

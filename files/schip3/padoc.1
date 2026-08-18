@@ -1,0 +1,71 @@
+-*- mode: TEXT -*-
+
+PADS
+(total number of pads: 84)
+
+CONTROL OUTPUTS (16)
+(Outputs of control PLA, gated on phi2, * lines are LOAD signals for external registers,
+ thus should be ANDed with phi1 to derive register-latch signals)
+	
+*	READ-MAR
+	READ-MBR
+*	WRITE-MAR
+*	WRITE-MBR
+	SBUS-ERROR-CODE
+	INTERRUPT-NUMBER
+*	SBUS-OUTPUT-CONS
+	SBUS-INPUT-RELOCATE-REQUEST
+	SBUS-INPUT-RELOCATE-VALUE
+*	SBUS-OUTPUT-RELOCATE-REQUEST
+*	SBUS-OUTPUT-RELOCATE-VALUE
+
+	EXTERNAL-INTERRUPT-GRANT
+	CONS-SERVER-INTERRUPT-GRANT
+	DMA-INTERRUPT-GRANT
+
+        CARRY-CHAIN
+
+	HALTED
+
+
+CONTROL INPUTS (7)
+	
+	-MEMORY-DONE			(gated and buffered on phi2)
+
+	RELOCATE-REQUEST-TO-ME		(gated and buffered on phi2)
+	RELOCATE-FROM-ME-ACKNOWLEDGED	(gated and buffered on phi2)
+
+		(these two are disjoined as shown in the diagram
+		 RELOCATE-REQUEST-TO-ME is also an input to the predicate box.)
+
+
+	FREEZE				(gated and buffered on phi2)
+	LOAD-STATE			(gated and buffered on phi2)
+
+	-SOMEBODY-NEEDS-GC
+	-SOMEBODY-ISNT-READY-TO-GC
+		(these are funny as shown in the diagram.)
+
+PAD INPUTS TO PREDICATE BOX (4)
+
+	SBUS-ERROR-FLAG
+	EXTERNAL-INTERRUPT-REQUEST
+	CONS-SERVER-INTERRUPT-REQUEST
+	DMA-INTERRUPT-REQUEST
+
+BUSSES (46)
+(All tri-state)
+	
+	DATA (36)
+	CAR/CDR
+	STATE (9)
+
+OVERHEAD (11)
+
+	VDD (3)
+	VSS (3)				  ;ground
+
+	VBB
+
+	PHI1 (2)
+	PHI2 (2)

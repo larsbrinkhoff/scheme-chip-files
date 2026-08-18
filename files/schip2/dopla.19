@@ -1,0 +1,78 @@
+(load '((schip2) layout))
+(alloc '(list 103000 array 4000 flonum 6000))
+(load '((schip2) librar))
+(load '((schip2) stippl))
+(load '((schip2) mpla))
+(load '((schip2) mplap))
+
+(DEFPROP TIMESTAMP |DSK:LIBLSP;PHSPRT FASL| AUTOLOAD)
+
+;DO-PLAS -- Process PLA files. (do-plas pla-out-file-name pla-list)
+;Each entry in pla-list is of the form:
+;   (<pla-input-file> <mesh spacing> <pwr/gnd width> <folding option>)
+;Reads the file <pla-input-file> PLA which should contain a series
+; of (MAKE-PLA name #ands #ors #lines input-fields output-fields . program)
+;Writes the following files:
+;    <pla-input-file> CIF	;The flashes and structure for PLAs in input-file
+;    <pla-out-file> SPECS	;Record of PLA assembly
+
+
+;Format of MAKE-PLA
+; name - symbolic cell name for PLA flashes
+; #ands #ors #lines - must agree with pla-program
+; input-fields output-fields - two lists of field specifications
+; program - ((state state-mask) (symbolic state) output (symbolic output))
+;
+; Field specifications:
+;Field spec is of form:
+;	(FIELD number (name type width position gating))
+;   i.e.(FIELD 002 (nano-run BIT 1 1 UN-CLOCKED))
+; number - a comment, ignored, a word with ones in this field
+; name - name of this bit or field, ignored except appears in CIF output
+; type - {BIT, BIT-REVERSE, NUMBER}
+; width - # of bits in field (Must be 1 for BIT type)
+; position - position of field (Must be in order starting from 0, for now)
+; gating - The name of the clock signal PH1 or PH2, or UN-CLOCKED.
+
+; gating is the name of the output clock signal (usually PH2)
+; or "un-clocked" or nil which means no different from previous field.
+; assumes field specs are LSB - MSB, where 
+; LSB of the AND input is farthest from the AND/OR boundary.
+; LSB of the OR outputs is closest to the AND/OR boundary.
+
+;The program is a list of implicants in the form of:
+; ((STATE STATE-MASK) (SYMBOLIC STATE) OUTPUT (SYMBOLIC OUTPUT))
+; where the input into the AND array is specified by (STATE STATE-MASK).
+; Those bits of the AND input that are don't-cares are zero in the STATE-MASK.
+; The OUTPUT value is what is programmed into the OR side of this term.
+; (For now, the symbolic state and output are ignored, and are there for comments only.)
+
+; For an example of use, see SCHIP2;CONTRL PLA
+
+(declare (special *lambda-size *initial-symbol-number))
+
+(defun do-PLA (&rest pla-list)
+  (let ((*specs (open (mergef '((DSK *) * SPECS) (car pla-list)) '(out ascii)))
+	(*pla-symbol-number* *initial-symbol-number)
+	(*lambda-size))
+       (format t '|~%How many microns per Lambda? |)
+       (setq *lambda-size (fix (times (read) 100.)))
+       (let ((outfiles (cons *specs outfiles))
+	     (^R t))
+	    (terpri)
+	    (format t '|~%;This is the PLA construction for ~S|
+		    (probef (mergef '((* *) * PLA) (first pla-list))))
+	    (timestamp)
+	    (terpri)
+	    (apply 'read-pla pla-list))
+       (close *specs)))
+
+;(defprop micro-pla state-0 folded)
+;(defprop nano-pla nil folded)
+
+;Do the SCHIP2 PLAs into a file PLA CIF
+(defun do-schip ()
+   (do-pla 'micro 10. 20. 'state-0)
+   (do-pla 'nano 9. 20. nil)
+   (do-pla 'contrl 99. 8. nil))
+

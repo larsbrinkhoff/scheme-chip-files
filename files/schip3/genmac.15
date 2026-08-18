@@ -1,0 +1,488 @@
+
+;;; -*-LISP-*-  SCHEME chip simulator -- RMS, GJS
+
+(DECLARE (MACROS T))
+
+;;; The SCHEME virtual machine is composed of a set of registers with
+;;; associated stacks (RACKS), other registers, and a controller.  The following allows
+;;; one to set up the registers.
+
+
+(DECLARE (SPECIAL REG-NUMBER *REG-STATS?))
+
+(DEFMACRO DEFREG (NAME TYPE FIELD-TYPE)
+  `(EVAL-WHEN (COMPILE EVAL LOAD)
+     (PUTPROP NAME REG-NUMBER 'REG-NUMBER)
+     (PUTPROP NAME TYPE 'REG-TYPE)
+     (PUTPROP NAME FIELD-TYPE 'FIELD-TYPE)
+     (AND (GET TYPE 'DEFINE)
+	  (FUNCALL (GET TYPE 'DEFINE) NAME TYPE FIELD-TYPE))
+     (SETQ REG-NUMBER (1+ REG-NUMBER))))
+
+
+;;; Register primitive operations are generic on reg type.
+
+(DEFMACRO FETCH-PREPARATION (REGNAME)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'FETCH-PREPARATION)
+	       (ERROR "Unknown reg type -- FETCH-PREPARATION" REGNAME))
+	   REGNAME))
+
+(DEFMACRO ASSIGN-PREPARATION (REGNAME EXP)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'ASSIGN-PREPARATION)
+	       (ERROR "Unknown reg type -- ASSIGN-PREPARATION" REGNAME))	       
+	   REGNAME
+	   EXP))
+
+(DEFMACRO SAVE (REGNAME)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'SAVE)
+	       (ERROR "Unknown reg type -- SAVE" REGNAME))
+	   REGNAME))
+
+(DEFMACRO RESTORE (REGNAME)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'RESTORE)
+	       (ERROR "Unknown reg type -- RESTORE" REGNAME))
+	   REGNAME))
+
+
+(DEFMACRO GET-STATE (REGNAME)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'GET-STATE)
+	       (ERROR "Unknown reg type -- GET-STATE" REGNAME))
+	   REGNAME))
+
+(DEFMACRO SET-STATE (REGNAME STATE)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'SET-STATE)
+	       (ERROR "Unknown reg type -- SET-STATE" REGNAME))
+	   REGNAME
+	   STATE))
+
+(DEFMACRO DUPLICATE (REG) `(SAVE ,REG))
+
+(DEFMACRO SAVE-AFTER-ASSIGN (REG ASSIGNMENT)
+  `(PROGN ,ASSIGNMENT
+	  (SAVE ,REG)))
+
+(DEFMACRO ASSIGN-AFTER-RESTORE (REG ASSIGNMENT)
+  `(PROGN (RESTORE ,REG)
+	  ,ASSIGNMENT))
+
+(DEFMACRO FETCH (SOURCE)
+  (COND ((SYMBOLP SOURCE)
+	 (COND ((GET (GET SOURCE 'REG-TYPE) 'FETCH)
+		(FUNCALL (GET (GET SOURCE 'REG-TYPE) 'FETCH) SOURCE))
+	       (T
+		`(PROGN (FETCH-PREPARATION ,SOURCE)
+			(READ-REG ,SOURCE)))))
+	((EQ (CAR SOURCE) 'BITVEC)
+	 `(CONS ',(CADR SOURCE)
+		(EXTRACT-FIELD ,(LET ((TEM (APPEND (CDR SOURCE) NIL)))
+				  (RPLACA (LAST TEM) (FIELD-TYPE SOURCE))
+				  TEM)
+			       (CDR (FETCH ,(CAR (LAST SOURCE)))))))
+	((EQ (CAR SOURCE) 'SUBPART)
+	 (LET ((PARTNAME (CDR (ASSQ (CADR SOURCE) (GET (CADDR SOURCE) 'PARTS)))))
+	   (OR PARTNAME (ERROR "Undefined SUBPART - FETCH" SOURCE))
+	   `(FETCH ,PARTNAME)))
+	(T (ERROR "Undefined source type - FETCH" SOURCE))))
+
+(DEFMACRO ASSIGN (DEST VALUE)
+  (LET ((NEWVAL (PROCESS-POSSIBLE-MICROFUN-CALL VALUE DEST)))
+    (COND ((NEQ NEWVAL VALUE)
+	   (OR (SYMBOLP DEST)
+	       (ERROR "Assignment of microfun result to subpart or bitvec" (LIST DEST VALUE)))
+	   `(PROGN (ASSIGN-PREPARATION ,DEST)
+		   ,NEWVAL))
+	  ((SYMBOLP DEST)
+	   (COND ((GET (GET DEST 'REG-TYPE) 'ASSIGN)
+		  (FUNCALL (GET (GET DEST 'REG-TYPE) 'ASSIGN) DEST VALUE))
+		 (T
+		  `(PROGN (ASSIGN-PREPARATION ,DEST)
+			  (LOAD-REG ,DEST ,VALUE)))))
+	  ((EQ (CAR DEST) 'BITVEC)
+	   (LET ((TEM (APPEND (CDR DEST) NIL)))
+	     (RPLACA (LAST TEM) (FIELD-TYPE DEST))
+	     `(ASSIGN ,(CAR (LAST DEST))
+		      (CONS ',(CADR DEST) (MODIFY-FIELD ,TEM (CDR (FETCH ,(CAR (LAST DEST))))
+							,VALUE))))
+	  ((EQ (CAR DEST) 'SUBPART)
+	   (LET ((PARTNAME (CDR (ASSQ (CADR DEST) (GET (CADDR DEST) 'PARTS)))))
+	     (OR PARTNAME (ERROR "Undefined SUBPART - ASSIGN" DEST))
+	     `(ASSIGN ,PARTNAME ,VALUE)))
+	  (T (ERROR "Undefined dest type - ASSIGN" DEST)))))
+
+(EVAL-WHEN (EVAL COMPILE LOAD)
+
+
+
+;;; Simple register primitives.
+
+(DEFUN (SIMPLE-REGISTER FETCH-PREPARATION) (R)
+       NIL)
+
+(DEFUN (SIMPLE-REGISTER ASSIGN-PREPARATION) (R V)
+       NIL)
+
+
+;;; Rack primitives.
+
+(DEFUN (RACK-STACK FETCH) (REG)
+  `(READ-STACK ,(GET REG 'BUFFER)))
+
+(DEFUN (RACK-STACK ASSIGN) (REG VALUE)
+  `(LOAD-STACK ,(GET REG 'BUFFER) ,VALUE))
+
+;;; Push optimizer primitives.
+
+(DEFUN (PUSH-OPTIMIZER DEFINE) (NAME TYPE FIELD-TYPE)
+  (LET ((STACK-NAME (IMPLODE (APPEND (EXPLODE NAME) '(- S T A C K)))))
+    (EVAL `(DEFREG ,STACK-NAME RACK-STACK WORD))
+    (PUTPROP NAME `((STACK . ,STACK-NAME) (BUFFER . ,NAME)) 'PARTS)
+    (PUTPROP STACK-NAME NAME 'BUFFER)))
+
+(DEFUN (PUSH-OPTIMIZER FETCH-PREPARATION) (R)
+       NIL)
+
+(DEFUN (PUSH-OPTIMIZER ASSIGN-PREPARATION) (R V)
+       `(COND ((NOT (FREE-RACK? ,R))
+	       (PUSH-RACK ,R)
+	       (FREE-RACK! ,R))))
+
+(DEFUN (PUSH-OPTIMIZER SAVE) (R)
+       `(COND ((NOT (FREE-RACK? ,R))
+	       (PUSH-RACK ,R))
+	      (T (MARK-SAVED! ,R))))
+
+(DEFUN (PUSH-OPTIMIZER RESTORE) (R)
+       `(COND ((FREE-RACK? ,R)
+	       (POP-RACK ,R))
+	      (T (FREE-RACK! ,R))))
+
+
+
+(DEFUN (PUSH-OPTIMIZER GET-STATE) (R)
+       `(PROG2 (PROGN (SAVE ,R)
+		      (ASSIGN ,R NIL))
+	       (READ-STACK ,R)
+	       (RESTORE ,R)))
+
+(DEFUN (PUSH-OPTIMIZER SET-STATE) (R S)
+       `(PROGN (LOAD-STACK ,R ,S)
+	       (FREE-RACK! ,R)
+	       (RESTORE ,R)))
+
+;;; Push counter primitives.
+
+(DEFUN (PUSH-COUNTER DEFINE) (NAME TYPE FIELD-TYPE)
+  (LET ((STACK-NAME (IMPLODE (APPEND (EXPLODE NAME) '(- S T A C K)))))
+    (EVAL `(DEFREG ,STACK-NAME RACK-STACK WORD))
+    (PUTPROP NAME `((STACK . ,STACK-NAME) (BUFFER . ,NAME)) 'PARTS)
+    (PUTPROP STACK-NAME NAME 'BUFFER)))
+
+(DEFUN (PUSH-COUNTER FETCH-PREPARATION) (R)
+       NIL)
+
+(DEFUN (PUSH-COUNTER ASSIGN-PREPARATION) (R V)
+       `(PROGN (COND ((NOT (ZERO-COUNT? ,R))
+		      (PUSH-RACK ,R)))))
+
+(DEFUN (PUSH-COUNTER SAVE) (R)
+  `(PROGN (INCREMENT-COUNT ,R)
+	  (COND ((RACK-COUNT-FULL? ,R) (ASSIGN-PREPARATION ,R)))))
+
+(DEFUN (PUSH-COUNTER RESTORE) (R)
+       `(PROGN (COND ((ZERO-COUNT? ,R)
+		      (POP-RACK ,R)))
+	       (DECREMENT-COUNT ,R)))
+
+(DEFUN (PUSH-COUNTER GET-STATE) (R)
+       `(PROG2 (PROGN (SAVE ,R)
+		      (ASSIGN ,R NIL))
+	       (READ-STACK ,R)
+	       (RESTORE ,R)))
+
+(DEFUN (PUSH-COUNTER SET-STATE) (R S)
+       `(PROGN (LOAD-STACK ,R ,S)
+	       (RESTORE ,R)))
+)
+
+;;; Abstract register/stack operations implemented in hunks.
+
+(DECLARE (SPECIAL *THE-REGISTERS *THE-STACKS
+		  *PCLSRED-REGISTERS *PCLSRED-STACKS
+		  *FREE-MARKS *RACK-STATS))
+
+(DEFMACRO PUSH-RACK (R)
+  (LET* ((N (GET R 'RACK-NUMBER))
+	 (P `(LOAD-STACK ,R (PCONS (READ-REG ,R) (READ-STACK ,R)))))
+	(COND (*RACK-STATS?
+	       `(PROGN (RPLACX ,N *RACK-STATS (1+ (CXR ,N *RACK-STATS)))
+		       ,P))
+	      (T P))))
+
+(DEFMACRO POP-RACK (R)
+  `(PROGN (LOAD-REG ,R (LEFT (READ-STACK ,R)))
+	  (LOAD-STACK ,R (RIGHT (READ-STACK ,R)))))
+
+(DEFMACRO ZERO-COUNT? (R)
+  `(=? 0 (FETCH (BITVEC COUNT TYPE (SUBPART ,R STACK)))))
+
+(DEFMACRO INCREMENT-COUNT (R)
+  `(ASSIGN (BITVEC COUNT TYPE (SUBPART ,R STACK))
+	   (ADD-1-TO-COUNT (BITVEC COUNT TYPE (SUBPART ,R STACK)))))
+
+(DEFMACRO DECREMENT-COUNT (R)
+  `(ASSIGN (BITVEC COUNT TYPE (SUBPART ,R STACK))
+	   (SUBTRACT-1-FROM-COUNT (BITVEC COUNT TYPE (SUBPART ,R STACK)))))
+
+(EVAL-WHEN (EVAL COMPILE LOAD)
+	   (SETQ REG-NUMBER 0))
+
+(SETQ *REG-STATS? NIL)
+
+;;; The SCHEME virtual machine defines the following basic racks.
+
+;;; These registers need stacks to back them up.
+
+(DEFREG CONT PUSH-OPTIMIZER WORD)
+(DEFREG THARG PUSH-OPTIMIZER WORD)
+(DEFREG ENV PUSH-COUNTER WORD)
+
+;;; These registers need no stacks.
+
+(DEFREG EXP SIMPLE-REGISTER WORD)
+(DEFREG VAL SIMPLE-REGISTER WORD)
+
+;;; The controller part of the virtual machine is implemented in LISP below.
+
+;;; Virtual machine PCs are defined with the following macro, which assumes
+;;; that DEFPC is appropriately defined for the application program (e.g.
+;;; simulator, compiler), and builds and returns the actual code which is
+;;; required, as well as performing any desired side-effects.
+
+;;; A fundamental question not yet addressed is at what level the multiply-
+;;; named PC will share its code!  This can perhaps be ignored due to the
+;;; size of the shared code pieces in this particular microcode, however
+;;; it is a useful enough construct that it might be fruitful to explore
+;;; it more thoroughly.
+
+(DEFMACRO DEFPC (CNAMES . BODY)
+  (IF (ATOM CNAMES) (DEFPC-BUILDER CNAMES BODY)
+      `(PROGN 'COMPILE
+	      ,@(MAPCAR (FUNCTION (LAMBDA (**CNAME)
+					  (DEFPC-BUILDER **CNAME BODY)))
+			CNAMES))))
+
+;; These are the dispatch arrays that map machine data type numbers
+;; into symbolic PCs.  There is one for each purpose of dispatch.
+
+(EVAL-WHEN (COMPILE EVAL)
+  (SETQ USER-TYPE (*ARRAY NIL T 64.))
+  (SETQ EXTRA-TYPE-CONT (*ARRAY NIL T 64.))
+  (DO ((CODE 0 (1+ CODE)))				;initialize for allocator.
+      ((= 64. CODE) NIL)
+      (ASET NIL USER-TYPE CODE)
+      (ASET NIL EXTRA-TYPE-CONT CODE)))
+
+(IF-FOR-MACLISP
+  (DEFMACRO ASET (VAL ARRAY IDX)
+    `(STORE (ARRAYCALL T ,ARRAY ,IDX) VAL))
+
+  (DEFMACRO AREF (ARRAY IDX)
+    `(ARRAYCALL T ,ARRAY ,IDX)))
+
+;;; Virtual machine PCs which are the targets of a dispatch are defined with:
+
+(DEFMACRO DEFDISPATCH (CNAMES DATA-TYPE PURPOSE . BODY)
+  (OR (LISTP PURPOSE) (SETQ PURPOSE (LIST PURPOSE)))
+  (IF (ATOM CNAMES) (DEFDISPATCH-BUILDER CNAMES DATA-TYPE NIL PURPOSE BODY)
+      `(PROGN 'COMPILE
+	      ,@(DEFDISPATCH-1 CNAMES DATA-TYPE PURPOSE BODY))))
+
+(DEFUN DEFDISPATCH-1 (CNAMES DATA-TYPE PURPOSE BODY)
+  (COND ((NULL CNAMES) NIL)
+	((ATOM CNAMES) (ERROR "CDR of name-list not null in DEFDISPATCH" CNAMES))
+	((ATOM (CAR CNAMES))
+	 (CONS (DEFDISPATCH-BUILDER (CAR CNAMES) DATA-TYPE NIL PURPOSE BODY)
+	       (DEFDISPATCH-1 (CDR CNAMES) DATA-TYPE PURPOSE BODY)))
+	(T (CONS (DEFDISPATCH-BUILDER (CAAR CNAMES) DATA-TYPE (CADAR CNAMES) PURPOSE BODY)
+		 (DEFDISPATCH-1 (CDR CNAMES) DATA-TYPE PURPOSE BODY)))))
+
+;;; This simple-minded strategy works only by ignoring type-code preferences.
+;;; The actual allocation strategy will be much more complex.
+
+(DEFUN DEFDISPATCH-BUILDER (CNAME DATA-TYPE PREFERRED-SLOT PURPOSES BODY)
+  (LET ((FNAME (MAKNAM (APPEND (EXPLODEC CNAME) '(- P C))))
+	(CODE (ALLOCATE-TYPE-CODE DATA-TYPE PURPOSES)))
+       `(PROGN 'COMPILE
+	       (DEFPC-BUILDER ,FNAME ,BODY)
+	       (MAPC (FUNCTION (LAMBDA (**PURPOSE)
+				       (INTERN-TYPE-CODE FNAME **PURPOSE CODE)))
+		     PURPOSES)
+	       (SETQ ,CNAME (CONS 'TYPE ,CODE)))))
+
+(DEFUN INTERN-TYPE-CODE (FNAME PURPOSE CODE)
+  (ASET FNAME **PURPOSE CODE)
+  (PUTPROP FNAME CODE **PURPOSE))
+
+(DEFMACRO DISPATCH (REG PURPOSE)
+  `(GOTO (AREF ',PURPOSE (CDR (BITVEC DATA-TYPE ,REG)))))
+
+(DEFMACRO GOTO (PC)
+  `(RETURN (CALL-PC ,PC)))
+
+(DEFMACRO URETURN (&OPTIONAL VALUE)
+  (COND (VALUE `(PROGN (ASSIGN TARGET ,VALUE)
+		       (URETURN)))
+	(T `(RETURN NIL))))
+
+;defmicrofuns.
+
+(eval-when (compile eval load)
+  (defun (arg-register fetch-preparation) (reg) nil)
+
+  (defun (arg-register assign-preparation) (reg) nil))
+
+(defreg target arg-register word)
+(defreg arg1 arg-register word)
+(defreg arg2 arg-register word)
+
+(setq used-temps 0)
+(declare (special used-temps))
+(setq last-temp 0)
+(declare (special last-temp))
+(setq temp-regs '(temp-reg-0 temp-reg-1 temp-reg-2 temp-reg-3 temp-reg-4))
+(declare (special temp-regs))
+
+(defreg temp-reg-0 simple-register word)
+(defreg temp-reg-1 simple-register word)
+(defreg temp-reg-2 simple-register word)
+(defreg temp-reg-3 simple-register word)
+(defreg temp-reg-4 simple-register word)
+
+(eval-when (compile eval load)
+;; Given an expression, if it is not a call to a microfun, return it.
+;; Otherwise replace it with a ucall-value and supply either
+;; the target which is our argument, or, if that is nil, the next temp register.
+(defun process-possible-microfun-call (call target)
+  (cond ((not (listp call)) call)
+	((not (get (car call) 'microfun)) call)
+	(target (list* 'ucall-value target call))
+	(t `(ucall-value ,(next-temp) . ,call)))))
+
+(eval-when (compile eval load)
+(defun next-temp ()
+  (setq last-temp (max last-temp used-temps))
+  (or (nth used-temps temp-regs)
+      (error "Ran out of temp registers"))))
+
+(declare (special target-stack arg1-stack arg2-stack))
+(setq target-stack nil arg1-stack nil arg2-stack nil)
+(declare (special arg-expressions)
+(eval-when (compile eval) (setq arg-expressions nil))
+
+;;; ?????
+
+(defmacro ucall (pc &optional arg1 arg2)
+  (or (= (or (get microsubr 'nargs) 0) (cond (arg2 2) (arg1 1) (t 0)))
+      (error "Wrong number of arguments to microsubr" (list microsubr arg1 arg2)))
+  (let ((used-temps used-temps))
+    `(progn ,(process-arg 'arg1)
+	    ,(process-arg 'arg2)
+	    ,(and arg1 (record-arg arg1)
+		  `(push ',(cadr arg1) arg1-stack))
+	    ,(and arg2 (record-arg arg2)
+		  `(push ',(cadr arg2) arg2-stack))
+	    (call-pc ,microfun)
+	    ,(and arg1 '(pop arg1-stack))
+	    ,(and arg2 '(pop arg2-stack)))))
+
+;;; ?????
+
+(defmacro ucall-value (target microfun &optional arg1 arg2)
+  (record-arg target)
+  (or (= (get microfun 'nargs) (cond (arg2 2) (arg1 1) (t 0)))
+      (error "Wrong number of arguments to microfun" (list microfun arg1 arg2)))
+  (let ((used-temps used-temps))
+    `(progn ,(process-arg 'arg1)
+	    ,(process-arg 'arg2)
+	    (push ',target target-stack)
+	    ,(and arg1 (record-arg arg1)
+		  `(push ',(cadr arg1) arg1-stack))
+	    ,(and arg2 (record-arg arg2)
+		  `(push ',(cadr arg2) arg2-stack))
+	    (ucall ,microfun)
+	    (pop target-stack)
+	    ,(and arg1 '(pop arg1-stack))
+	    ,(and arg2 '(pop arg2-stack)))))
+
+;; Check an argument to a microfun to see if it is another microfun call.
+;; If so, set the arg name's value to a fetch of a suitable temp register,
+;; and return code to compute the arg and at run time put it in that temp.
+(eval-when (compile eval load)
+  (defun process-arg (argname)
+    (let ((argexp (process-possible-microfun-call (symeval argname) nil)))
+      (cond ((eq argexp (symeval argname))
+	     (or (eq (car argexp) 'fetch)
+		 (error "Unhandleable argument to microfun" argexp))
+	     (and (memq (get (cadr argexp) 'reg-type) '(push-optimizer push-counter))
+		  `(assign-preparation ,(cadr argexp))))
+	    (t (set argname `(fetch ,(next-temp)))
+	       (setq used-temps (1+ used-temps))
+	       argexp)))))
+
+(eval-when (compile eval load)
+;; Accumulate list of all argument expressions that we put on the stack.
+(defun record-arg (arg)
+  (push arg arg-expressions)
+  arg))
+
+(defmacro defmicrofun (function args targetname &rest body)
+  (let ((pc-name (implode (append (explode function) '(- P C))))
+	internal-defpcs)
+    (and (> (length args) 2) (error "Too many args to microfun" (cons function args)))
+    (setq body (sublis (cons (cons targetname 'target) (mapcar 'cons args '(arg1 arg2)))
+		       (append body nil)))
+    (do ((elts body (cdr elts))) ((null elts))
+      (cond ((eq (caar elts) 'defpc)
+	     (push (car elts) internal-defpcs)
+	     (setq body (delq (car elts) body)))))      
+    `(progn 'compile
+	    ,@internal-defpcs
+	    (defpc ,pc-name . ,body)
+	    (defprop function pc-name microfun)
+	    (defprop function ,(length args) nargs))))
+
+(defmacro defmicrosubr (function args &rest body)
+  (let (internal-defpcs)
+    (and (> (length args) 2) (error "Too many args to microsubr" (cons function args)))
+    (setq body (sublis (mapcar 'cons args '(arg1 arg2))
+		       (append body nil)))
+    (do ((elts body (cdr elts))) ((null elts))
+      (cond ((eq (caar elts) 'defpc)
+	     (push (car elts) internal-defpcs)
+	     (setq body (delq (car elts) body)))))      
+    `(progn 'compile
+	    ,@internal-defpcs
+	    (defpc ,function . ,body)
+	    (defprop function ,(length args) nargs))))
+
+(DEFUN SAVE-STATE ()
+  (SAME-CYCLE (PCLSR-SAVE ENV)
+	      (PCLSR-SAVE CONT)
+	      (PCLSR-SAVE THARGS)
+	      (PCLSR-SAVE VAL)
+	      (PCLSR-SAVE EXP)
+
+	      (PCLSR-SAVE-STACK ENV)
+	      (PCLSR-SAVE-STACK CONT)
+	      (PCLSR-SAVE-STACK THARGS)))
+
+(DEFUN RESTORE-STATE ()
+  (SAME-CYCLE (PCLSR-RESTORE ENV)
+	      (PCLSR-RESTORE CONT)
+	      (PCLSR-RESTORE THARGS)
+	      (PCLSR-RESTORE VAL)
+	      (PCLSR-RESTORE EXP)
+
+	      (PCLSR-RESTORE-STACK ENV)
+	      (PCLSR-RESTORE-STACK CONT)
+	      (PCLSR-RESTORE-STACK THARGS)))

@@ -1,0 +1,80 @@
+.xgp
+.font 0 33fr
+.font 1 40vg
+.nofill
+.center
+1SCHEME Interpreter Chip*
+.sp 2
+.center
+by
+.sp
+.center
+Gerald Jay Sussman
+.sp
+.center
+Jack Holloway
+.sp
+.center
+Guy Lewis Steele Jr.
+.sp
+.center
+MIT Artificial Intelligence Laboratory
+.sp 2
+.center
+and Alan Bell
+.sp
+.center
+XEROX Palo Alto Research Center
+.page
+(define (read-eval-print-loop)
+	(terpri)
+	(princ '|==> |)
+	(compile-to-++ (read))
+	(aset '** (++))
+	(print **)
+	(read-eval-print-loop))
+
+(#CLOSURE
+ (#PROCEDURE
+  (#SEQUENCE
+   (#APPLY-NO-ARGS (#GLOBAL TERPRI) NIL)
+   (#SEQUENCE
+    (#APPLY-1-ARG (#SELF-EVALUATING-IMMEDIATE |==> |)
+		  (#GLOBAL PRINC))
+    (#SEQUENCE
+     (#APPLY-1-ARG (#APPLY-NO-ARGS (#GLOBAL READ) NIL)
+		   (#GLOBAL COMPILE-TO-++))
+     (#SEQUENCE
+      (#SEQUENCE (#APPLY-NO-ARGS (#GLOBAL ++) NIL)
+		 (#SET-GLOBAL **))
+      (#SEQUENCE
+       (#APPLY-1-ARG (#GLOBAL **) (#GLOBAL PRINT))
+       (#APPLY-NO-ARGS (#GLOBAL READ-EVAL-PRINT-LOOP)
+		       NIL))))))
+  (#SYMBOL READ-EVAL-PRINT-LOOP))
+ NIL)
+.page
+(define (app x y)
+	(cond ((eq x 'nil) y)
+	      (t (cons (car x)
+		       (app (cdr x) y)))))
+
+(#CLOSURE
+ (#PROCEDURE
+  (#SEQUENCE
+   (#FIRST-ARGUMENT (#LOCAL (0 . 0))
+    (#PRIMITIVE-APPLY-2 (#SELF-EVALUATING-IMMEDIATE NIL)
+			(#PRIMITIVE-EQ NIL)))
+   (#CONDITIONAL (#LOCAL (0 . 1)) 
+		 (#FIRST-ARGUMENT
+		  (#PRIMITIVE-APPLY-1 (#LOCAL (0 . 0))
+				      (#PRIMITIVE-CAR NIL)) 
+		  (#PRIMITIVE-APPLY-2
+		   (#FIRST-ARGUMENT
+		    (#PRIMITIVE-APPLY-1 (#LOCAL (0 . 0))
+					(#PRIMITIVE-CDR NIL))
+		    (#LAST-ARGUMENT (#LOCAL (0 . 1))
+				    (#GLOBAL APP)))
+		   (#PRIMITIVE-CONS NIL)))))
+  NIL)
+ NIL) 

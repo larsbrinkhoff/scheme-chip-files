@@ -1,0 +1,12 @@
+;;;-*- Mode:Lisp; Base:10.;package:user -*-
+;;This initializes the LAYOUT package for the LISP machine.
+;;made by batali
+
+(PACKAGE-DECLARE LAYOUT GLOBAL 1000
+		 (("SCHIP2;LDEFS QFASL" DEFS)	;MUST BE LOADED FIRST
+		  ("SCHIP2;LAYOUT QFASL")
+		  ("BATALI;STOOP QFASL")
+		  ("NLM;LMSTIP QFASL")
+		  ("H;CIFTRN QFASL")		;TRANSLATE CIF TO ISIS LAYOUT
+		  ("NLM;BCELLS QFASL"))
+		 (SHADOW CALL CLR CLC CLEAN SAVE-SCREEN RESTORE-SCREEN))

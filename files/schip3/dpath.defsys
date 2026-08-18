@@ -1,0 +1,31 @@
+;;;-*- Mode:Lisp; Base:10.;package:dpl -*-
+
+#+:mit
+(fs:add-logical-pathname-host "datapath" "ai"
+			      '(("dpl" "dpl;") ("dpl1" "dpl1;")
+				("ic" "ic;")
+				("dpath" "schip3;")
+				("schip3" "schip3;")))
+#+sym
+(fs:add-logical-pathname-host "datapath" "pointer"
+			      '(("dpl" ">dpl>") ("dpl1" ">dpl1>")
+				("ic" ">dpl>dpath>")
+				("dpath" ">dpl>dpath>")
+				("schip3" ">dpl>dpath>")))
+
+(defsystem data-path
+  (:pathname-default "datapath:dpath;")
+  (:package dpl)
+  (:module composer ("ic;dpath"))
+  (:module cells ("nregs" "nndriv"))
+  (:module declarations ("nregspc"))
+  (:module scheme-main-data-path ("regfil"))
+  (:module uargs ("nuargs"))
+  (:compile-load composer)
+  (:readfile cells (:fasload composer))
+  (:readfile declarations (:fasload composer))
+  (:readfile scheme-main-data-path (:fasload composer))
+  (:compile-load uargs (:fasload composer)))
+
+(make-system 'data-path)
+

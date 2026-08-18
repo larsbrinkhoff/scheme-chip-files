@@ -1,0 +1,128 @@
+; -*-LISP-*-
+
+;;; Garbage Collector - Marking Algorithm
+							;??????????? exp not worked out.
+(defptr gc-special ())
+
+(defnptr mark external
+  (set-left (fetch memory-root)
+	    (get-state retpc))
+  (assign node (right (fetch memory-root)))
+  (set-left (fetch node)
+	    (get-state unev))
+  (assign node (right (fetch node)))
+  (set-left (fetch node)
+	    (get-state env))
+  (assign node (right (fetch node)))
+  (set-left (fetch node)
+	    (get-state thargs))
+  (assign trailer (make-pointer gc-special
+				(fetch memory-root)))
+  (assign node (fetch memory-root))
+  (goto trace-car))
+
+(defpc trace-car
+  (assign leader (left (fetch node)))
+  (if (pointer? (fetch leader))
+      (if (in-use? (fetch leader))
+	  (goto trace-cdr)
+	  (block (set-left (fetch node) (fetch trailer))
+		 (mark-in-use (fetch node))
+		 (mark-car-trace (fetch node))
+		 (goto down-trace)))
+      (goto trace-cdr)))
+
+(defpc trace-cdr
+  (mark-in-use (fetch node))
+  (assign leader (right (fetch node)))
+  (if (pointer? (fetch leader))
+      (if (in-use? (fetch leader))
+	  (goto up-trace)
+	  (block (set-right (fetch node) (fetch trailer))
+		 (goto down-trace)))
+      (goto up-trace)))
+
+(defpc down-trace
+  (assign trailer (fetch node))
+  (assign node (fetch leader))
+  (goto trace-car))
+
+(defpc up-trace
+  (if (type=gc-special? (fetch trailer))
+      (goto sweep)
+      (block (assign leader (fetch trailer))
+	     (if (car-trace? (fetch leader))
+		 (block (unmark-car-trace (fetch leader))
+			(assign trailer (left (fetch leader)))
+			(set-left (fetch leader) (fetch node))
+			(assign node (fetch leader))
+			(goto trace-cdr))
+		 (block (assign trailer (right (fetch leader)))
+			(set-right (fetch leader) (fetch node))
+			(assign node (fetch leader))
+			(goto up-trace))))))
+
+;;; Garbage Collector - Sweeping Algorithm
+
+(defpc sweep
+  (assign scan-down (fetch newcell))
+  (assign scan-up (make-pointer gc-special
+				(fetch memory-root)))
+  (goto scan-down-for-thing))
+
+(defpc scan-down-for-thing
+  (decrement-scan-down)
+  (if (scan-up=scan-down?)
+      (goto relocate-pointers)
+      (if (in-use? (fetch scan-down))
+	  (goto scan-up-for-hole)
+	  (goto scan-down-for-thing))))
+
+(defpc scan-up-for-hole
+  (if (in-use? (fetch scan-up))
+      (block (increment-scan-up)
+	     (if (scan-up=scan-down?)
+		 (goto relocate-pointers)
+		 (goto scan-up-for-hole)))
+      (block (set-left (fetch scan-up) (left (fetch scan-down)))
+	     (set-right (fetch scan-up) (right (fetch scan-down)))
+	     (set-left (fetch scan-down) (fetch scan-up))
+	     (mark-in-use (fetch scan-up))
+	     (goto scan-down-for-thing))))
+
+(defpc relocate-pointers
+  (assign temp (left (fetch scan-down)))
+  (if (pointer? (fetch temp))
+      (if (type=gc-special? (left (fetch temp)))
+	  (set-left (fetch scan-down)
+		    (make-pointer (fetch temp)
+				  (left (fetch temp))))
+	  (block))
+      (block))
+  (assign temp (right (fetch scan-down)))
+  (if (pointer? (fetch temp))
+      (if (type=gc-special? (left (fetch temp)))
+	  (set-right (fetch scan-down)
+		     (make-pointer (fetch temp)
+				   (left (fetch temp))))
+	  (block))
+      (block))
+  (unmark-in-use (fetch scan-down))
+  (if (scan-down=memory-root?)
+      (goto gc-done)
+      (block (decrement-scan-down)
+	     (goto relocate-pointers))))
+
+(defpc gc-done
+  (increment-scan-up)
+  (assign newcell (make-pointer self-evaluating-pointer
+				(fetch scan-up)))
+  (set-state retpc (left (fetch memory-root)))
+  (assign node (right (fetch memory-root)))
+  (set-state unev (left (fetch node)))
+  (assign node (right (fetch node)))
+  (set-state env (left (fetch node)))
+  (assign node (right (fetch node)))
+  (set-state thargs (left (fetch node)))
+  (assign val (fetch empty-list))
+  (goto pop-return))

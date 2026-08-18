@@ -1,0 +1,52 @@
+
+RMS@MIT-AI 08/02/80 22:08:24
+I've discovered that it greatly simplifies things
+to say that each arm of an IF must be some kind of goto
+and that's all.  There were only about 3 IFs in the file
+which were not like this already, and I changed them around.
+
+This gets rid of lots of problems.
+One problem is what to do about same-cycling an IF.
+Now, it's clear: the conditional itself happens
+on the same cycle as the other stuff.  This is useful
+because 1) it is now easy to save instructions by
+doing the conditional jump at the same time as something else,
+and 2) the implementation of micropreds is now easy,
+because they just same-cycle the body with the IF itself.
+There were also lots of uses for same-cycling IFs
+aside from just efficiency; for example, in the
+conditional-rack-push, which must do
+(same-cycle (assert (path load rackpc))
+            (if ,condition (goto (literal ...))))
+
+Another problem eliminated is the implementation of
+a hairy IF itself.  IF as restricted now should be
+very easy to implement.
+ 
+RMS@MIT-AI 08/02/80 22:18:33
+The three-way branch in sbus-receive
+(wait, done or error) can now be done
+just by same-cycling two IFs, if we assume
+that the decision to busy-wait overrides
+any other way of loading the new pc.
+    
+RMS@MIT-AI 08/03/80 00:23:36
+Since it is hard to decide what SAME-CYCLE ought
+to mean if given two multi-cycle arguments,
+I've restricted it so that all but the first argument
+have to be single cycle operations.
+Naturally, all uses of SAME-CYCLE already had
+at most one multi-cycle argument.
+So I rearranged the order of args where necessary.
+
+Also, I took a stab at defining the control PLA
+and the connections between it and the control bits
+for the various jumping data paths.
+
+RMS@MIT-AI 08/03/80 01:15:08
+I documented the primitives of the microcode language.
+
+Also, I implemented IF, GOTO, BUSY-WAIT and RETURN!
+The only real primitives left are UCONSTANT, NEXTPC,
+ASSERT, BLOCK and SAME-CYCLE!
+

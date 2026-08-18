@@ -1,0 +1,599 @@
+
+;;; -*-LISP-*-
+(declare (*lexpr concat))
+
+(eval-when (eval compile)
+	   (cond ((status feature lispm) (read))))
+
+(progn 'compile
+
+;Make a variable special and, optionally, initialize it.
+;This is recorded as a definition by TAGS and ZWEI.
+(DEFMACRO DEFVAR (VARIABLE INITIAL-VALUE)
+	  `(PROGN 'COMPILE
+		  (DECLARE (SPECIAL ,VARIABLE))
+		  (OR (BOUNDP ',VARIABLE)
+		      (SETQ ,VARIABLE ,INITIAL-VALUE))))
+
+(defmacro first (x) `(car ,x))
+(defmacro second (x) `(cadr ,x))
+(defmacro third (x) `(caddr ,x))
+(defmacro fourth (x) `(cadddr ,x))
+
+(defmacro if (p c . a) 
+   `(cond (,p ,c)
+	  (t . ,a)))
+
+;MAPC with a prog body instead of a function.  <form> evaluates to a list,
+;and <body> is executed with <var> bound to successive elements of the list.
+(DEFMACRO DOLIST ((VAR FORM) &REST BODY)
+   (LET ((DUMMY (GENSYM))) 
+     `(DO ((,DUMMY ,FORM (CDR ,DUMMY))
+           (,VAR))
+          ((NULL ,DUMMY))
+         (SETQ ,VAR (CAR ,DUMMY))
+         . ,BODY)))
+
+;Repeat a number of times.  <form> evaluates to the number of times,
+;and <body> is executed with <var> bound to 0, 1, ...
+(defmacro dotimes ((var form) &rest body)
+   (let ((dummy (gensym)))
+     `(do ((,var 0 (1+ ,var))
+	   (,dummy ,form))
+	  ((>= ,var ,dummy))
+	. ,body)))
+
+)  ;End of LISPM conditionalization
+
+(defmacro pt (x y) `(list* 'pt ,x ,y))
+(defmacro pt? (x) `(and (not (atom ,x)) (eq (car ,x) 'pt)))
+(defmacro x-of (x) `(cadr ,x))
+(defmacro y-of (y) `(cddr ,y))
+
+
+;window= left, right, bottom, top
+;origin is at lower left so bottom must be a smaller number than top.
+
+(setq base 10. ibase 10.)
+
+(defun stipplize (infile outfile window rotate-p)
+   (let ((left (car window)) (right  (cadr window))
+	 (bottom (caddr window)) (top (cadddr window)))
+	(let ((eof (list nil))
+	      (instream (open infile '(in)))
+	      (a (create-layer-mask-array left right bottom top)))
+	     (do ((box (read instream eof) (read instream eof))) ((eq box eof))
+		 (add-box-to-layer-mask-array a box left right bottom top))
+	     (convert-layer-mask-array a)
+	     (output-stipple-char-array a outfile rotate-p)
+	     (close instream)
+	     a)))
+
+;; Associate each layer in which a box can occur
+;; with a bit to represent that layer in a layer-mask.
+
+(DEFVAR LAYER-ALIST '((IMPLANT 1) (METAL 2.) (DIFF 4.) (POLY 8.) (CUTS 16.)))
+
+(DEFUN CREATE-LAYER-MASK-ARRAY (LEFT RIGHT BOTTOM TOP)
+       (OR (> TOP BOTTOM)
+	   (ERROR '|TOP must be greater than BOTTOM in CREATE-LAYER-MASK-ARRAY|
+		  (LIST TOP BOTTOM)))
+       (OR (< LEFT RIGHT)
+	   (ERROR '|LEFT must be less than RIGHT in CREATE-LAYER-MASK-ARRAY|
+		  (LIST LEFT RIGHT)))
+       (ARRAY layer-mask-array FIXNUM (- RIGHT LEFT) (- TOP BOTTOM)))
+
+(defun fill-layer-mask-array-from-boxlist (array boxlist left right bottom top)
+       (mapc '(lambda (box) (add-box-to-layer-mask-array array box left right bottom top))
+	     boxlist))
+
+;  (let* ((a 3) (b a)) body) --> ((lambda (a) ((lambda (b) body) a)) 3)
+;  Maclisp has this already.
+
+(eval-when (compile eval)
+	   (cond ((status feature maclisp) (read) (read))))
+
+
+(defmacro let* (binding-forms &rest body)
+    (construct-let* (reverse binding-forms) body))
+
+(defun construct-let* (binding-forms body)
+    (cond ((null binding-forms)
+	   (cond ((= (length body) 1) (car body))
+		 (t `(progn . ,body))))
+	  (t (construct-let*
+	      (cdr binding-forms)
+	      (cond
+	       ;;(let* (a b) x) --> ((lambda (a) ((lambda (b) x) nil)) nil)
+	       ((atom (car binding-forms))
+		`(((lambda (,(car binding-forms)) . ,body) nil)))
+	       ;;(let* ((a) (b)) x) --> ((lambda (a) ((lambda (b) x) nil)) nil)
+	       ((null (cdar binding-forms))
+		`(((lambda (,(caar binding-forms)) . ,body) nil)))
+	       ;;(let* ((a 3) (b 4)) x) --> ((lambda (a) ((lambda (b) x) 4)) 3)
+	       (t `(((lambda (,(caar binding-forms)) . ,body)
+		     ,(cadar binding-forms)))))))))
+
+
+
+(defun add-box-to-layer-mask-array (array box left right bottom top)
+  (declare (fixnum i j layer-bit
+		   truncated-left truncated-right truncated-top truncated-bottom))
+  (let ((x1 (FIX (PLUS .5 (SECOND (THIRD BOX)))))
+	(Y1 (FIX (PLUS .5 (CDDR (THIRD BOX)))))
+	(X2 (FIX (PLUS .5 (SECOND (FOURTH BOX)))))
+	(Y2 (FIX (PLUS .5 (CDDR (FOURTH BOX))))))
+    (let ((TRUNCATED-LEFT (- (MAX LEFT (MIN X1 X2)) left))
+	  (TRUNCATED-BOTTOM (- (MAX BOTTOM (MIN Y1 Y2)) bottom))
+	  (TRUNCATED-RIGHT (- (MIN RIGHT (MAX X1 X2)) left))
+	  (TRUNCATED-TOP (- (MIN TOP (MAX Y1 Y2)) bottom))
+	  (LAYER-BIT (CADR (ASSQ (SECOND BOX) LAYER-ALIST)))
+	  (ap (get array 'array)))
+      (AND (> TRUNCATED-RIGHT TRUNCATED-LEFT)
+	   (> TRUNCATED-TOP TRUNCATED-BOTTOM)
+	   LAYER-BIT
+	   (DO ((I TRUNCATED-LEFT (1+ I)))
+	       ((= I TRUNCATED-RIGHT))
+	     (DO ((J TRUNCATED-BOTTOM (1+ J)))
+		 ((= J TRUNCATED-TOP))
+		 (STORE (arraycall fixnum ap I J)
+			(BOOLE 7. LAYER-BIT (arraycall fixnum ap I J)))))))))
+
+(defun add-internal-box-to-layer-mask-array (array box)
+       (declare (fixnum i j layer-bit))
+       (let ((ap (get array 'array))
+	     (layer-bit (cadr (assq (second box) layer-alist))))
+	    (and layer-bit
+		 (do ((i (fix (plus .5 (second (third box)))) (1+ i)))
+		     ((= i (FIX (PLUS .5 (CDDR (THIRD BOX))))))
+		     (do ((j (FIX (PLUS .5 (SECOND (FOURTH BOX)))) (1+ j)))
+			 ((= j (FIX (PLUS .5 (CDDR (FOURTH BOX))))))
+			 (STORE (arraycall fixnum ap I J)
+				(BOOLE 7. LAYER-BIT (arraycall fixnum ap I J))))))))
+
+(DEFVAR STIPPLE-CHAR-LIST (EXPLODEN '| ABCDEFGHIJKLMNO######################################|))
+
+;; Index this list with a binary number with a bit for each layer
+;; and get out the stipple character that represents that combination of layers
+;; (for use with the special stipple font).
+
+;; Turn a layer mask array into a stipple character array.
+
+(DEFUN CONVERT-LAYER-MASK-ARRAY (ARRAY)
+       (declare (fixnum i j hsize vsize))
+       (LET (TEM
+	     (HSIZE (FIRST (CDR (ARRAYDIMS ARRAY))))
+	     (VSIZE (SECOND (CDR (ARRAYDIMS ARRAY))))
+	     (ap (get array 'array)))
+	    (DO ((I 0 (+ I 1))) ((= I HSIZE))
+		(DO ((J 0 (+ J 1))) ((= J VSIZE))
+		    (SETQ TEM (NTH (arraycall fixnum ap I J) STIPPLE-CHAR-LIST))
+		    (OR TEM (ERROR '|No char for layer combination| (arraycall fixnum ap I J)))
+		    (STORE (arraycall fixnum ap I J) TEM)))
+	    ARRAY))
+
+
+
+(defvar font 'stip20)
+
+(defprop stip6 6 font-size)
+(defprop stip6 |;kset schip2;stip6 kst| font-spec)
+
+(defprop stip12 12. font-size)
+(defprop stip12 |;kset schip2;stip12 kst| font-spec)
+
+(defprop stip20 20. font-size)
+(defprop stip20 |;kset schip2;stip20 kst| font-spec)
+
+(defvar pwinch 8.)
+(defvar dots-per-inch 200.)				;xgp
+(defvar asize 100.)
+
+
+(declare (special *stream))
+
+(defun open-stipple-array-file (filename)
+       (setq *stream (open filename '(out)))
+       (linel *stream 0)
+       (PRINC (get font 'font-spec) *STREAM)
+       (TERPRI *STREAM)
+       (PRINC '|;VSP 0| *STREAM)
+       (TERPRI *STREAM)
+       (PRINC '|;FFCUT 1| *STREAM)
+       (TERPRI *STREAM)
+       (princ '|;LFTMAR 50| *stream)
+       (terpri *stream)
+       (PRINC '|;SKIP 1| *STREAM)
+       (TERPRI *STREAM)
+       (TYO 12. *STREAM))
+
+(defun close-stipple-file ()
+       (close *stream))
+
+(defun new-page ()
+       (terpri *stream)
+       (terpri *stream)
+       (tyo 12. *stream))
+
+(defun output-stipple-array (array rotate-p)
+       (LET ((HSIZE (FIRST (CDR (ARRAYDIMS ARRAY))))
+	     (VSIZE (SECOND (CDR (ARRAYDIMS ARRAY)))))
+	    (cond (rotate-p
+		   (do ((i 0 (+ i 1)))
+		       ((= i hsize))
+		       (do ((j 0 (+ j 1)))
+			   ((= j vsize))
+			   (tyo (funcall array i j) *stream))
+		       (terpri *stream)))
+		  (t
+		   (do ((j (- vsize 1) (- j 1)))
+		       ((< j 0))
+		       (do ((i 0 (+ i 1)))
+			   ((= i hsize))
+			   (tyo (funcall array i j) *stream))
+		       (terpri *stream))))))
+
+(DEFUN OUTPUT-STIPPLE-CHAR-ARRAY (ARRAY FILENAME ROTATE-P)
+       (LET ((STREAM (OPEN FILENAME '(OUT)))
+	     (paper-size (// (* pwinch dots-per-inch) (get font 'font-size)))
+	     (HSIZE (FIRST (CDR (ARRAYDIMS ARRAY))))
+	     (VSIZE (SECOND (CDR (ARRAYDIMS ARRAY)))))
+	    (linel stream 0)
+	    (PRINC (get font 'font-spec) STREAM)
+	    (TERPRI STREAM)
+	    (PRINC '|;VSP 0| STREAM)
+	    (TERPRI STREAM)
+	    (PRINC '|;FFCUT 1| STREAM)
+	    (TERPRI STREAM)
+	    (princ '|;LFTMAR 50| stream)
+	    (terpri stream)
+	    (PRINC '|;SKIP 1| STREAM)
+	    (TERPRI STREAM)
+	    (TYO 12. STREAM)
+	    (COND (ROTATE-P
+		   (do ((lcol 0 rcol)
+			(rcol paper-size (+ rcol paper-size)))
+		       ((> lcol vsize))
+		       (DO ((I 0 (+ I 1)))
+			   ((= I HSIZE))
+			   (DO ((J lcol (+ J 1)))
+			       ((or (= j rcol) (= J VSIZE)))
+			       (TYO (FUNCALL ARRAY I J) STREAM))
+			   (TERPRI STREAM))
+		       (terpri stream)
+		       (terpri stream)
+		       (tyo 12. stream)))
+		  (T
+		   (do ((lcol 0 rcol)
+			(rcol paper-size (+ rcol paper-size)))
+		       ((> lcol hsize))
+		       (DO ((J (1- VSIZE) (1- J))) ((< J 0))
+			   (DO ((I lcol (+ I 1)))
+			       ((or (= I rcol) (= i hsize)))
+			       (TYO (FUNCALL ARRAY I J) STREAM))
+			   (TERPRI STREAM))
+		       (terpri stream)
+		       (terpri stream)
+		       (TYO 12. STREAM))))
+	    (CLOSE STREAM)))
+;;;stipple from layout stuff
+
+;Window = l, r, b, t
+
+(declare (special *left *right *bottom *top *channel))
+
+(defvar *inf 1000000.0)					;a big number
+
+(defun output-boxes (thing window)
+       (let ((*left (first window)) (*right (second window))
+	     (*bottom (third window)) (*top (fourth window)))
+	    (output-boxes-1 thing nil)))
+
+(defun output-boxes-1 (thing xfrms)
+       (let ((b-box (relative-boundary thing)))
+	    (cond ((null b-box) (error '|no bounding box| thing))
+		  ((eq b-box 'empty-object))
+		  (t (let ((nxfrm (compose (get thing 'transform) xfrms)))
+			  (let ((b-box (transform-box b-box nxfrm)))
+			       (let ((right (x-of (fourth b-box)))
+				     (top (y-of (fourth b-box)))
+				     (left (x-of (third b-box)))
+				     (bottom (y-of (third b-box))))
+				    (or (lessp right *left)
+					(lessp top *bottom)
+					(greaterp left *right)
+					(greaterp bottom *top)
+					(and (greaterp left *left)	
+					     (greaterp bottom *bottom)
+					     (lessp top *top)
+					     (lessp right *right)
+					     (output-completely-internal-boxes thing xfrms))
+					(output-boxes-2 thing nxfrm)))))))))
+
+(defun output-boxes-2 (thing xfrms)
+       (mapc '(lambda (box) (funcall *channel (transform-box box xfrms)))
+	     (get-the thing 'boxlist))
+       (mapc '(lambda (part) (output-boxes-1 part xfrms))
+	     (get-the thing 'parts)))
+
+(defun output-completely-internal-boxes (thing xfrms)
+       (let ((nxfrm (compose (get-the thing 'transform) xfrms)))
+	    (mapc '(lambda (box) (funcall *channel (transform-box box nxfrm)))
+		  (get-the thing 'boxlist))
+	    (mapc '(lambda (part) (output-completely-internal-boxes part nxfrm))
+		  (get-the thing 'parts))))
+
+(defun transform-box (box xfrms)
+       `(box ,(second box)
+	     ,(transform (third box) xfrms)
+	     ,(transform (fourth box) xfrms)))
+
+(declare (special stream a left right bottom top *min-x *min-y *max-x *max-y
+		  *stream pwinch dots-per-inch font asize))
+(defun boxes-to-file (thing window filename)
+       (let ((stream (open filename '(out)))
+	     (*channel (function (lambda (box) (print box stream)))))
+	    (output-boxes thing window)
+	    (close stream))
+       'done)
+
+(defun stipple (thing filename bounds rotate-p)
+       (if (eq filename nil)
+	   (setq filename (implode (append (append '(s c h i p /2 /;) 
+						   (list (caar (get thing 'name))))
+					   '(/  x g p))))
+	   nil)
+       (open-stipple-array-file filename)
+       (let ((bound (or bounds (boundaries thing)))
+	     (paper-size (// (* pwinch dots-per-inch) (get font 'font-size))))
+	    (cond (rotate-p
+		   (do ((mtop (fourth bound) (- mtop paper-size)))
+		       ((<= mtop (third bound)) (close-stipple-file))
+		       (do ((mleft (first bound) (+ mleft asize)))
+			   ((>= mleft (second bound)) (new-page))
+			   (let ((a (create-layer-mask-array
+				     mleft 
+				     (min (+ mleft asize) (second bound))
+				     (max (- mtop paper-size) (third bound))
+				     mtop))
+				 (*channel
+				  (function (lambda (box)
+						    (add-box-to-layer-mask-array 
+						     a box *left *right *bottom *top)))))
+				(output-boxes thing (list mleft 
+							  (min (+ mleft asize) (second bound))
+							  (max (- mtop paper-size) (third bound))
+							  mtop))
+				(convert-layer-mask-array a)	
+				(output-stipple-array a t)))))
+		  (t (do ((mright (second bound) (- mright paper-size)))
+			 ((<= mright (first bound)) (close-stipple-file))
+			 (do ((mtop (fourth bound) (- mtop asize)))
+			     ((<= mtop (third bound)) (new-page))
+			     (let ((a (create-layer-mask-array
+				       (max (- mright paper-size) (first bound))
+				       mright
+				       (max (third bound) (- mtop asize))
+				       mtop))
+				   (*channel
+				    (function
+				     (lambda (box)
+					     (add-box-to-layer-mask-array
+					      a box *left *right *bottom *top)))))
+				  (output-boxes thing
+						(list
+						 (max (- mright paper-size) (first bound))	
+						 mright
+						 (max (third bound) (- mtop asize))
+						 mtop))
+				  (convert-layer-mask-array a)	
+				  (output-stipple-array a nil)))))))) 
+
+(defun stipple-to-tv (thing lower-left)
+       (let ((left (first lower-left))
+	     (bottom (second lower-left)))
+	    (let ((a (create-layer-mask-array left
+					      (+ left 92.)
+					      bottom
+					      (+ bottom 76.)))
+		  (*channel (function (lambda (box)
+					      (add-box-to-layer-mask-array a
+									   box
+									   *left
+									   *right	
+									   *bottom
+									   *top)))))
+		 (output-boxes thing `(,left ,(+ left 92.) ,bottom ,(+ bottom 76.)))
+		 (convert-layer-mask-array a)
+		 (display-stipple-array a))))
+	   
+
+
+(defun make-stipple-array (thing window)
+       (let ((left (first window))
+	     (right  (second window))
+	     (bottom (third window))
+	     (top (fourth window)))
+	    (let ((a (create-layer-mask-array left
+					      right
+					      bottom
+					      top))
+		  (*channel (function (lambda (box)
+					      (add-box-to-layer-mask-array a
+									   box
+									   *left
+									   *right	
+									   *bottom
+									   *top)))))
+		 (output-boxes thing window)
+		 (convert-layer-mask-array a))))
+
+
+
+
+(eval-when (compile eval)				
+	   (cond ((status feature maclisp) (read))))
+
+(progn 'compile
+
+       (DEFUN lispm-CONVERT-LAYER-MASK-ARRAY (ARRAY)
+	      (LET (TEM
+		    (HSIZE (FIRST (CDR (ARRAYDIMS ARRAY))))
+		    (VSIZE (SECOND (CDR (ARRAYDIMS ARRAY)))))
+		    (DO ((I 0 (+ I 1))) ((= I HSIZE))
+			(DO ((J 0 (+ J 1))) ((= J VSIZE))
+			    (SETQ TEM (NTH (ar-2 array I J) STIPPLE-CHAR-LIST))	
+			    (OR TEM (ERROR '|No char for layer combination|
+					   (ar-2 array I J)))
+			    (as-2 tem array I J)))
+		    ARRAY))
+
+
+       (DEFUN lispm-CREATE-LAYER-MASK-ARRAY (LEFT RIGHT BOTTOM TOP)
+	      (OR (> TOP BOTTOM)
+		  (ERROR '|TOP must be greater than BOTTOM in CREATE-LAYER-MASK-ARRAY|
+			 (LIST TOP BOTTOM)))		
+	      (OR (< LEFT RIGHT)
+		  (ERROR '|LEFT must be less than RIGHT in CREATE-LAYER-MASK-ARRAY|
+			 (LIST LEFT RIGHT)))
+	      (make-ARRAY nil 'art-8b `(,(- RIGHT LEFT) ,(- TOP BOTTOM))))
+       
+       
+       (defun lispm-add-box-to-layer-mask-array (array box left right bottom top)
+	      (declare (fixnum i j layer-bit
+			       truncated-left truncated-right truncated-top truncated-bottom))
+	      (let* ((x1 (FIX (PLUS .5 (SECOND (THIRD BOX)))))
+		     (Y1 (FIX (PLUS .5 (CDDR (THIRD BOX)))))
+		     (X2 (FIX (PLUS .5 (SECOND (FOURTH BOX)))))
+		     (Y2 (FIX (PLUS .5 (CDDR (FOURTH BOX)))))
+		     (TRUNCATED-LEFT (- (MAX LEFT (MIN X1 X2)) left))
+		     (TRUNCATED-BOTTOM (- (MAX BOTTOM (MIN Y1 Y2)) bottom))
+		     (TRUNCATED-RIGHT (- (MIN RIGHT (MAX X1 X2)) left))
+		     (TRUNCATED-TOP (- (MIN TOP (MAX Y1 Y2)) bottom))
+		     (LAYER-BIT (CADR (ASSQ (SECOND BOX) LAYER-ALIST))))
+		    (AND (> TRUNCATED-RIGHT TRUNCATED-LEFT)
+			 (> TRUNCATED-TOP TRUNCATED-BOTTOM)
+			 LAYER-BIT
+			 (DO ((I TRUNCATED-LEFT (1+ I)))
+			     ((= I TRUNCATED-RIGHT))
+			     (DO ((J TRUNCATED-BOTTOM (1+ J)))
+				 ((= J TRUNCATED-TOP))
+				 (as-2 (BOOLE 7. LAYER-BIT (ar-2 array I J)) i j))))))
+
+       (defun stipple-to-window (thing window rotate-p)
+	      (let ((left (first window)) (right  (second window))
+					  (bottom (third window)) (top (fourth window)))
+		   (let ((a (lispm-create-layer-mask-array left right bottom top))
+			 (*channel (function (lambda (box)
+						     (lispm-add-box-to-layer-mask-array a box
+											*left *right *bottom *top))))
+			 (*stream stipple-stream))
+			(output-boxes thing window)
+			(lispm-convert-layer-mask-array a)
+			(output-stipple-array a rotate-p)
+			a)))
+       )
+
+
+(defun stipple-to-file (thing window filename rotate-p)
+       (let ((left (first window)) (right  (second window))
+	     (bottom (third window)) (top (fourth window)))
+	    (let ((a (create-layer-mask-array left right bottom top))
+		  (*channel (function (lambda (box)
+					 (add-box-to-layer-mask-array a box
+							      *left *right *bottom *top)))))
+		 (output-boxes thing window)
+		 (convert-layer-mask-array a)
+		 (output-stipple-char-array a filename rotate-p)
+		 a)))
+
+
+
+(declare (special *maxx *maxy *minx *miny))
+
+(defun boundary (obj) (relative-boundary obj))		;crock
+
+; relative-boundary returns the boundary of the instance.
+
+(defun relative-boundary (obj)
+       (let ((proto (get obj 'prototype))
+	     (boundary nil))
+	    (cond (proto (prototype-boundary proto))
+		  (t (let ((*maxx (minus *inf))
+			   (*maxy (minus *inf))
+			   (*minx *inf)
+			   (*miny *inf))
+			  (dolist (box (get obj 'boxlist))
+				  (check-bounds (third box))
+				  (check-bounds (fourth box)))
+			  (cond ((equal *minx *inf) 'empty-object)	;Empty obj
+			       (t `(Box Outline
+					,(pt *minx *miny)
+					,(pt *maxx *maxy)))))))))
+
+(defun prototype-boundary (proto)
+       (or (get proto 'boundary)
+	   (let ((*maxx (minus *inf))
+		 (*maxy (minus *inf))
+		 (*minx *inf)
+		 (*miny *inf))
+		(dolist (box (get-the proto 'boxlist))
+			(check-bounds (third box))
+			(check-bounds (fourth box)))
+		(dolist (part (get-the proto 'parts))
+			(let ((b-box (relative-boundary part)))
+			     (cond ((not (eq b-box 'empty-object))
+				    (let ((b-box (transform-box b-box (get part 'transform))))
+					 (check-bounds (third b-box))
+					 (check-bounds (fourth b-box)))))))
+		(putprop proto
+			 (cond ((equal *minx *inf) 'empty-object)	;Empty obj
+			       (t `(Box Outline
+					,(pt *minx *miny)
+					,(pt *maxx *maxy))))
+			 'boundary))))
+
+(defun check-bounds (pt)
+       (setq *minx (min *minx (x-of pt)))
+       (setq *maxx (max *maxx (x-of pt)))
+       (setq *miny (min *miny (y-of pt)))
+       (setq *maxy (max *maxy (y-of pt))))
+
+(defun boundaries (obj)
+       (let ((bound (boundary obj)))
+	    (cond ((not (eq bound 'empty-object))
+		   (list (x-of (third bound))
+			 (x-of (fourth bound))
+			 (y-of (third bound))
+			 (y-of (fourth bound)))))))
+
+(comment
+(defun boundaries (obj)
+    (declare (special *min-x *max-x *min-y *max-y))
+    (let ((*channel
+	   (function (lambda (box)
+			(setq *min-x (min (x-of (third box))
+					  (x-of (fourth box))
+					  *min-x))
+			(setq *max-x (max (x-of (third box))
+					  (x-of (fourth box))
+					  *max-x))
+			(setq *min-y (min (y-of (third box))
+					  (y-of (fourth box))
+					  *min-y))
+			(setq *max-y (max (y-of (third box))
+					  (y-of (fourth box))
+					  *max-y)))))
+	  (*min-x 1000000)
+	  (*max-x -100000)
+	  (*min-y 100000)
+	  (*max-y -100000))
+	 (output-boxes obj '(-1000000 1000000 -1000000 1000000))
+	 (list *min-x *max-x *min-y *max-y)))
+)
+(defun print-parts (x)
+   (dolist (part (get-the x 'parts))
+      (format t '|~%~A: a ~A at ~S|
+	      part
+	      (get-the part 'type)
+	      (boundaries part))))

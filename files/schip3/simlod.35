@@ -1,0 +1,341 @@
+
+;;; -*- mode:LISP; package:SCHIP -*-  SCHEME chip simulator -- RMS, GJS
+
+(defvar pc)
+
+(defvar machine-nil (make-pointer *nil 0))
+
+(defvar machine-t (make-pointer *t 0))
+
+(defvar machine-0 (make-pointer fixnum 0))
+
+;Length of entry vector to construct.  4 will do for now.
+(defvar entry-vector-length 4)
+
+;... because it leaves enough room for this:
+(defvar entry-vector-gc-index 0)
+(defvar entry-vector-error-index 1)
+(defvar entry-vector-obarray-index 2)
+
+(defvar obarray-length)
+
+(defvar entry-vector-pointer-list-pointer (make-pointer list entry-vector-pointer))
+
+(defvar boot-program-pointer-list-pointer (make-pointer list boot-program-pointer))
+
+;This is how long our physical simulated memory is.
+(defvar memory-size 30000.)
+
+;We will start loading our memory at this point.
+(defvar load-area-base 5000.)
+
+(defvar load-area-base-pointer (make-pointer list load-area-base))
+
+;The loader has its own "free" register.
+(defreg load-free simple-register word)
+
+(defun reset-regs ()
+       (setq *the-registers (makhunk 64.))
+       (setq *pclsred-registers (makhunk 64.))
+       (do ((i 0 (1+ i))) ((= i 64.))
+	 (write-reg-n nil i '(word) machine-nil))
+       (cond ((not (null *reg-stats?))
+	      (setq *reg-stats
+		    (makhunk '(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+			       0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+			       0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+			       0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))))))
+
+(defun memory-init ()
+ (let (tem tem1)
+  (reset-regs)
+  (setq obarray-length 0)
+  (setq memory-array nil)
+  (setq memory-array (*array nil 'fixnum memory-size))
+  (write-reg (word) load-free load-area-base-pointer)
+  (set-memory (right-address entry-vector-pointer-list-pointer)
+	      (setq tem (machine-array-cons-empty entry-vector-length)))
+  (machine-aset machine-nil tem entry-vector-gc-index)		;GC handler
+  (machine-aset machine-nil tem entry-vector-error-index)	;error handler
+  (machine-aset machine-nil tem entry-vector-obarray-index)	;Obarray set to NIL
+  (setq tem1 (machine-intern 'entry-vector-list))
+;  **** assign tem1 to entry-vector-list-pointer
+  (set-memory (left-address (get-memory (left-address tem1)))
+	      entry-vector-pointer-list-pointer)
+  (set-memory (left-address boot-program-pointer-list-pointer)
+	      machine-nil)
+  (*catch 'halt (main-loop cold-boot))
+  (machine-print (fetch val))
+))
+
+(defun try (sexp)
+  (set-memory (left-address boot-program-pointer-list-pointer)
+	      (memory-load (translate sexp)))
+  (*catch 'halt (main-loop boot-load))
+  (machine-print (fetch val)))
+
+(defun halt () (*throw 'halt nil))
+
+(defun main-loop (spc)
+  (do ((pc spc (funcall pc))
+       (opc nil pc)
+       (oopc nil opc)
+       (ooopc nil oopc))
+      ((eq pc 'simulated-return-to-caller) nil)))
+
+;Turn output of TRANSLATE into simulator quantities pointing
+;at data in the simulated memory.
+(defun memory-load (exp)
+  (cond ((null exp) machine-nil)
+	((eq exp t) machine-t)
+	((fixp exp) (make-pointer fixnum exp))
+	(t (make-pointer (symeval (car exp)) (construct-datum (cadr exp))))))
+
+;Turn the datum field of the output of translate
+;into a number which represents the datum field of a simulator quantity.
+(defun construct-datum (exp)
+  (cond ((fixp exp) exp)
+	((symbolp exp)
+	 (machine-intern exp))
+	((atom exp)
+	 (error "Can't translate datum" exp))
+	((eq (car exp) 'symbol-address)
+	 (machine-intern (cadr exp)))
+	((eq (car exp) 'global-address)
+	 (machine-left (machine-intern (cadr exp))))
+	((eq (car exp) 'cons-address)
+	 (machine-cons (memory-load (cadr exp))
+		       (memory-load (caddr exp))))
+	((eq (car exp) 'array-address)
+	 (machine-array-cons (mapcar 'memory-load (cdr exp))))
+	((eq (car exp) 'string-address)
+	 (machine-string-cons (cadr exp)))
+	(t (error "Can't translate datum" exp))))
+
+;;; Duplicate the machine's own primitive operations, so we can do them
+;;; to manipulate the data in memory.
+
+(defun machine-symbolp (ptr)
+  (= (cdr symbol) (extract-field (type) (word) (cdr ptr))))
+
+(defun machine-globalp (ptr)
+  (let ((type (extract-field (type) (word) (cdr ptr))))
+       (or (= (cdr global) type)
+	   (= (cdr set-global) type)
+	   (= (cdr unbound-global?) type)
+	   (= (cdr makunbound-global) type))))
+
+(defun machine-fixp (ptr)
+  (= (cdr fixnum) (extract-field (type) (word) (cdr ptr))))
+
+(defun machine-stringp (ptr)
+  (= (cdr character-string) (extract-field (type) (word) (cdr ptr))))
+
+(defun machine-listp (ptr)
+  (= (cdr list) (extract-field (type) (word) (cdr ptr))))
+
+(defun machine-list-pointer (ptr)
+  (let ((class (extract-field (class type) (word) (cdr ptr))))
+    (and (>= class 8) (< class 15.))))
+
+(defun fixunpk (sim-fixnum)
+  (extract-field (datum) (word) (cdr sim-fixnum)))
+
+;Given two simulator quantities, do cons and return another one.
+(defun machine-cons (car cdr)
+  (set-memory (left-address (fetch load-free)) car)
+  (set-memory (right-address (fetch load-free)) cdr)
+  (prog1 (fetch load-free) (add-to load-free 1)))
+
+(defun machine-left (sym-ptr)
+  (get-memory (left-address sym-ptr)))
+
+(defun machine-right (sym-ptr)
+  (get-memory (right-address sym-ptr)))
+
+(defun machine-array-cons (list-of-elements)
+  (let ((n-elts (length list-of-elements)))
+    (set-memory (left-address (fetch load-free)) (make-pointer fixnum n-elts))
+    (prog1 (make-pointer array (fetch load-free))
+	   (do ((address (right-address (fetch load-free))
+			 (cons '(memory-address) (1+ (cdr address))))
+		(l list-of-elements (cdr l)))
+	       ((null l)
+		(assign load-free
+			(make-pointer list
+				      (left-shift (1+ (cdr address)) -1))))
+	     (set-memory address (car l))))))
+
+(defun machine-array-cons-empty (size)
+  (set-memory (left-address (fetch load-free)) (make-pointer fixnum size))
+  (prog1 (make-pointer array (fetch load-free))
+	 (do ((address (right-address (fetch load-free))
+		       (cons '(memory-address) (1+ (cdr address))))
+	      (i 0 (1+ i)))
+	     ((= i size)
+	      (assign load-free
+		      (make-pointer list (left-shift (1+ (cdr address)) -1))))
+	   (set-memory address machine-nil))))
+
+;1st arg is simulator quantity, but second is just a number.
+(defun machine-aref (array idx)
+  (let ((size (machine-left array)))   ;Machine wouldn't do it but we can.
+    (and (or (minusp idx) (>= idx (cdr size)))
+	 (error "Index out of bounds -- MACHINE-AREF" (list array idx)))
+    (get-memory (cons '(memory-address) (+ idx 1 (left-shift (cdr array) 1))))))
+
+;1st and 2nd args are simulator quantities, third is just a number.
+(defun machine-aset (value array idx)
+  (let ((size (machine-left array)))   ;Machine wouldn't do it but we can.
+    (and (or (minusp idx) (>= idx (cdr size)))
+	 (error "Index out of bounds -- MACHINE-ASET" (list array idx)))
+    (set-memory (cons '(memory-address) (+ idx 1 (left-shift (cdr array) 1)))
+		value)))
+
+(defun machine-string-cons (pname-string)
+  (make-pointer character-string
+		(machine-array-cons (mapcar '(lambda (c)
+						(make-pointer character c))
+					    (exploden pname-string)))))
+
+(defun machine-intern (sym)
+  (cond ((eq sym 'nil) machine-nil)
+	((eq sym 't) machine-t)
+	(t
+	 (let ((obptr (machine-aref (machine-right (make-pointer list entry-vector-pointer))
+				    entry-vector-obarray-index))
+	       (tem (and (not (zerop obarray-length)) (get sym 'obarray-index))))
+	      (cond (tem (machine-nth (- obarray-length tem) obptr))
+		    (t (putprop sym (setq obarray-length (1+ obarray-length)) 'obarray-index)
+		       (machine-aset (machine-cons (setq tem (machine-symbol-cons sym)) obptr)
+				     (machine-right (make-pointer list entry-vector-pointer))
+				     entry-vector-obarray-index)
+		       tem))))))
+
+(defun machine-nth (number ptr)
+  (do ((i 0 (1+ i))) ((= i number) (machine-left ptr))
+    (setq ptr (machine-right ptr))))
+
+(defun machine-symbol-cons (sym)
+  (make-pointer symbol
+		(machine-cons (machine-cons (make-pointer unbound 0)
+					    (machine-string-cons sym))
+			      machine-nil)))
+
+(defun machine-print (x)
+       (cond ((machine-symbolp x)
+	      (machine-print-string (machine-right (machine-left x))))
+	     ((machine-globalp x)
+	      (machine-print-data-type x)
+	      (machine-print-string (machine-right x)))
+	     ((not (machine-list-pointer x))
+	      (machine-print-atom x))
+	     (t (or (machine-listp x)
+		    (machine-print-data-type x))
+		(print-open)
+		(machine-lprint x))))
+
+(defun machine-print-atom (x)
+  (cond ((machine-fixp x) (prin1 (fixunpk x)))
+	((machine-stringp x)
+	 (tyo #/")
+	 (machine-print-string x)
+	 (tyo #/"))
+	(t
+	 (machine-print-data-type x)
+	 (prin1 (fixunpk x)))))
+
+(defun machine-print-data-type (x)
+  (prin1 (aref user-type (extract-field (type) (word) (cdr x))))
+  (tyo #/:))
+
+;Print the characters in a string.
+(defun machine-print-string (x)
+  (do ((idx 0 (1+ idx))
+       (len (fixunpk (machine-left x))))
+      ((= idx len))
+    (let ((ch (fixunpk (machine-aref x idx))))
+      (and (= ch #/") (tyo #//))
+      (tyo ch))))
+
+(defun machine-lprint (l)
+       (machine-print (machine-left l))
+       (let ((d (machine-right l)))
+	    (cond ((equal d machine-nil)
+		   (print-close))
+		  ((not (machine-listp d))
+		   (print-space)
+		   (print-dot)
+		   (print-space)
+		   (machine-print d)
+		   (print-close))
+		  (t (print-space)
+		     (machine-lprint d)))))
+
+(defun print-open () (princ '/( ))
+
+(defun print-close () (princ '/) ))
+
+(defun print-space () (princ '/  ))
+
+(defun print-dot () (princ '/. ))
+
+;;; Some necessary functions for simulation.
+(defun impress-pad (pad-name value)
+  (cond ((memq 'input (get pad-name 'pad-directions))
+	 (putprop pad-name value 'impressed-value))
+	(t (error "Can't impress value on pad" pad-name))))
+
+(defmacro print-notice-pad (pad-name)
+  `(defun (,pad-name pad-drive-procedure) (name value)
+	  (print (list 'Driving 'pad name 'to value))))
+
+(defun make-bit (1-or-0)
+  (or (member 1-or-0 '(0 1))
+      (error "arg not 1 or 0 -- make-bit" 1-or-0))
+  `((bit) . ,1-or-0))
+
+(impress-pad 'relocate-request-to-me (make-bit 0))
+(impress-pad 'relocate-from-me-acknowledged (make-bit 0))
+(impress-pad 'external-interrupt-request (make-bit 0))
+(impress-pad 'cons-server-interrupt-request (make-bit 0))
+(impress-pad 'dma-interrupt-request (make-bit 0))
+
+(print-notice-pad external-interrupt-grant)
+(print-notice-pad cons-server-interrupt-grant)
+(print-notice-pad dma-interrupt-grant)
+
+
+;;; Various debugging aids.
+
+(defun ps nil						;Print control stack
+  (let (temp)
+    (do ((s (fetch cont-stack) (machine-right s))) 
+	((progn (setq temp (extract (type) (word) s))
+		(or (primitive-machine-eq temp halt)
+		    (primitive-machine-eq temp *nil)))
+	 (aref extra-type-cont (extract-field (type) (word) (cdr s))))
+      (print (aref extra-type-cont
+		   (extract-field (type) (word) (cdr s)))))))
+
+(defmacro sb (x) `(trace (,x break t)))
+
+(defmacro mp (x) `(machine-print (fetch ,x)))
+
+(defun tp (x) `(,(aref user-type x) ,(aref extra-type-cont x)))
+
+(defun gp (p) `(,(gm (* 2 p)) ,(gm (1+ (* 2 p)))))
+
+(defun gm (ma)
+       (sv (get-memory (cons '(memory-address) ma))))
+
+(defun sv (v)
+       `(,(tp (extract-field (type) (word) (cdr v)))
+	 ,(extract-field (datum) (word) (cdr v))))
+
+(defun dm (ma1 ma2)
+       (do ((ma ma1 (1+ ma))) ((> ma ma2) 'nil)
+	   (print ma)
+	   (cond ((oddp ma) (princ " d: "))
+		 (t (princ " a: ")))
+	   (prin1 (gm ma))))

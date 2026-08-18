@@ -1,0 +1,13 @@
+
+
+
+(defun demo ()
+  (or (fboundp 'd-bit-blt) (load "h;daedal" "user"))
+  (or (fboundp 'show) (load "schip;layout" "user"))
+  (or (get 'regcell 'layout) (load "schip;regcel >" "user"))
+  (mapc (function (lambda (name *squaresize*) (apply (function show) (list name))
+                          (prin1 name)
+                          (tyi)))
+        '(regcell regout reginc regnoinc zeroinc bus-connect)
+        '(12. 12. 6 6 6 4)))
+

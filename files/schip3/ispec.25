@@ -1,0 +1,430 @@
+-*- mode: TEXT -*-
+
+Signal and Bus operation Descriptions
+  basic bus operations	
+    external registers
+    read and write memory Cycle (wait)
+    bus errors
+    Interrupt prototcols (request/grant daisy-chain)
+    gc synchronization
+    relocation requests
+  
+  control and initialization
+    freeze
+    load/read state
+    halted
+    carry-chain
+
+  Multi Machine Protocols
+    Pointer-free state
+    Simple pointer
+    Root makers
+    Other processors
+
+
+		     Interface Spec for SCHEME-81
+
+	SCHEME-81 uses a two-phase non-overlapping clock, called PHI-1
+and PHI-2.  All data is available to be latched by the falling edge of
+PHI-1.  Control signals are generated during PHI-2 and must be stable
+during the following PHI-1.  This convention is obeyed both internal
+to the chip and in its transactions with the external world.
+
+
+The SBUS
+
+	  All devices which make up a SCHEME machine communicate
+through a special bus called the SBUS.  Transactions on the SBUS are
+in terms of SCHEME data objects which are either typed pointers or
+typed immediate data (see SCHEME-81 architecture document).
+
+All data transactions on the SBUS are formalized in terms of "external
+registers", which are (possibly) ficticious registers.  Devices
+communicate with each other by loading values into or reading values
+from particular external reegisters.  Reading or loading an external
+register may have control effects.  For example, loading a MAR
+register initiates a memory cycle.
+
+	External registers are accessed by control signals obeying the
+same conventions as the control signals used to manipulate the
+internal data paths of the SCHEME-81 chip.  The conventions are as
+follows:
+
+Registers latch their new values at the end of phi1
+
+Registers can be read anytime, the old value is available during the
+phi1 in which a new value is being latched;
+
+Control signals for register operations are generated during phi2 and
+are latched at the end of phi2;
+
+Thus read signals can be directly applied to registers, load signals
+must be ANDed with PHI-1.
+
+
+	For example, when an external interrupt is granted by the
+SCHEME-81 chip, the interrupt number (selecting the interrupt routine
+to be run) is available in the INTERRUPT-NUMBER external register.
+The SCHEME-81 chip accesses that value by asserting the read control
+signal for the INTERRUPT-NUMBER register (I-NUM) during a PHI-2 and
+then latching the value on the DATA[0-35] pads into one of its
+internal registers during the next PHI-1.
+
+
+Memory transactions
+
+	The SCHEME-81 chip has a time multiplexed bus.  Memory
+operations involve transmitting both the address to be accessed and
+the data to be read or written on the same bus.  The bus can be
+buffered and address latches may be used to demultiplex the bus as
+desired.
+
+	A memory transaction takes at least two clock cycles.  We
+think of the clock cycles as beginning with PHI-2 (when control
+signals are emitted) and ending with PHI-1 (when actions take effect
+-- registers are loaded).  In the first cycle of a memory transaction,
+the address to be accessed is loaded into an external register (either
+READ-MAR or WRITE-MAR).  This initiates the memory transaction.  The
+identity of the MAR register used determines whether the memory
+transaction will be either a read or a write operation.  The memory
+may be able to service the request immediately, or it may require
+several clock cycles to respond.
+
+	If the memory can service the request immediately, it must
+inform the requester by pulling down the -MDONE line in time for the
+requester to latch the decision in the PHI-2 following the address out
+cycle.  The requester must either latch the data read in the next
+PHI-1 or put out the data to be written so that it can be latched in
+the next PHI-1.  The requester performs the data transfer by reading
+from the READ-MBR external register or loading the WRITE-MBR external
+register.  Following the conventions of register transfers, the data
+to be read or written should begin to be supplied during the PHI-2
+preceeding the PHI-1 in which it is to be latched.  The requester may
+fail to complete the data transfer by not accessing the correct MBR.
+The memory system will not modify an addressed location unless data is
+written in the WRITE-MBR in the correct cycle.
+
+	If the memory needs more time, it allows the -MDONE line to
+remain high during each PHI-2 from the PHI-2 following the address out
+cycle, until the PHI-2 immediately before the PHI-1 in which it
+expects the data to be latched.  The -MDONE line must fall to be acted
+upon in this PHI-2.
+
+	If for some reason the memory fails to be able to accomplish
+the requested transaction, it must assert S-ERROR in the same PHI-2
+that -MDONE becomes asserted.  In this case the value on the SBUS is
+invalid, and the SBUS-ERROR-CODE external register contains a
+code describing the error.
+
+
+
+
+PINOUT AND PAD CHARACTERISTICS
+  
+The Scheme-81 chip has the following pads:
+
+
+TR-GND		top-right-ground
+	ground pad
+Ground for top row of pads.
+
+PHI-2       top-PHI-2
+	input pad
+
+PHI-2 clock. 
+
+C-GRANT		cons-server-interrupt-grant
+	output pad, active high, control signal output, latched by PHI-2. 
+
+Indicates readiness of the storage allocator to produce a new cons
+cell.  This happens as a result of some external device making a
+cons-server request.  At the same time, the cons is being placed in
+the SBUS-OUTPUT-CONS external register. (see pads: OCONS, -C-REQ,
+DATA[0,35])
+
+D-GRANT		dma-interrupt-grant
+	output pad, active high, control signal output, latched by PHI-2. 
+
+Indicates that the SCHEME machine has given up control of the SBUS in
+response to a dma-request. (see pads: -D-REQ)
+
+E-GRANT        external-interrupt-grant.
+	output pad, active high, control signal output, latched by PHI-2. 
+
+Indicates that the SCHEME machine is accepting a requested external interrupt.
+The machine is also fetching the interrupt number from the INTERRUPT-NUMBER
+external register. (see pads: -E-REQ, I-NUM, DATA[0,35])
+
+HALTED		halted
+	output pad, active high, control signal output, latched by PHI-2. 
+
+Indicates that the SCHEME machine has encountered a fatal error.
+Something is broken.  This signal should never appear in a working machine. 
+
+CARRY		carry-chain
+	output pad, active high, control signal output, latched by PHI-2. 
+
+Indicates that the operation being performed in the current cycle uses
+a carry chain.  This may be used to do clock-cycle hackery if carry
+propagation limits the speed of the machine.
+
+I-NUM           interrupt-number          
+	output pad, active high, control signal output, latched by PHI-2.
+
+This is the external register operation signal for reading from the
+INTERRUPT-NUMBER external register.  The device recieving E-GRANT
+during this PHI-2 must drive the sbus with the interrupt number so
+that it can be latched in the next PHI-1. (see pads: E-GRANT, -E-REQ,
+DATA[0,35])
+
+S-ECODE		sbus-error-code
+	output pad, active high, control signal output, latched by PHI-2.
+
+This is the external register operation signal for reading from the
+SBUS-ERROR-CODE external register.  The memory device handling the
+proceeding memory operation must drive the sbus with the sbus-error
+code (etc) (see pads: -READ-MAR, -READ-MBR, -WRITE-MAR, -WRITE-MBR, -MDONE,
+-S-ERROR DATA[0,35]
+
+OCONS		sbus-output-cons
+	output pad, active high, control signal output, latched by PHI-2.
+
+This is the external register operation signal for loading the
+SBUS-OUTPUT-CONS external register.  The device receiving C-GRANT
+during this PHI-2 must latch the output cons in the next PHI-1.  (see
+pads: C-GRANT, -C-REQ, DATA[0,35])
+
+R-OVAL		sbus-output-relocated-value
+	output pad, active high, control signal output, latched by PHI-2.
+
+This is the external register operation signal for loading the
+SBUS-OUTPUT-RELOCATED-VALUE external register.  The external processor
+requesting relocaton of a pointer during gc receives the result in
+this register. The scheme machine will drive the sbus and the external
+processor must latch the value in the next PHI-1. (see pads: RRTM,
+R-IREQ, DATA[0,35])
+
+R-IVAL		sbus-input-relocated-value
+	output pad, active high, control signal output, latched by PHI-2.
+
+This is the external register operation signal for reading from the
+SBUS-INPUT-RELOCATED-VALUE external register.  The external processor
+supplying the relocaton of a pointer during gc must drive the sbus
+with the result so that it can be latched during the next PHI-1. (see
+pads: RRFMA, R-OREQ, DATA[0,35])
+
+R-OREQ		sbus-output-relocate-request
+	output pad, active high, control signal output, latched by PHI-2.
+
+This is the external register operation signal for loading the
+SBUS-OUTPUT-RELOCATE-REQUEST external register to make a request for
+pointer relocation.  The pointer to be relocated will be placed on the
+sbus by the SCHEME machine and must be latched by the end of the next
+PHI-1.  (see pads: R-IVAL, RRFMA, DATA[0,35])
+
+R-IREQ		sbus-input-relocate-request
+	output pad, active high, control signal output, latched by PHI-2.
+
+This is the external register operation signal for reading from the
+SBUS-INPUT-RELOCATE-REQUEST external register.  The value in this
+register is a pointer for this SCHEME machine to relocate.  The sbus
+must be driven with the value so that it can be latched during the
+next PHI-1. (see pads: RRTM, R-OVAL, DATA[0,35].)
+
+-READ-MAR		read-mar
+	pulldown pad, active low, control signal output, latched by PHI-2.
+
+This is the external register operation signal for loading the
+READ-MAR external register.  This register contains the address to be
+read from in memory.  Loading this register causes a memory operation
+to begin. (see pads: -READ-MBR, -MDONE, -S-ERROR, S-ECODE, DATA[0,35], CDR)
+					  
+-WRITE-MAR		write-mar
+	pulldown pad, active low, control signal output, latched by PHI-2.
+
+This is the external register operation signal for loading the
+WRITE-MAR external register.  This register contains the address to be
+written in memory.  Loading this register causes a memory operation to
+begin. (see pads: -WRITE-MAR, -MDONE, -S-ERROR, S-ECODE, DATA[0,35], CDR)
+
+-READ-MBR		read-mbr
+	pulldown pad, active low, control signal output, latched by PHI-2.
+
+This is the external register operation signal for reading the
+READ-MBR external register.  This register contains the data produced
+by a memory operation.  This signal must be driven from the cycle
+following a READ-MAR assertion, through the PHI-1 after the -MDONE
+signal falls.  The value from memory must be driven onto the sbus so
+that it can be latched during the next PHI-1 after -MDONE falls.  (see
+pads: -READ-MAR, -MDONE, -S-ERROR, S-ECODE, DATA[0,35], CDR)
+
+-WRITE-MBR		write-mbr
+	pulldown-pad, active low, control signal output, latched by PHI-2.
+
+This is the external register operation signal for loading the
+WRITE-MBR external register.  This register contrins the data to be
+stored into memory.  This signal must be driven from the cycle
+following a WRITE-MAR assertion, through the PHI-1 after the -MDONE
+signal falls.  The value must be driven onto the sbus during this same
+period. (see pads: -WRITE-MAR, -MDONE, -S-ERROR, S-ECODE, DATA[0,35], CDR)
+
+-ENABLE			-data-bus-enable
+	output pad, active high, control signal output, latched by PHI-2.
+
+This signal indicates that the SCHEME chip is transacting with the
+data bus.
+
+DATA-OUT		data-out
+	output pad, active low, control signal output, latched by PHI-2.
+
+This signal indicates the direction of a transaction with the
+data-bus.  If the -ENABLE signal is asserted, and the DATA-OUT signal is
+asserted, the SCHEME chip is writing on the SBUS; if the -ENABLE signal
+is asserted and the DATA-OUT signal is not asserted, the SCHEME chip is
+reading from the SBUS. If the -ENABLE signal is not asserted, the value
+of DATA-OUT is irrevelant.
+
+CDR			top-data-bus[0]
+	tri-state, active high, address
+
+This is the low bit of the data-bus. It is used to access the cdr of a pointer.
+If this bit is on, the the scheme machine is referring to the cdr of a cell.  
+
+DATA[0,7]               top-data-bus[1,8]
+	tri-state, active high, address/data bus
+					  
+The bottom 8 bits of data.
+
+
+TL-GND			top-left-ground
+	One of two grounds for the internals of the chip.
+
+
+VDDTOP			top-power
+	One of two sources of VDD.
+
+DATA[8,29]		side-data-bus
+	tri-state, active high, address/data bus
+
+The middle 22 bits of data
+
+BL-GND			bottom-left-ground
+	Ground for the side and bottom pads
+
+VDDBOT			bottom-vdd
+	One of two sources of VDD.
+
+
+DATA[30,35]		bottom-data-bus
+	tri-state, active high, address/data bus
+
+The top 6 bits of data.
+
+-MDONE			-memory-done
+	buffered input pad, active low
+
+This signal indicates that a memory operation is about to complete.
+The signal must be stable in time to be latched by phi2.  If it is
+low, the memory asserts that it can drive or accept data on the next
+phi1. (see pads: -READ-MAR, -READ-MBR, WRITE-MAR, WRITE-MBR, -SERROR)
+
+FREEZE			freeze
+	buffered input pad, active high
+
+This signal freezes the scheme machine.  This signal must be stable in
+time to be latched by phi2.  It prevents all registers from loading,
+and causes the machine to cycle in the state it was in when the signal
+became asserted. (see pad: LD-ST)
+
+RRFMA			relocate-request-from-me-acknowledged
+	buffered input pad, active high (?)
+
+This signal indicates that the answer to a relocation request from the
+current scheme machine to another processor has been answered.  The
+signal must be stable in time to be latched by phi2.  If active, it
+indicates that the relocated value is available in the
+SBUS-INPUT-RELOCATED-VALUE external register and can be fetched as
+soon as the next phi1. (see pads: R-IVAL, R-OREQ) 
+
+RRTM			relocate-request-to-me
+	buffered input pad, active high (?)
+
+The signal must be stable in time to be latched by phi2.  If asserted,
+it indicates that a relocation request has been made to the current
+scheme machine, the pointer to be relocated is in the
+SBUS-INPUT-RELOCATE-REQUEST external register and can be fetched as
+soon as the next phi1. (see pads: R-OVAL, R-IREQ)
+
+-NEED			-somebody-needs-gc
+	pulldown/input pad, active low
+
+Indicates that a processor is requesting the conspiracy to begin a
+garbage collection.  This signal remains asserted during the entire gc
+cycle and each processor involved must hold it dowm until it is
+finished. (see pads: 
+
+-READY			-somebody-isnt-ready-to-gc
+	pulldown/input pad, active low
+
+Indicates that a processor is unable to begin garbage collection.
+This signal will go high when all processors are ready to garbage
+collect. It is used to synchronize the beginning of garbage
+collection. 
+
+LD-ST			load-state
+	buffered input pad, active high
+
+Controls the direction of the STATE pads.  If high, the state pads
+may be driven to set the state of the machine.  This should only be
+attempted when FREEZE is high.  If this signal is low (default) the
+state pads continuously output the current state of the control pla.
+
+-E-REQ			external-interrupt-request
+	input pad, active low
+
+Indicates that another device is requesting an external interrupt.
+The signal must be stable in time to be latched by phi2.  The device
+requesting the interrupt must be prepared to deliver an interrupt
+number when the interupt is granted.
+
+-D-REQ			dma-interrupt-request
+	input pad, active low
+
+Indicates that another device is requesting a dma interrupt.  The
+signal must be stable in time to be latched by phi2.  When the grant
+is received the requesting device has complete control of the sbus and
+retains such control until he releases the request.
+
+-C-REQ			cons-server-interrupt-request
+	input pad, active low
+
+Indicates that another device is requesting a cons to be allocated.
+The signal must be stable in time to be latched by phi2.  The device
+must be prepared to receive the cons.  The new cons will be gc-unsafe
+and thus the requesting device must place legal objects in the car and
+cdr of the new cons before gc occurs.  One way to do this is to
+request DMA during the cycle the cons is being served. 
+
+-S-ERROR		sbus-error-flag
+	buffered input pad, active low
+
+Indicates that an error has occured during a sbus operation.  The
+signal must be stable in time to be latched by phi2.  The memory must
+be prepared to place an error code in the SBUS-ERROR-CODE external
+register.
+
+STATE[0,8]		state
+	tri-state, data-bus
+
+These pads are used to set and monitor the state of the control PLA.
+Their direction is controled by the LD-ST pad.
+
+PHI-1			PHI-1
+	input pad
+
+PHI-1 clock.
+
+BR-GND			bottom-right-ground
+	ground pad
+one of two grounds for the internals of the machine.
+

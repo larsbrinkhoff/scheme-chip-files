@@ -1,0 +1,941 @@
+;;; Generalized (hah) PLA constructor -*- Mode:Lisp; package:layout; Base:10.; Ibase:10. -*-
+						;
+(comment Generalized PLA constructor - H and GJS)
+
+(setq base 10. ibase 10.)
+(declare (setq base 10. ibase 10.))
+
+;;;Must be loaded with LDEFS
+(declare (cond ((status feature lispm))
+	       (t (macros nil)
+		  (include |schip2;ldefs >|)
+		  (macros t))))
+
+
+;Note that the cell definitions must be mirrored in Y
+; to make the upper left corner of the AND array be 0,0
+
+
+;            |--------------|   |----------------------|----|
+;            |              |   |                      |    |
+;            |   InPair     |   |      Out             | O  |
+;            |   Mir Y      |   |     Mir Y            | u  |
+;            |              |   |                      | t  |
+;            ---------------|   |                      |    |
+;            |   Gnd MirY   |   |                      |Gnd |
+;   |-------------------------------------------------------|
+;   |        |              | C |                      |G   |
+;   |        |     AND      | o |          OR          |n   |
+;   | Pullup |     Cell     | n |         Cells        |d   |
+;   |  MirY  |     Mir Y    | n |                      |    |
+;   |        |              | e |     Rot 0,-1; MirY   |Rot |
+;   |        |              | c |                      |0,-1|
+;   |--------|--------------------------------------------- |
+;   | PullGnd| -- Ground -- | * |     Diffusion ground | &  |
+;   |--------|--------------------------------------------- |
+;   |        |              |   |                      |    |
+;   |        |              |   |                      |  G |
+;   |        |              |   |          Cells       |  n |
+;   |        |              |   |                      |  d |
+;   ---------------------------------------------------------
+;      |   |-| Ground       |-- |                      |
+;      |     |--------------|   |        Pullup        |
+;      |----- VDD wires ------- |      Rot 0,-1; MirY  |
+;                               ------------------------
+;   * - Pla-gnd-cross: a special cell to merge ground at PlaGround,
+;		DiffusionGnd,Connect
+;   & - Pla-gnd-cross Rot 0,-1 MirY
+;   Note that there is an extra row of Pla-gnd above and below
+;	the AND plane
+
+(deflayout foo nil
+   (call* plain (trans (pt 15 0)))
+   (call* pla-in-gnd (trans (pt 0 10)))
+   (call* pla-cell-pair (trans (pt 0 24))))
+
+(deflayout foo1 nil
+   (set-the' pp (invoke 'pullup-pair '(4)))
+   (call* (pullup-pair 4) (mirror y) (trans (pt (- 0 (the h-pitch pp)) 0)))
+   (call* (pullup-gnd 4) (mirror y) (trans (pt (- 0 (the h-pitch pp)) -10)))
+   (call* (pullup-pair 4) (mirror y) (trans (pt (- 0 (the h-pitch pp)) -24)))
+
+   (call* pla-cell-pair (mirror y) (trans (pt 0 0)))
+   (call* pla-gnd (mirror y) (trans (pt 0 -10)))
+   (call* pla-cell-pair (mirror y) (trans (pt 0 -24)))
+
+   (call* pla-cell-pair (mirror y) (trans (pt 14 0)))
+   (call* pla-gnd (mirror y) (trans (pt 14 -10)))
+   (call* pla-cell-pair (mirror y) (trans (pt 14 -24)))
+
+   (call* pla-connect (mirror y) (trans (pt 28 0)))
+   (call* pla-gnd-cross (mirror y) (trans (pt 28 -10)))
+   (call* pla-connect (mirror y) (trans (pt 28 -24)))
+
+   (set-the' pla-connect (invoke 'pla-connect nil))
+   (setq x (+ 14 28 (the h-pitch pla-connect)))
+   (call* pla-cell-pair (rot 0 -1) (mirror y) (trans (pt x 0)))
+;   (call* pla-diff-gnd (mirror y) (trans (pt 14 -10)))
+   (call* pla-cell-pair (rot 0 -1) (mirror y) (trans (pt x -24)))
+
+   (call* pla-gnd (rot 0 -1) (mirror y) (trans (pt (+ x 10) 0)))
+   (call* pla-gnd (rot 0 -1) (mirror y) (trans (pt (+ x 10) -24)))
+
+   )
+;The PLA builders
+
+(defun rightmost (wire-path)
+   (let ((p1 (the-point-relative wire-path '(start)))
+	 (p2 (the-point-relative wire-path '(end))))
+	(if (greaterp (x-of p1) (x-of p2))
+	    p1
+	    p2)))
+
+(defun leftmost (wire-path)
+   (let ((p1 (the-point-relative wire-path '(start)))
+	 (p2 (the-point-relative wire-path '(end))))
+	(if (lessp (x-of p1) (x-of p2))
+	    p1
+	    p2)))
+
+(defmacro check-mesh (idx . body)
+	  `(cond ((>= ,idx gnd-mesh)
+		  (setq ,idx 0)
+		  ,@body)))
+
+;Points defined:
+;The input points as named
+; ph1-left - input ph1 of AND array
+; ph1-right
+; and-top-left-pla-gnd, and-top-right-pla-gnd - The pla-gnd row between cells, pla-in
+; and-bottom-left-pla-gnd, and-bottom-right-pla-gnd
+; and-pp-top-vdd, -bottom-vdd, top-gnd, -bottom-gnd  	- points on AND pullups along left edge
+; and-pp-bottom, and-pp-top			-actual pullups
+; and-right-edge	- X at AND right edge
+; left-plain, right-plain	-PLA input cells
+
+;the output points
+; ph2-left, ph2-not-left, ph2-right, ph2-not-right
+; left-out, right-out		- the pla-out leftmost, rightmost
+; or-pp-left-gnd, -right-gnd, -left-vdd, -right-vdd	-OR pullups along bottom
+; or-left-edge, or-right-edge
+
+; top-line, bottom-line		-The rows of the pla
+; y-bottom
+
+(deflayout pla (flash-symbol N-ands n-ors nterms and-fields or-fields
+			     program gnd-mesh gnd-width folded-p)
+   (build-pla flash-symbol N-ands n-ors nterms and-fields or-fields
+	      program gnd-mesh gnd-width folded-p))
+
+(defun build-pla (flash-symbol N-ands n-ors nterms and-fields or-fields
+			       program gnd-mesh gnd-width folded-p)
+    (cond ((not (= (length program) nterms))
+	   (format t '|~%The length (~D) of the PLA program isn't ~D steps|
+		   (length program) nterms)
+	   (break t)))
+    (set-the' Cell-Size 14)
+    (set-the' gnd-height (get-the (invoke 'Pla-gnd nil) 'height))
+    (set-the' connect-width (get-the (invoke 'Pla-connect nil) 'h-pitch))
+    (let ((gnd-width//2 (// (1+ gnd-width) 2))
+	  (actual-no-and-cells (if folded-p (1- n-ands) n-ands))
+	  elided-bit-no or-descriptor)
+
+      ;;Build the And inputs
+      (setq elided-bit-no (build-pla-inputs and-fields n-ands actual-no-and-cells folded-p))
+
+      ;;;Now build the output drivers
+      (setq or-descriptor (build-pla-outputs or-fields n-ors folded-p gnd-mesh))
+
+      (set-the' gnd-row (invoke 'pla-gnd-row (list actual-no-and-cells
+						   or-descriptor)))
+
+      ;;Now generate the AND-OR planes
+      (build-pla-and-ors n-ands actual-no-and-cells
+			 n-ors or-descriptor
+			 nterms program folded-p gnd-mesh elided-bit-no)
+
+      ;;Add the pullups at the bottom of the OR plane
+      (set-the' pullup-pair (invoke 'pullup-pair (list gnd-width)))
+      (do ((l or-descriptor (cdr l))
+	   (i 0 (1+ i))
+	   (x (the or-left-edge)))
+	  ((null l)
+	   (set-the' or-pp-right-gnd (the-pt start gnd or-pp))
+	   (set-the' or-pp-right-vdd (the-pt start vdd or-pp))
+	   (set-the' or-pp-right (the or-pp)))
+	(cond ((memq (car l) '(*break* *gnd*))
+	       (call* (pullup-gnd gnd-width) (rot 0 -1) (mirror y)
+		      (trans (pt (+ x 10) (- (the y-bottom) (the h-pitch pullup-pair)))))
+	       (setq x (+ x 10)))
+	      (t (set-the' or-pp
+			 (call* (pullup-pair gnd-width) (rot 0 -1)
+				(mirror y)
+				(trans (pt (+ x 14)
+					   (- (the y-bottom) (the h-pitch pullup-pair))))))
+		 (setq x (+ x 14))))
+	(cond ((= i 0)
+	       (set-the' or-pp-left-gnd (the-pt end gnd or-pp))
+	       (set-the' or-pp-left-vdd (the-pt end vdd or-pp))
+	       (set-the' or-pp-left (the or-pp)))))
+      
+      ;;Add the PLA grounds at the bottom of the AND plane
+      (do ((i 0 (1+ i))
+	   (x 0 (+ x 14)))
+	  ((>= i actual-no-and-cells)
+	   (set-the' and-bottom-right-pla-gnd (the-pt end gnd and-bottom-pla-gnd)))
+	(set-the' and-bottom-pla-gnd (call* pla-gnd (trans (pt x (the y-bottom)))))
+	(cond ((= i 0)
+	       (set-the' and-bottom-left-pla-gnd (the-pt start gnd and-bottom-pla-gnd)))))
+      
+      (format t '|~%The number of lines used is ~D| (the no-lines))
+      ;;Add the pullups to the left of the AND plane
+      (do ((i 0 (+ i 1))
+	   (count 0 (1+ count))
+	   (y 0 (- y 14)))
+	  ((>= i (the no-lines)) (set-the' and-pp-bottom-gnd (the-pt start gnd and-pp))
+	   (set-the' and-pp-bottom-vdd (the-pt start vdd and-pp))
+	   (set-the' and-pp-bottom (the and-pp)))
+	(check-mesh count
+		    (call* (pullup-gnd gnd-width) (mirror y)
+			   (trans (pt (- 0 (the h-pitch pullup-pair))
+				      (- y 10))))
+		    (setq y (- y 10)))
+	(set-the' and-pp (call* (pullup-pair gnd-width) (mirror y)
+				(trans (pt (- 0 (the h-pitch pullup-pair))
+					   (- y 14)))))
+	(cond ((= i 0)
+	       (set-the' and-pp-top-gnd (the-pt end gnd and-pp))
+	       (set-the' and-pp-top-vdd (the-pt end vdd and-pp))
+	       (set-the' and-pp-top (the and-pp)))))
+          
+      ;;Now wire up some of the VDD, GND buses
+      
+      ;;GND along upper left corner
+      (boxes (metal 4) (the-pt and-pp-top-gnd)
+	     (Y (the-pt and-top-left-pla-gnd)) (X *))
+      (boxes (metal gnd-width) (the-pt and-pp-top-gnd)
+	     (Y (+ 2 (the-y start gnd left-plain))))
+      (boxes (metal 4) (the-pt start gnd left-plain)
+	     (X (the-pt and-pp-top-gnd)))
+      
+      ;;VDD along bottom from AND to OR pullups
+      (boxes (metal 4) (the-pt and-pp-bottom-vdd)
+	     (Y (the-pt or-pp-left-vdd)))
+      (set-the' bottom-left-vdd *XY)
+      (boxes (metal 4) (the-pt bottom-left-vdd) (X (the-pt or-pp-left-vdd)))
+      
+      ;;VDD along left and around top
+      (boxes (metal gnd-width) (the-pt bottom-left-vdd)
+	     (X (- (the-x vdd2 and-pp-bottom) gnd-width//2))
+	     (Y (+ (the-y input left-plain) 3 gnd-width//2))
+	     (X (+ (the or-left-edge) gnd-width//2))
+	     (Y (+ (the-y top left-out) gnd-width//2))
+	     (X (the or-right-edge)))
+      
+      (boxes (metal 4) (the-pt and-pp-top-vdd)
+	     (+Y 2)
+	     (X (the-pt vdd2 and-pp-top)))
+      
+      ;;VDD along bottom of OR pullups
+      (boxes (metal gnd-width) (the-pt bottom-left-vdd)
+	     (Y (- (the-y vdd2 or-pp-left) gnd-width//2))
+	     (X (the-pt vdd2 or-pp-right)))
+      (boxes (metal 4) *XY
+	     (X (+ 5 (the-x or-pp-right-vdd)))
+	     (Y (the-pt or-pp-right-vdd))
+	     (X *))
+      
+      ;;GND along right side of OR plane
+      (let ((x (+ (the-x or-pp-right-gnd) 3 gnd-width//2)))
+	(boxes (metal gnd-width) (the-pt or-pp-right-gnd)
+	       (X x) (Y (the-y end gnd right-out)))
+	(boxes (metal 4) (the-pt end gnd right-out)
+	       (X (+ x gnd-width//2))))
+      
+      ;;ground at bottom of AND plane
+      (boxes (metal 4) (the-pt and-bottom-right-pla-gnd)
+	     (X (the-pt end gnd connect bottom-line)) (Y *))
+      (boxes (metal 4) (the-pt or-pp-left-gnd)
+	     (X (the-pt end gnd connect bottom-line)) (Y *))
+      (boxes (metal gnd-width) (the-pt and-pp-bottom-gnd)
+	     (Y (the-pt or-pp-left-gnd))
+	     (X *))
+      (boxes (metal 4) (the-pt and-pp-bottom-gnd)
+	     (Y (the-pt and-bottom-left-pla-gnd)) (X *))
+      
+      (boxes (metal 4) (the-pt start gnd connect top-line)
+	     (Y (the-pt start gnd left-out)) (X *))
+      (boxes (metal 4) (the-pt and-top-right-pla-gnd)
+	     (X (the-pt start gnd connect top-line)) (Y *))
+      
+      ;;VDD interconnect from AND PLA-IN to OR PLA-OUT
+      (boxes (metal 4) (the-pt end vdd right-plain)
+	     (X (- (the-x start gnd connect top-line) 7))
+	     (Y (+ 7 (the-y start gnd left-out)))
+	     (X (- (the-x start vdd left-out) 3))
+	     (Y (the-pt start vdd left-out))
+	     (X *))
+      
+      ;;VDD connect between two VDD busses within output driver
+      (cond ((not folded-p)
+	     (boxes (metal 4) (leftmost '(vdd left-out))
+		    (-X 4) (Y (leftmost '(vdd2 left-out))) (X *))
+	     (boxes (metal 4) (rightmost '(vdd right-out))
+		    (+X 4) (Y (rightmost '(vdd2 right-out))) (X *)))))
+    
+    ;;Call the symbol for the flashes
+    (call* (external-symbol flash-symbol))
+    )
+
+(defun build-pla-inputs (and-fields n-ands actual-no-and-cells folded-p
+				    &aux elided-bit-no names gates)
+    (setq names (explode-fields and-fields))
+    (setq gates (explode-gates and-fields))
+    (if (not (= (length names) n-ands))
+	(error '|n-ands and field description inconsistent|
+	       (list (length names) n-ands)))
+    (cond (folded-p
+	    (setq elided-bit-no (find-position-in-list folded-p names))
+	    (if (not elided-bit-no) (error '|LSB not found| folded-p))
+	    (setq names (delete-nth elided-bit-no names))
+	    (format t '|~%Eliding bit ~D, leaving ~S| elided-bit-no names)))
+    (set-the' And-Names names)
+    (do ((i 0 (+ i 1))
+	 (gates gates (cdr gates))
+	 (names names (cdr names))
+	 (phase t (not phase))
+	 (x 0 (+ x (the Cell-Size))))
+	((>= i actual-no-and-cells)
+	 (set-the' and-right-edge x)
+	 (set-the 'ph1-right (max-x (the-pt ph1-left plain)
+				    (the-pt ph1-right plain)))
+	 (set-the' right-plain (the plain))
+	 (set-the 'and-top-right-pla-gnd (the-pt end gnd and-pla-gnd)))
+      
+      (format t '|~%Placing AND input for ~A at X=~D|
+	      (car names)
+	      x)
+      (set-the' and-pla-gnd (call* Pla-In-Gnd (Mirror Y) (Trans (pt x 0))))
+      ;;check for gated or non-gated inputs?
+      (cond ((eq (car gates) 'un-clocked)
+	     (set-the' plain
+		     (if phase
+			 (call* PlaIn-un-gated (Mirror Y)
+				(Trans (pt (+ x 15) (the gnd-height))))
+			 (call* PlaIn-un-gated (Mirror Y) (mirror X)
+				(Trans (pt (1+ x) (the gnd-height)))))))
+	    (t (set-the' plain
+		       (if phase
+			   (call* PlaIn (Mirror Y) (Trans (pt (+ x 15) (the gnd-height))))
+			   (call* PlaIn (Mirror Y) (mirror X)
+				  (Trans (pt (1+ x) (the gnd-height))))))))
+      (set-the (car names) (the-pt input plain))
+      (cond ((= i 0)
+	     (set-the 'ph1-left (min-x (the-pt ph1-left plain)
+				       (the-pt ph1-right plain)))
+	     (set-the' left-plain (the plain))
+	     (set-the 'and-top-left-pla-gnd (the-pt start gnd and-pla-gnd)))))
+  elided-bit-no)
+
+(defun build-pla-outputs (or-fields n-ors folded-p gnd-mesh &aux or-descriptor)
+  (setq or-descriptor (explode-or-fields or-fields gnd-mesh folded-p))
+;  (if (not (= (length or-descriptor) n-ors))
+;      (error '|#ors and field description inconsistent|
+;	     (list (length or-descriptor) n-ors)))
+  (set-the' or-left-edge (+ (the and-right-edge) (the connect-width)))
+  (do ((names or-descriptor (cdr names))
+       (left t)
+       (gate)
+       (name)
+       (first t nil)
+       (x (the or-left-edge)))
+      ((null names)
+       (set-the' or-right-edge x)
+       (set-the 'right-out (the plaout)))
+    (setq name (car names))
+    ;;if we will break here, name the right part of the gate bus
+    (if (not (atom name))
+	(setq gate (if folded-p (second name) (third name))))
+    ;;put out output driver or gnd
+    (cond ((eq name '*gnd*)
+	   (if folded-p
+	       (call* pla-2-out-gnd (mirror Y) (trans (pt x 0)))
+	       (call* pla-out-gnd (mirror Y) (trans (pt x 0))))
+	   (format t '|~%Placing PLA-OUT-GND at X=~D| x)
+	   (setq x (+ x (the gnd-height))))
+	  ((eq name '*break*)
+	   (if folded-p
+	       (call* pla-2-out-break (mirror Y) (trans (pt x 0)))
+	       (call* pla-out-break (mirror Y) (trans (pt x 0))))
+	   (format t '|~%Placing Break at X=~D| x)
+	   (setq x (+ x (the gnd-height)))
+	   (setq left t))
+	  (folded-p
+	    (format t '|~%Placing PLA-OUT for ~A at X=~D| (first name) x)
+	    (set-the' plaout (call* pla-2-out (mirror Y) (Trans (pt x 0))))
+	    (set-the (first name) (the-pt output plaout))
+	    (setq x (+ x 14)))
+	  (t (if (eq gate 'un-clocked)
+		 (set-the' plaout (call* pla-out-un-clocked (mirror Y) (Trans (pt x 0))))
+		 (set-the' plaout (call* pla-out (mirror Y) (Trans (pt x 0)))))
+	     (set-the (first name) (the-pt left-output plaout))
+	     (if (second name)
+		 (set-the (second name) (the-pt right-output plaout)))
+	     (format t '|~%Placing PLA-OUT for ~A, ~A at X=~D|
+		     (first name)
+		     (second name)
+		     x)
+	     (setq x (+ x 14))))
+    (cond ((neq gate 'un-clocked)
+	   (cond ((or (null (cdr names))
+		      (eq (cadr names) '*break*))
+		  (set-the (concat gate '-right) (the-pt end ph2 plaout))
+		  (if folded-p (set-the (concat gate '-not-right)
+					(the-pt end ph2-not plaout)))))
+	   (cond ((and left (not (atom name)))
+		  (setq left nil)
+		  (set-the (concat gate '-left) (the-pt start ph2 plaout))
+		  (if folded-p (set-the (concat gate '-not-left)
+					(the-pt start ph2-not plaout)))))))
+    (if first (set-the 'left-out (the plaout))))
+  or-descriptor)
+
+(defun build-pla-and-ors (n-ands actual-no-and-cells n-ors or-descriptor
+				 nterms program folded-p gnd-mesh elided-bit-no)
+  ;;canonicalize program if folding PLA
+  (cond (folded-p
+	  (setq program
+		(mapcar
+		  '(lambda (x)
+		     (let ((state (get-state (car x) n-ands)))
+		       (list (list (elide elided-bit-no (car state))
+				   (elide elided-bit-no (cadr state)))
+			     (if (atom (car x))
+				 (second x)
+				 (third x))
+			     state)))
+		  program))
+	  (setq program (sort program
+			      '(lambda (x y) (lessp (caar x) (caar y)))))))
+  
+  (set-the' pla-cell-pair (invoke 'pla-cell-pair nil))
+  ;;Build minterms
+  (do ((y 0 (- y 14))
+       (gnd-row 0 (1+ gnd-row))
+       (i 0 (1+ i))
+       (lines program))
+      ((null lines)
+       (set-the' no-lines i)
+       (set-the' bottom-line (the line))
+       (set-the' y-bottom y))
+    (check-mesh gnd-row
+		(call* (pla-gnd-row actual-no-and-cells or-descriptor)
+		       (trans (pt 0 (- y 10))))
+		(setq y (- y 10)))
+    (set-the' line (call* (pla-row actual-no-and-cells or-descriptor)
+			  (trans (pt 0 (- y 14)))))
+    (cond ((= i 0) (set-the' top-line (the line))))
+    (do ((j 0 (1+ j))
+	 (andy (+ y -14 (the second-metal pla-cell-pair))
+	       (+ y -14 (the first-metal pla-cell-pair)))
+	 (ory  (+ y -14 (the second-poly pla-cell-pair))
+	       (+ y -14 (the first-poly pla-cell-pair)))
+	 (line) (even-line) (odd-line) (state) (mask) (value))
+	((>= j 2))
+      (cond ((and lines folded-p)
+	     ;;Construct folded OR PLA
+	     (setq even-line (car lines))
+	     (cond ((equal (caar lines) (caadr lines))
+		    (setq odd-line (cadr lines)
+			  lines (cddr lines)))
+		   (t (setq odd-line nil
+			    lines (cdr lines))))
+	     ;;make sure we have even line first
+	     (if (not (zerop (logand (^ 2 elided-bit-no)
+				     (car (third even-line)))))
+		 (setq even-line
+		       (prog2 nil odd-line
+			      (setq odd-line even-line))))
+	     (if (or (and even-line (not (zerop (logand (^ 2 elided-bit-no)
+							(car (third even-line))))))
+		     (and odd-line (zerop (logand (^ 2 elided-bit-no)
+						  (car (third odd-line))))))
+		 (error '|Gubbish line pair| (list even-line odd-line)))
+	     (format t '|~%Even: ~S~%Odd: ~S, andY=~D, orY=~D|
+		     even-line odd-line andy ory)
+	     (setq state (if even-line (car even-line) (car odd-line)))
+	     (build-ands 0 andy
+			 (car state)		;state #
+			 (cadr state)		;state mask
+			 actual-no-and-cells)
+	     (build-folded-ors (the or-left-edge) ory
+			       (if (null even-line) 0 (second even-line))
+			       (if (null odd-line) 0 (second odd-line))
+			       or-descriptor))
+	    ;;else, contruct normal OR PLA
+	    (lines
+	      (setq line (car lines) lines (cdr lines))
+	      (setq state (get-state (car line) n-ands)
+		    mask (cadr state)
+		    state (car state)
+		    value (if (atom (car line))
+			      (second line)
+			      (third line)))
+	      (format t '|~%State ~O: ~O at andY=~D, orY=~D| state value andy ory)
+	      (build-ands 0 andy state mask N-ands)
+	      (build-ors (the or-left-edge) ory value or-descriptor))))))
+
+(deflayout external-symbol (symbol)
+    (set-the 'external-symbol symbol))
+
+(deflayout pla-row (ands or-desc)
+   (let ((x 0))
+      (dotimes (i ands)
+	  (call* pla-cell-pair (mirror y) (trans (pt x 0)))
+	  (setq x (+ x 14)))
+      (set-the' connect (call* pla-connect (mirror Y) (trans (pt x 0))))
+      (setq x (+ x (the h-pitch connect)))
+      (dolist (type or-desc)
+	 (cond ((memq type '(*break* *gnd*))
+		(call* pla-gnd (rot 0 -1) (mirror y) (trans (pt (+ x 10) 0)))
+		(setq x (+ x 10)))
+	       (t (call* pla-cell-pair (rot 0 -1) (mirror y)
+			 (trans (pt (+ x 14) 0)))
+		  (setq x (+ x 14)))))))
+
+(deflayout pla-gnd-row (ands or-desc)
+     (let ((x 0))
+	(dotimes (i ands)
+	     (call* pla-gnd (mirror Y) (trans (pt x 0)))
+	     (setq x (+ x 14)))
+	(set-the' gnd-cross (call* pla-gnd-cross (mirror y) (trans (pt x 0))))
+	(setq x (+ x (the h-pitch gnd-cross)))
+	(dolist (type or-desc)
+	   (cond ((memq type '(*break* *gnd*))
+		  (call* pla-or-gnd (rot 0 -1) (mirror y) (trans (pt (+ x 10) 0)))
+		  (setq x (+ x 10)))
+		 (t (call* pla-diff-gnd (rot 0 -1) (mirror y)
+			   (trans (pt (+ x 14) 0)))
+		    (setq x (+ x 14)))))))
+
+;The pla-in drivers are alternanately flipped, therefore
+; the  columns of cell pairs are flashed:
+;	*-   for 0  even cells
+;	-*   for 1      "
+;	-*   for 0  odd cells
+;	*-   for 1      "
+
+(defun build-ands (x y and mask n)
+    (do ((xx x (+ xx 14))
+	 (count 0 (1+ count))
+	 (i 0 (1+ i))
+	 (word and (lsh word -1))
+	 (mask mask (lsh mask -1)))
+	((>= i n))
+	(cond ((oddp mask)  ;this term active?
+	       (if (oddp i)
+		   (if (oddp word)
+		       (call-boxes 'and-10 xx y)
+		       (call-boxes 'and-01 xx y))
+		   (if (oddp word)
+		       (call-boxes 'and-01 xx y)
+		       (call-boxes 'and-10 xx y)))))))
+
+
+(defun build-ors (x y or or-desc)
+    (do ((dl or-desc (cdr dl)))
+	((null dl))
+	(cond ((memq (car dl) '(*gnd* *break*))
+	       (setq x (+ x 10)))
+	      (t (caseq (remainder or 4)
+			(0)					;LSB is to left
+			(1 (call-boxes 'or-10 x y))
+			(2 (call-boxes 'or-01 x y))
+			(3 (call-boxes 'or-11 x y)))
+		 (setq x (+ x 14)
+		       or (quotient or 4))))))
+
+(defun build-folded-ors (x y or1 or2 or-desc)
+    (do ((dl or-desc (cdr dl)))
+	((null dl))
+	(cond ((memq (car dl) '(*break* *gnd*))
+	       (setq x (+ x 10)))
+	      (t (if (oddp or1)
+		     (if (oddp or2)
+			 (call-boxes 'or-11 x y)
+			 (call-boxes 'or-10 x y))
+		     (if (oddp or2)
+			 (call-boxes 'or-01 x y)
+			 ;  (call-boxes 'or-00 x y)
+			 ))
+		 (setq x (+ x 14))
+		 (setq or1 (quotient or1 2))
+		 (setq or2 (quotient or2 2))))))
+
+
+(declare (special *ofile *instance*))
+
+(defun call-boxes (obj x y)
+   (let ((base 10.)
+	 (*nopoint t))
+	(terpri *ofile)
+	
+	(princ '|Call | *ofile)
+	(princ (get obj 'cif-no) *ofile)
+	(princ '| Trans | *ofile)
+	(princ (scale x) *ofile)
+	(princ '|, | *ofile)
+	(princ (scale y) *ofile)
+	(princ '| ;| *ofile)))
+
+;    (format *ofile '|~%Call ~D Trans ~D, ~D ;| (get obj 'cif-no)
+;	    (scale x)
+;	    (scale y)))
+
+(declare (special *flashes *mingrid *lambda-size
+		  *initial-symbol-number* *pla-symbol-number*))
+
+(setq *pla-symbol-number* 1000.)			;see DOPLA
+
+(defun out-flashes ()
+   (do ((x *flashes (cdr x))
+	(cifno)
+	(flashes))
+       ((null x))
+       (setq cifno *pla-symbol-number* *pla-symbol-number* (1+ *pla-symbol-number*))
+       (setq flashes (get (car x) 'flashes))
+       (format *ofile '|~%Define Symbol ~D ~D ~D ;| cifno *lambda-size (fix *mingrid))
+       (dolist (box flashes)
+	     (format *ofile '|~%Layer ~A; Box Width ~D Length ~D Center ~D, ~D ;|
+		     (get (second box) 'cifname)
+		     (scale (abs (- (fifth box) (sixth box))))
+		     (scale (abs (- (third box) (fourth box))))
+		     (scale (average (third box) (fourth box)))
+		     (scale (average (fifth box) (sixth box)))))
+       (format *ofile '|~%Definition Finished ;|)
+       (putprop (car x) cifno 'cif-no)))
+       
+(setq *flashes '(and-01 and-10 and-11 or-01 or-10 or-11))
+
+(defun defflashes fexpr (x) (putprop (car x) (cddr x) 'flashes))
+
+(comment
+;for debugging, cuts so I can see.
+(defflashes and-11 () (box cuts 4 8 -2 2) (box cuts 10 14 -2 2))
+(defflashes and-10 () (box cuts 4 8 -2 2))
+(defflashes and-01 ()			  (box cuts 10 14 -2 2))
+
+(defflashes or-11 () (box cuts 1 5 -2 2) (box cuts 8 12 -2 2))
+(defflashes or-10 () (box cuts 1 5 -2 2))
+(defflashes or-01 () 			 (box cuts 8 12 -2 2))
+)
+;(comment
+(defflashes and-11 () (box diff 4 8 -2 2) (box diff 10 14 -2 2))
+(defflashes and-10 () (box diff 4 8 -2 2))
+(defflashes and-01 ()			  (box diff 10 14 -2 2))
+
+(defflashes or-11 () (box diff 1 5 -2 2) (box diff 8 12 -2 2))
+(defflashes or-10 () (box diff 1 5 -2 2))
+(defflashes or-01 () 			 (box diff 8 12 -2 2))
+;)
+
+(declare (special *ofile))
+(defun read-pla (f &optional gnd-mesh gnd-width folded-bit)
+    (let* ((ifilename (defaultf (mergef f '((dsk *) * PLA))))
+	   (ifile (open ifilename '(in ascii)))
+	   (*ofile (open (mergef '((* *) * CIF) ifilename)
+			 '(out ascii)))			;file for flashes
+	   (eof (list nil))
+	   (base 8.)
+	   (ibase 8.)
+	   needed-symbols
+	   pla)
+	  (cond ((not gnd-mesh)
+		 (format t '|~%What ground mesh spacing?  |)
+		 (setq gnd-mesh (read))))
+	  (cond ((not gnd-width)
+		 (format t '|~%What ground bus width (in Lambda's)?  |)
+		 (setq gnd-width (read))))
+	  (out-flashes)					;define cif for flashes
+	  (do ((x (read ifile eof) (read ifile eof))
+	       (pla-symbol))
+	      ((eq x eof))
+	      (cond ((and (not (atom x))
+			  (eq (car x) 'make-pla))
+		     (format T
+			     '|~%Making PLA ~S, ~D AND bits, ~D OR outputs, ~D terms~%    Folded on ~A, Gnd-mesh ~D, Gnd-width ~D|
+			     (second x)
+			     (third x)
+			     (fourth x)
+			     (fifth x)
+			     folded-bit
+			     gnd-mesh
+			     gnd-width)
+		     (setq pla-symbol *pla-symbol-number*
+			   *pla-symbol-number* (1+ *pla-symbol-number*))
+		     (format *ofile '|~%Definition Start ~D ~D ~D ;~%9 ~A ;~%|
+			     pla-symbol
+			     *lambda-size
+			     (fix *mingrid)
+			     (second x)) 
+		     (setq pla (invoke 'pla
+				       (list
+					pla-symbol
+					(third x)
+					(fourth x)
+					(fifth x)
+					(sixth x)
+					(seventh x)
+					(cdddr (cddddr x))
+					gnd-mesh
+					gnd-width
+					folded-bit)))
+		     (setq needed-symbols (get-needed-symbols pla needed-symbols))
+		     (set-the (second x) pla)
+		     (let ((bound (boundaries pla)))
+			  (format t '|~%Boundaries are ~D < X < ~D, ~D < Y < ~D|
+				  (first bound)
+				  (second bound)
+				  (third bound)
+				  (fourth bound))
+			  (format *ofile '|~%(Boundaries are ~D < X < ~D, ~D < Y < ~D);|
+				  (first bound)
+				  (second bound)
+				  (third bound)
+				  (fourth bound)))
+		     (format *ofile '|~%Definition Finished ;~2%|))))
+	  (cifout-file *ofile needed-symbols (1+ *pla-symbol-number*))
+	  (format *ofile '|~%End;~%|)
+	  (close ifile)
+	  (close *ofile)
+))
+
+(setq base 8 ibase 8)
+(setq test '(8. 12. 15.
+	       ((f 0 (and number 8))) ((f 0 (or number 8)))
+	       ((0  0000)   ;0
+		(1  7777)
+		(2  0002)   ;1
+		(3 7703)
+		(4 0004)    ;2
+		(5 7705)
+		(6 0006)    ;3
+		(7 7707)
+		(10 0010)   ;4
+		(11 7711)
+		(12 0012)   ;5
+		(14 0077)   ;6
+		(16 0016)   ;7
+		(20 0020)   ;10
+		(22 0022)   ;11
+		)
+	       4					;mesh spacing
+	       12.))
+
+(setq ts '(set-the' test (call 'pla (append test '(t)))))
+
+(setq ts1 '(set-the' test1 (call 'pla (append test '(NIL)))))
+(defun st (obj rot)
+       (stipple-to-file obj (mapcar 'fix (boundaries obj)) '|ai:schip2;mpla xgp| rot))
+
+(setq base 10. ibase 10.)
+
+
+;DO-PLAS -- Process PLA files. (do-plas pla-file-name gnd-mesh-spacing metal-size folding)
+;Reads the file <pla-input-file> PLA which should contain a series
+; of (MAKE-PLA name #ands #ors #lines input-fields output-fields . program)
+;Writes the following files:
+;    <pla-input-file> CIF	;The flashes and structure for PLAs in input-file
+;    <pla-input-file> SPECS	;Record of PLA assembly
+
+
+;Format of MAKE-PLA
+; name - symbolic cell name for PLA flashes
+; #ands #ors #lines - must agree with pla-program
+; input-fields output-fields - two lists of field specifications
+; program - ((state state-mask) (symbolic state) output (symbolic output))
+;
+; Field specifications:
+;Field spec is of form:
+;	(FIELD number (name type width position gating))
+;   i.e.(FIELD 002 (nano-run BIT 1 1 UN-CLOCKED))
+; number - a comment, ignored, a word with ones in this field
+; name - name of this bit or field, ignored except appears in CIF output
+; type - {BIT, BIT-REVERSE, NUMBER}
+; width - # of bits in field (Must be 1 for BIT type)
+; position - position of field (Must be in order starting from 0, for now)
+; gating - The name of the clock signal PH1 or PH2, or UN-CLOCKED.
+
+; gating is the name of the output clock signal (usually PH2)
+; or "un-clocked" or nil which means no different from previous field.
+; assumes field specs are LSB - MSB, where 
+; LSB of the AND input is farthest from the AND/OR boundary.
+; LSB of the OR outputs is closest to the AND/OR boundary.
+
+;The program is a list of implicants in the form of:
+; ((STATE STATE-MASK) (SYMBOLIC STATE) OUTPUT (SYMBOLIC OUTPUT))
+; where the input into the AND array is specified by (STATE STATE-MASK).
+; Those bits of the AND input that are don't-cares are zero in the STATE-MASK.
+; The OUTPUT value is what is programmed into the OR side of this term.
+; (For now, the symbolic state and output are ignored, and are there for comments only.)
+
+; For an example of use, see SCHIP2;CONTRL PLA
+
+(declare (special *lambda-size *initial-symbol-number))
+(if-for-maclisp
+(defun do-PLA (&rest pla-list)
+  (let ((*specs (open (mergef '((DSK *) * SPECS) (car pla-list)) '(out ascii)))
+	(*pla-symbol-number* *initial-symbol-number)
+	(*lambda-size))
+       (format t '|~%How many microns per Lambda? |)
+       (setq *lambda-size (fix (times (read) 100.)))
+       (let ((outfiles (cons *specs outfiles))
+	     (^R t))
+	    (terpri)
+	    (format t '|~%;This is the PLA construction for ~S|
+		    (probef (mergef '((* *) * PLA) (first pla-list))))
+	    (timestamp)
+	    (terpri)
+	    (apply 'read-pla pla-list))
+       (close *specs)))
+)
+
+(if-for-lispm
+(defun do-PLA (&rest pla-list)
+  (let ((*pla-symbol-number* *initial-symbol-number)
+	(*lambda-size))
+       (format t '|~%How many microns per Lambda? |)
+       (setq *lambda-size (fix (times (read) 100.)))
+
+	    (terpri)
+	    (format t '|~%;This is the PLA construction for ~S|
+		    (probef (mergef '((* *) * PLA) (first pla-list))))
+;	    (timestamp)
+	    (terpri)
+	    (apply 'read-pla pla-list)))
+)
+
+(defun elide (bit-no n)
+   (let ((base 2)
+	 (ibase 2))
+	(readlist (cons '/0 (reverse (delete-nth bit-no (reverse (explodec n))))))))
+
+(defun delete-nth (n l)
+   (cond ((null l) nil)
+	 ((<= n 0) (cdr l))
+	 (t (cons (car l) (delete-nth (1- n) (cdr l))))))
+
+(defun get-state (x n-ands)
+   (cond ((atom x) (list x (1- (^ 2 n-ands))))
+	 (t x)))
+
+
+
+;Produce list of names from field specs.
+;Field spec is of form:
+;	(FIELD number (name type width position output-gating bit-reverse-flag))
+; output gating is the name of the output clock signal (usually PH2)
+; or "un-clocked" or nil which means no different from previous field.
+;assume field specs are LSB - MSB, return names LSB first
+;list of form (name ... *gnd* *break* ...)
+; where *gnd* means insert a gnd mesh in this or plane
+; where *break* means insert a gap to break the output gating
+; <name> is of form (name gate) if folded
+;		or (name1 name2 gate) if unfolded.
+; gate can be "un-clocked" which may cause a different output driver
+;  if compiling an unfolded PLA
+
+(defun explode-or-fields (fields gnd-mesh folded-p)
+   (let ((l (explode-gated fields)))
+	(if (not folded-p) (setq l (explode-merge l)))
+	(mesh-grounds l gnd-mesh)))
+
+(defun explode-gated (fields)
+    (do ((fl fields (cdr fl))
+	 (out-gate nil)
+	 (out nil))
+	((null fl) (reverse out))
+	(let* ((spec (third (car fl)))
+	       (name (first spec))
+	       (type (second spec))
+	       (size (third spec))
+	       (gate (fifth spec)))
+	      (cond ((null out-gate) (setq out-gate gate))
+		    ((and gate (neq gate out-gate))
+		     (push '*break* out)
+		     (setq out-gate gate)))
+	      (caseq type
+		     (BIT (push (list name out-gate) out))
+		     (NUMBER
+		      (do ((i 0 (1+ i)))
+			  ((= i size))
+			  (push (list (concat name '- i) out-gate)
+				out)))
+		     (BIT-REVERSE
+		      (do ((i (1- size) (1- i)))
+			  ((< i 0))
+			  (push (list (concat name '- i) out-gate)
+				out)))
+		     (t (error '|Garbage field list| fl))))))
+
+(defun explode-merge (l)
+   (cond ((null l) nil)
+	 ((atom (car l)) (cons (car l) (explode-merge (cdr l))))
+	 ((and (not (atom (cadr l)))
+	       (eq (second (car l))
+		   (second (cadr l))))
+	  (cons (list (caar l) (caadr l) (cadar l))
+		(explode-merge (cddr l))))
+	 (t (cons (list (caar l) nil (cadar l))
+		  (explode-merge (cdr l))))))
+
+(defun mesh-grounds (list gnd-mesh)
+   (do ((count 0 (1+ count))
+	(l list (cdr l))
+	(brk)
+	(out nil))
+       ((null l) (reverse out))
+       (cond ((eq (car l) '*break*) (setq count -1))
+	     ((and (>= count gnd-mesh)			;No gnd for a while?
+		   (> (length l) 1)
+		   (or (not (setq brk (find-position-in-list '*break* l)))
+		       (> brk 1)))
+	      (push '*gnd* out)
+	      (setq count 0)))
+       (push (car l) out)))
+
+(defun explode-fields (fields)
+    (do ((fl fields (cdr fl))
+	 (f)
+	 (out nil))
+	((null fl) (reverse out))
+	(caseq (second (setq f (third (car fl))))
+	    (BIT (push (first f) out))
+	    (BIT-REVERSE
+	     (do ((i (1- (third f)) (1- i)))
+		 ((< i 0))
+		 (push (concat (first f) '- i) out)))
+	    (NUMBER
+	     (do ((i 0 (1+ i)))
+		 ((= i (third f)))
+		 (push (concat (first f) '- i) out)))
+	    (t (error '|Garbage field list| f)))))
+
+(defun explode-gates (fields)
+    (do ((fl fields (cdr fl))
+	 (f)
+	 (out nil))
+	((null fl) (reverse out))
+	(caseq (second (setq f (third (car fl))))
+	    (BIT (push (fifth f) out))
+	    (BIT-REVERSE
+	     (do ((i (1- (third f)) (1- i)))
+		 ((< i 0))
+		 (push (fifth f) out)))
+	    (NUMBER
+	     (do ((i 0 (1+ i)))
+		 ((= i (third f)))
+		 (push (fifth f) out)))
+	    (t (error '|Garbage field list| f)))))
+
+

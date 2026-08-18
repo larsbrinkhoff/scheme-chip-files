@@ -1,0 +1,147 @@
+;;; -*-LISP-*-
+
+;;; The following are the definition of the subroutines used in the SCHEME-81 chip.
+
+;;; (1)  The first and last state of all subroutines overlap.  This means that
+;;;      the control bits of the two microwords (the last of the caller and the
+;;;      first of the subroutine -- and visa versa on return) must be OR'd.  This
+;;;      also implies that only one of the two microwords may declare a next state
+;;;      and also that only one can have conditional outputs.  The mechanics for
+;;;      doing this need work.
+
+;;; (2)  The subroutines use parameters.  There are N parameter selectors -- each of
+;;;      which eminates from the microword and cn be saved in an associated register
+;;;      and associated stack.  The contents of these parameter registers is
+;;;      the name of a register and a pathname to connect the register to the
+;;;      destination.  The destination is determined by the caller -- which is
+;;;      known to the compiler.  Thus a subroutine knows that it's first argument's
+;;;      location will always be in, say, Parameter Register 1 and its second
+;;;      argument will be in, say, Parameter Register 2.  The binding of numbers to
+;;;      argument positions is done when the subroutine is written.
+
+;;;  (3) There are two ways to declare the actual parameters.  The first is to
+;;;      explicitly place data in a register and push the proper parameter register
+;;;      with the name and path.  A second way is to instruct a subroutine to create
+;;;      a datum and to put it somewhere.  A special register (not a stack) called the
+;;;      return-value-register is loaded by the calling subroutine and instructs the
+;;;      called subroutine where to put the result.  The same register name/path
+;;;      convention is used. This register is loaded from the microword.
+;;;        Note:  Why do we need to have a separate return value register?
+;;;        The argument against is that it is just like any other register, it is
+;;;        a placeholder and and source and destination are interchangeable.
+;;;        by making the return value function be any of the parameter selectors,
+;;;        we make mor efficient use of these selectors.  The argument for having
+;;;        dedicated return value selector is that it need not have a stack and is thus
+;;;        more efficient.  Resolution unclear.
+
+;;; (4) The parameter selectors have three fields:
+;;;     (a) Register name.  Each register (or source or destination of data) has a
+;;;         unique name assigned byt he compiler.
+;;;     (b) Function.  Whether the parameter selector is used as a parameter placeholder
+;;;         or as an immediate instruction, we need, at minimum, to select whether the
+;;;         parameter is being read or loaded.  There amay be other primintive functions
+;;;         to be encoded here.
+;;;     (c) Access path.  There may be a need to define a routing which is really a collection
+;;;         of bus interconnection commands.  At the moment, there is oly one bus interconnect
+;;;         that exists, mbus-to-sbus and visa versa.  There may be others.
+
+;;; (5) With the possibility of nesting of subroutines, there now becomes a need to hold 
+;;;     intermediate values in "temporary" registers.  The number of such temporary
+;;;     registers can be calculated by the compiler and they are referred to as Tx in
+;;;     the following example.
+
+;;; (6) Example:  (set-left (left (fetch exp)) (right (fetch val)))
+;;;     would get translated into three microwords:
+;;;     (a) read-exp, JSR LEFT, return-value = T1
+;;;     (b) push "T1" into OP2, read VAL, JSR RIGHT return-value = T2
+;;;     (c) push "T2" into OP1, JSR SET-LEFT
+;;;
+;;;    This would execute as follows:
+;;;     (a) read-exp, mbus-to-subus, merge-cdr=0, IALE
+;;;     (b) memory-read, load into return-val, mbus-to-sbus
+;;;     (c) (empty st from last instr of LEFT), push "T1" into OP2, read-val, mbus-to-sbus,
+;;;         merge-cdr=1, IALE
+;;;     (d) memory-read, load into return-value, mbus-to-sbus
+;;;     (e) push "T2" into OP1, execute OP2, merge-cdr=0, IALE
+;;;     (f) memory-write, execute OP1, IDLE
+
+;;; DEFMICROFUN defines microcode functions.  The answer is on the bus named.
+
+;;; DEFMODULE declares a logical block.  The block has a name and a set of exported
+;;;  microcode procedures.  Next is a bunch of definitions.  Next is the set of parts
+;;;  local to the module.  Next is the set of interconnections among them.
+
+(defmodule memory-interface				;need do array references.
+	   (left right set-left set-right)		;Exported microcode names
+	   
+( ;; Microcode procedures
+
+(defmicrofun (left sbus) ((sexpr sbus))
+  (mbus-to-sbus (read-memory (make-left-address-of-pointer sexpr))))
+
+(defmicrofun (right sbus)((sexpr sbus))
+  (mbus-to-sbus (read-memory (make-right-address-of-pointer sexpr))))
+
+(defmicrofun set-left ((target-sexpr sbus) (new-left sbus))
+  (write-memory (make-left-address-of-pointer target-sexpr)
+		(sbus-to-mbus new-left)))
+
+(defmicrofun set-right ((target-sexpr sbus) (new-right sbus))
+  (write-memory (make-right-address-of-pointer target-sexpr)
+		(sbus-to-mbus new-right)))
+
+
+(defmicrofun (make-left-address-of-pointer mbus) ((pointer sbus))
+  (same-cycle (assert couple-datum-of-sbus-to-mbus)	;!
+	      (assert couple-cdr-bit-0)))
+
+(defmicrofun (make-right-address-of-pointer mbus) ((pointer sbus))
+  (same-cycle (assert couple-datum-of-sbus-to-mbus)	;!
+	      (assert couple-cdr-bit-1)))
+
+(defmicrofun (mbus-to-sbus sbus) ((memory-datum mbus))
+  (assert couple-mbus-to-sbus))				;implies coupling datum and type
+
+(defmicrofun (sbus-to-mbus mbus) ((s-expr sbus))
+   (assert couple-mbus-to-sbus))
+
+(defmicrofun (read-memory mbus) ((address mbus))
+  (output-address address)
+  (same-cycle (assert memory-read)
+	      (assert load-mbr))
+  (state-label wait-until-done
+	      (if (memory-busy?)
+		  (same-cycle (goto wait-until-done)
+			      (assert memory-read)
+			      (assert load-mbr)))))		   
+
+
+(defmicrostatement write-memory ((target-address mbus) (datum mbus))
+  (output-address target-address)  
+  (output-data datum))
+
+
+
+(defmicrostatement output-address ((address mbus))
+  (state-label output-address
+	       (source address)
+	       (cond ((not (pointer?)) (goto non-pointer-error))
+		     ((memory-busy?) (goto output-address))
+		     (t (assert i-ale)))))
+
+(defmicrostatement output-data ((datum mbus))
+  (same-cycle (source datum)
+	      (assert i-dle)
+	      (assert memory-write))
+  (nop))						;to ensure things fall
+
+)
+
+( ;; Parts
+
+)
+
+( ;; Interconnections
+
+)
+)

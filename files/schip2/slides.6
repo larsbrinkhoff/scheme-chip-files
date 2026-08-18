@@ -1,0 +1,252 @@
+;skip 1
+;kset fonts;30fgb1
+
+
+		DATA TYPES
+
+	self-evaluating-pointer
+	symbol
+	global
+	set-global
+	conditional
+	procedure
+	first-argument
+	next-argument
+	last-argument
+	apply-no-args
+	apply-1-arg
+	primitive-apply-1
+	primitive-apply-2
+	sequence
+	spread-argument
+	closure
+	get-control-point
+	control-point
+	interrupt-point
+	self-evaluating-pointer
+
+
+; Non-pointer types -- essentially immediate data.
+
+(defschip **non-pointer-types**
+      '((self-evaluating-immediate 100)
+	(local 101)
+	(tail-local 102)
+	(set-local 103)
+	(set-tail-local 104)
+	(set-only-tail-local 105)
+	(primitive-car 106)			;Built-in operators
+	(primitive-cdr 107)
+	(primitive-cons 110)
+	(primitive-rplaca 111)
+	(primitive-rplacd 112)
+	(primitive-eq 113)
+	(primitive-type? 114)
+	(primitive-type! 115)
+	(gc-special-type 116)			;Never appears except during gc
+	(self-evaluating-immediate-1 117)
+	(self-evaluating-immediate-2 120)
+	(self-evaluating-immediate-3 121)
+	(self-evaluating-immediate-4 122)
+	(mark 123)
+	(done 124)
+	(primitive-add1 125)
+	(primitive-sub1 126)
+	(primitive-zerop 127)
+	(primitive-displacement-add1 130)
+	(primitive-not-atom 131)
+	(boot-load 776)				;micro-address forced by RESET
+	(process-interrupt 777)			;micro-address forced by EXT INT RQ
+
+
+; The following define the control lines and sense wires on the registers.
+
+(defreg *exp* (to-type to-displacement to-frame from from-decremented) ())
+
+(defreg *newcell* (to-type to-address from from-incremented) (address=bus))
+
+(defreg *val*
+	(to-type to-address from)
+	(type=bus address=bus =bus))		 ;=bus is AND of type, address=bus
+
+(defreg *retpc-count-mark* (to-type to-address from) ())
+
+(defreg *stack* (to-type to-address from) ())
+
+(defreg *memtop* (to from) ())
+
+(defreg *args* (to from) ())
+
+(defreg *display* (to from) ())
+
+(defreg *intermediate-argument* (to from) ())
+
+(defreg *nil* (from) ())
+
+;The bus is sensitive to several conditions:
+
+(defreg bus () (mark-bit type=pointer frame=0 displacement=0 address=0))
+
+
+
+
+
+(defpc standard-eval
+       (save (fetch *display*))
+       (&set-type *stack* (fetch *retpc-count-mark*))
+       (save (&cdr (fetch *exp*)))
+       (&set-type *stack* standard-return)
+       (assign *exp* (&car (fetch *exp*)))
+       (dispatch-on-exp-allowing-interrupts))
+
+(defreturn standard-return
+       (restore *exp*)
+       (assign *retpc-count-mark* (fetch *stack*))
+       (restore *display*)
+       (dispatch (fetch *retpc-count-mark*)))
+
+
+(deftype sequence				;(SEQUENCE expression . rest)
+	 (assign *val* (fetch *nil*))			;for gc
+	 (save-cdr-and-eval-car sequence-return))
+
+(defreturn sequence-return
+	   (dispatch-on-exp-allowing-interrupts))
+
+
+
+                                   FIELD DEFINITIONS
+
+(setq **micro-and-fields**
+   (parse-fields (state 9 ph1 bit-reverse)))		;LSB is furthest from OR plane
+
+(setq **micro-or-fields**				;LSB is closest to AND plane
+    (parse-fields (next 9 ph2)
+		  (nano-op *nano-state-bits* un-clocked bit-reverse)
+		  (from 7				;room for use as constant
+			(exp				; decremented-exp
+			newcell				;incremented-newcell
+			val
+			retpc-count-mark
+			stack
+			memtop
+			args
+			display
+			intermediate-argument
+			nil)
+			un-clocked)			;no gating on outputs
+		  (to nil				;not all these are used
+		      (no-op
+		       displacement-exp address-exp exp ;type-exp
+		       type-newcell newcell		;address-newcell
+		       type-val val			;address-val
+		       type-retpc-count-mark retpc-count-mark    ;address-retpc-count-mark
+		       type-stack stack			;address-stack
+		       memtop
+		       args
+		       display
+		       intermediate-argument)
+		      un-clocked)))
+
+
+
+                                      NANO SEQUENCES
+
+(defnano (do-increment-newcell)
+    (() (from-incremented-newcell to-address-retpc-count-mark))
+    (() (from-memtop set-gc-needed-if-address-newcell=bus))
+    (() (from-retpc-count-mark to-address-newcell)))
+
+(defnano (do-save)
+   (() (from-incremented-newcell to-address-retpc-count-mark ale))
+   (() (from-memtop set-gc-needed-if-address-newcell=bus))
+   (() (from-retpc-count-mark to-address-newcell))
+   ((from*) (write))
+   (() (from-stack write cdr))
+   (() (from-newcell to-address-stack to-type-stack)))
+
+(defnano (do-restore)
+   (() (from-stack ale))
+   ((to*) (read))
+   (() (read cdr to-address-stack to-type-stack)))
+
+(defnano (do-car)
+   ((from*) (ale))
+   ((to*) (read)))
+
+(defnano (do-cdr)
+   ((from*) (ale))
+   ((to*) (read cdr)))
+
+
+;This is the assembled PLA for ((DSK SCHIP2) SCHSIM /203)
+;The moon is 1 day, 9 hours, 28 minutes, and 30 seconds past the last quarter.
+;The sun is 1*56'27" west of north, 26*28'45" below the horizon.
+;That means it is now 12:43 AM on Wednesday, July 18, 1979.
+
+(make-pla micro-pla
+ 9.   ;AND field
+ 28.   ;OR field
+ 297.   ;PLA size 
+
+;PLA-AND field definitions - LSB is farthest from OR plane
+(
+(field 777       (STATE BIT-REVERSE 11 0 PH1))
+)
+
+;PLA-OR field definitions - LSB is closest to AND plane
+(
+(field 0000000777       (NEXT NUMBER 11 0 PH2))
+(field 0000377000       (NANO-OP BIT-REVERSE 10 11 UN-CLOCKED))
+(field 0077400000       (FROM NUMBER 7 21 UN-CLOCKED))
+      ;0   EXP
+      ;1   NEWCELL
+      ;2   VAL
+      ;3   RETPC-COUNT-MARK
+      ;4   STACK
+      ;5   MEMTOP
+      ;6   ARGS
+      ;7   DISPLAY
+      ;10   INTERMEDIATE-ARGUMENT
+      ;11   NIL
+(field 1700000000       (TO NUMBER 4 30 UN-CLOCKED))
+      ;0   NO-OP
+      ;1   DISPLACEMENT-EXP
+      ;2   ADDRESS-EXP
+      ;3   EXP
+      ;4   TYPE-NEWCELL
+      ;5   NEWCELL
+      ;6   TYPE-VAL
+      ;7   VAL
+      ;10   TYPE-RETPC-COUNT-MARK
+      ;11   RETPC-COUNT-MARK
+      ;12   TYPE-STACK
+      ;13   STACK
+      ;14   MEMTOP
+      ;15   ARGS
+      ;16   DISPLAY
+      ;17   INTERMEDIATE-ARGUMENT
+; Unused field decodes - (NO-OP)
+)
+
+
+(000 0700003233 (233 300 000 07) M 
+		SELF-EVALUATING-POINTER  ((FROM *EXP*) (TO *VAL*)))
+(400 0700003233 (233 300 000 07) M 
+		SYMBOL  ((FROM *EXP*) (TO *VAL*)))
+(200 0700001233 (233 200 000 07) M 
+		GLOBAL  ((FROM *EXP*) (TO *VAL*) DO-CAR))
+(600 0000303326 (326 303 000 00) M 
+		SET-GLOBAL  ((FROM *EXP*) (TO PADS) ALE))
+(100 0004663140 (140 315 011 00)   
+		CONDITIONAL  ((FROM *NIL*) (BRANCH =BUS-VAL CONDITIONAL-3 CONDITIONAL-2)))
+(500 0700120333 (333 012 000 07)   
+		PROCEDURE  ((FROM *EXP*) (TO *VAL*) DO-HALF-CONS))
+(300 1017102167 (167 102 036 10)   
+		FIRST-ARGUMENT  ((FROM-CONSTANT FIRST-ARGUMENT-RETURN) (TO TYP
+(700 0003040351 (351 004 006 00)   
+		NEXT-ARGUMENT  ((FROM *ARGS*) DO-SAVE))
+(040 0003040357 (357 004 006 00)   
+		LAST-ARGUMENT  ((FROM *ARGS*) DO-SAVE))
+(440 0300001367 (367 200 000 03)   
+		APPLY-NO-ARGS  ((FROM *EXP*) (TO *EXP*) DO-CAR))

@@ -1,0 +1,192 @@
+
+Date: 19 JAN 1981 1807-EST
+From: DANNY at MIT-AI (W. D. Hillis)
+Subject: Attempt to impose order on SETNET directory
+To: SETNET at MIT-AI
+
+SETNET;INDEX > is an incomplete list of what files
+are what on the SETNET; directory. Please feel to update this index if you
+create new files of interest.
+
+Date: 24 NOV 1980 1647-EST
+From: carlf@mit-ai
+Sent-by: CARLF at MIT-AI
+Subject:  Parallel processors
+To: otto at WHARTON-10
+CC: SETNET at MIT-AI
+
+   Some of us here are working the design of a 1,000,000 processor system. I'll reply to
+your points individually:
+  * Each computer can run its own program with its own modest memory
+    (1-4Kbytes?)
+   Our processors (usually called "cells" around here) have about 0.04 Kbytes each, or about 
+150 bits. They don't really have program memory and can only select among microcode streams.
+Each is analogous to a cons-cell in Lisp. They only have pointers to 3-4 other cells,
+and perhaps store a number or two. When we put lots of them together, however, they will
+execute huge programs amazingly fast (we hope).
+  * Each computer is ostensibly independent of the rest, but can
+    be "acquired" by another to run subtasks
+   Were one of these independent, it would be quite useless. They can be tied together,with 
+pointers, into trees and other data structures, which can execute parallel operations.  A 
+program can be duplicated many times and sent out to a thousand cells for parallel execution.
+A structure can be extended by taking over cells which are not being otherwise used.
+  * Each computer can send messages to any other computer in the set
+    with low efficiency   
+  * Each computer can send messages to selected other computers in the  
+    set with high efficiency (dynamic establishment of priority links?)
+   The cells are arranged in a square grid, with each connected to its 4 nearest nieghbors.
+Comunications over longer distances are handled by passing messages from one processor to the 
+next. There are no preferred routes. The messages float in the general direction of the 
+destination. Of course, the messages which have longer to go take longer, so two cells 
+which have a lot to say to each other can transmit themselves through the net until they are 
+nieghbors. 
+  That's our project, in abbreviated form. Carl Hewitt (carl@mit-ai) is working on something 
+which might be more up your alley. You ought to get in touch with him, if you haven't already.
+
+					You're welcome,
+
+						Carl Feynman (carlf@mit-ai)
+						speaking for setnet@mit-ai
+
+Date: 18 Nov 1980 (Tuesday) 2122-EDT
+From: OTTO at WHARTON (George Otto)
+Subject: Errors in previous note
+To:   setnet at MIT-AI
+
+Sorry for the screwed up ending to the previous note. The people here have
+known about this problem for a while (transmission errors on notes out
+of Wharton) but as far as I can tell, nothing has been done to fix it.
+Again, sorry.
+                                               George
+
+
+Date: 18 Nov 1980 (Tuesday) 2034-EDT
+From: OTTO at WHARTON (George Otto)
+Subject: Info about Parallel Processors Wanted
+To:   setnet at MIT-AI
+
+I am interested in what research is being done currently with large sets
+of small parallel-processing computers which have the following properties:
+  
+  * Each computer can run its own program with its own modest memory
+    (1-4Kbytes?)
+  * Each computer is ostensibly independent of the rest, but can
+    be "acquired" by another to run subtasks
+  * Each computer can send messages to any other computer in the set
+    with low efficiency   
+  * Each computer can send messages to selected other computers in the  
+    set with high efficiency (dynamic establishment of priority links?)
+
+How many computers are currently being sonsidered in suts under development
+right now? Where are they being developed?
+ 
+                                     Thanks for any help,
+                          0                                                  0            0         0 George0Otto
+           0             0       0     0 (Otto@Wharton)
+
+
+Date: 11 Aug 1980 0234-EDT
+From: .BATCH at MIT-DMS
+To: UVV at MIT-AI
+Message-id: <[MIT-DMS].157292>
+
+
+Happy birthday to you!
+
+Happy birthday to you!
+
+Happy birthday, dear Umesh,
+
+Happy birthday to you!
+
+
+
+DANNY@MIT-AI 07/23/80 05:51:21
+To: SETNET at MIT-AI
+Dear Friends,
+	If you were thinking about algorithms for the machine,
+postpone your thoughts a few days; I have changed everything in the
+abstract machine.  There are no more markers. Nodes have no registers.
+Wires have no buffers. There is no global controller.	
+Details forthcoming. -Danny
+
+DANNY@MIT-AI 07/23/80 00:05:08
+To: HAL at MIT-MC
+CC: SETNET at MIT-AI
+Hal-
+	You are right. I see now what needs to be done, at it is somewhat hairier. -Danny
+
+HAL@MIT-MC 07/20/80 21:52:31
+To: setnet at MIT-AI
+
+danny--
+
+i looked over QBE.  I don't exactly understand it, but i also think it
+isn't right and breaks down when there is more than one variable.
+
+suppose we have two relations -- (R1 (ATT-a ATT-b)) and
+(R2 (ATT-c ATT-d))
+
+suppose we query on the pair of patterns:
+
+(R1 (ATT-a x?) (ATT-b y?))
+(R2 (ATT-c x?) (ATT-d y?))
+
+Then won't your algorithm end up with extra entries?
+
+For example, if the data base is
+
+(R1 (ATT-a 1) (ATT-b 2))
+(R2 (ATT-a 1) (ATT-b 6))
+(R2 (ATT-a 5) (ATT-b 2))
+
+Then the algorithm will check the first pattern and find that 1 and 5
+are good values for ATT-a, then will check the 2nd pattern and find
+that 2 and 6 are good values for ATT-b.
+
+Then it will check all the tuples and decide that all of them match
+the pattern.
+
+Or am I missing something?
+
+
+HAL@MIT-MC 06/27/80 19:46:15 Re:  Sam Brown -- TI
+To: setnet at MIT-AI
+
+sounds like a good deal, except i don't think we should rush into
+anything.  Let's get the advice some ``hard-nosed'' MIT
+people (like winston and dertouzos) who are experienced in making
+arrangements with companies and could suggest possible pitfalls we
+might not be aware of.  (e.g., will TI be free to take our design and
+build proprietary things based on it? if so, why aren't they paying us
+for it?)
+
+danny@MIT-AI 06/27/80 17:59:23
+To: SETNET at MIT-AI
+
+	Sam Brown from Texas Instrument visited today. They
+are interested cooperating with us as follows:
+
+	Stage I - Simulation of the machine on a large number
+of mask programmed micro-processors (probably tms1000). We write
+the code. They provide assembler, simulator, and emulator if really want one.
+They burn make the mask, burn a few hundered and wire them together into an array.
+
+	Stage II - Waffer scale version of above TI does all the work.
+
+	Stage III- (pipelined with stage II) They make a custom waffer scale
+chip to our specifications. They worry about packaging it. 
+
+	Stage IV- They, we or both of us build a machine with about 1,000,000
+cells. We (MIT-AI) program it do do some usefull things of our choosing.
+
+	The understanding, should we decide to accept it, would be informal and
+non binding. There would be no exchange of confidential information. Each
+side would be free to pursue any othert effort in this area without informing
+the other. In particular, it is understood that we will probably make our own test
+chip with HP.
+
+	Should we agree to this?
+
+
+

@@ -1,0 +1,78 @@
+
+
+
+                 Sample Micocode written in MicroLisp
+
+                   (part of the Garbage Collector)
+
+(defpc mark-node
+       (assign *leader* (&car (fetch *node-pointer*)))
+       (cond ((and (&pointer? (fetch *leader*))
+		   (not (&in-use? (fetch *leader*))))
+	      (&mark-car-being-traced! (fetch *node-pointer*))
+	      (&rplaca-and-mark! (fetch *node-pointer*) (fetch *stack-top*))
+	      (go-to down-trace))
+	     (t 
+	      (&mark-in-use! (fetch *node-pointer*))
+	      (go-to trace-cdr))))
+
+(defpc down-trace
+       (assign *stack-top* (fetch *node-pointer*))
+       (assign *node-pointer* (fetch *leader*))
+       (go-to mark-node))
+
+
+
+
+
+
+
+                     Micro-assembly Language Code
+
+                 (output of the Micro-Lisp Compiler)
+
+MARK-NODE-1 
+   ((FROM *DISPLAY*) (TO PADS) ALE)
+   ((FROM PADS) (TO *INTERMEDIATE-ARGUMENT*) READ)
+   ((FROM *INTERMEDIATE-ARGUMENT*) (TO PADS) WRITE MERGE-MARK-1 (GO-TO TRACE-CDR))
+
+MARK-NODE-2 
+   ((FROM *DISPLAY*) (TO PADS) ALE)
+   ((FROM PADS) (TO *INTERMEDIATE-ARGUMENT*) READ CDR)
+   ((FROM *INTERMEDIATE-ARGUMENT*) (TO PADS) WRITE MERGE-MARK-1 CDR)
+   ((FROM *DISPLAY*) (TO PADS) ALE)
+   ((FROM *VAL*) (TO PADS) WRITE MERGE-MARK-1 (GO-TO DOWN-TRACE))
+
+MARK-NODE-3 
+   ((FROM *ARGS*) (TO PADS) ALE)
+   ((FROM PADS) READ (BRANCH MARK-BIT-BUS MARK-NODE-1 MARK-NODE-2))
+
+MARK-NODE 
+   ((FROM *DISPLAY*) (TO *ARGS*) DO-CAR)
+   ((FROM *ARGS*) (BRANCH TYPE-NOT-POINTER-BUS MARK-NODE-1 MARK-NODE-3))
+
+DOWN-TRACE 
+   ((FROM *DISPLAY*) (TO *VAL*))
+   ((FROM *ARGS*) (TO *DISPLAY*) (GO-TO MARK-NODE))
+
+
+
+
+
+                            Nano-Routines
+
+                  (predefined in the Micro-Compiler)
+
+(defnano (do-restore)
+   (() (from-stack ale))
+   ((to*) (read))
+   (() (read cdr to-address-stack to-type-stack)))
+
+(defnano (do-car)
+   ((from*) (ale))
+   ((to*) (read)))
+
+(defnano (do-cdr)
+   ((from*) (ale))
+   ((to*) (read cdr)))
+

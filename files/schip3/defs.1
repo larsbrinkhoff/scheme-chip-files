@@ -1,0 +1,9 @@
+;;; -*-LISP-*-
+
+(defmacro defrack (rackname type . regdefs)
+  `(progn 'compile
+	  ,@(mapcar (function (lambda (regdef)
+				      `(defregister (,(car regdef) ,rackname)
+						    ,@(cdr regdef))))
+		    regdefs)
+	  (defprop ,rackname ,type racktype)))

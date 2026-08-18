@@ -1,0 +1,30 @@
+(deflayout registers-with-drivers ()
+    (set-the 'array (call 'register-array ()))
+    (set-the 'h-pitch (the h-pitch array))
+
+    ;First the simple cells and hbits.
+    (set-the 'exp-driver (call 'regcell-driver ()))
+    (align (the exp-driver)
+	   (the-pt end ph1-to ph2-driver exp-driver)
+	   (the-pt to-type-exp array))
+    (set-the 'to-type-exp (the-pt start sig to-driver exp-driver))
+    (set-the 'from-exp (the-pt start sig from-driver exp-driver))
+    
+    (set-the 'newcell-driver (call 'regcell-driver ()))
+    (align (the newcell-driver)
+	   (the-pt end ph1-to ph2-driver newcell-driver)
+	   (the-pt to-type-newcell array))
+
+    ...
+
+(deflayout regcell-driver ()
+     (set-the 'h-pitch 38)
+     (set-the 'to-driver (call 'ph1-driver '()))
+     (set-the 'from-driver
+	      (call* (ph1-driver)
+		     (mirror x)
+		     (trans (the-pt lower-right))))
+     (set-the 'ph2-driver
+	      (call 'ph2-driver '()
+		    'trans (the-pt upper-left to-driver)))
+     (set-the 'v-pitch (the-y upper-left ph2-driver))))

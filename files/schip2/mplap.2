@@ -1,0 +1,546 @@
+;;;PLA parts -*-Mode:lisp; Package:layout; Base:10.; Ibase:10. -*-
+
+(deflayout pla-cell-pair ()
+   (let ((dx 14) (dy -14)
+	 (y1 -4) (y2 -11)
+	 (x1 2))
+	(set-the' h-pitch dx)
+	(set-the' v-pitch dy)
+	(set-the' first-poly 6)
+	(set-the' second-poly 12)
+	(set-the' first-metal 4)
+	(set-the' second-metal 11)
+
+	(boxes (metal 4.0) (pt 0.0 y1) (+x dx))
+	(contact S diff (pt 2 y1))
+
+	(boxes (metal 4.0) (pt 0.0 y2) (+x dx))
+	(contact S diff (pt 2 y2))
+
+	(boxes poly (pt 6 0) (+Y dy))
+	(boxes diff (pt 9 0) (+Y dy))
+	(boxes poly (pt 12 0) (+Y dy))))
+
+(deflayout pullup-gnd (gnd-width)
+	   (set-the' v-pitch -10)
+	   (set-the' pullup-pair (invoke 'pullup-pair (list gnd-width)))
+	   (set-the' vdd (wire (metal 4) (pt (the-x end vdd pullup-pair) 0) (Y -10)))
+	   (set-the' vdd2 (wire (metal 4) (pt (the-x end vdd pullup-pair) -5)
+				(X (the-x vdd2 pullup-pair))))
+	   (set-the' gnd (wire (metal gnd-width) (pt (the-x end gnd pullup-pair) 0) (y -10)))
+	   (boxes (metal 4) (pt (the-x end gnd) -5) (X (the h-pitch pullup-pair))))
+
+(DEFLAYOUT PULLUP-PAIR (gnd-width)
+	   (set-the' h-pitch (+ 32. gnd-width))
+	   (set-the' v-pitch -14)
+	   (set-the' vdd2 (pt -5 -7))			;where the outside VDD will go
+           (BOXES (DIFF 4.0) (PT 0.0 -6.0) (+X 5.0))
+           (BOXES (POLY 4.0) (PT 0.0 -3.0) (+X 4.0))
+           (BOXES (METAL 6.0) (PT 0.0 -5.0) (+X 4.0))
+           (BOXES (CUTS 4.0) (PT 1.0 -5.0) (+X 2.0))
+           (BOXES (DIFF 2.0) (PT 3.0 -11.0) (X (the h-pitch)))
+           (BOXES (DIFF 2.0) (PT 3.0 -5.0) (+X 9.0))
+           (BOXES (DIFF 5.0) (PT 3.0 -9.5) (+X 2.0))
+           (BOXES (IMPLANT 6.0) (PT 4.0 -5.0) (+X 8.0))
+           (BOXES (POLY 2.0) (PT 4.0 -2.0) (+X 6.0))
+           (BOXES (POLY 6.0) (PT 6.0 -5.0) (+X 4.0))
+
+	   (set-the' vdd (wire (metal 4) (pt 13 0) (Y -14)))
+
+           (BOXES (DIFF 4.0) (PT 11.0 -5.0) (+X 4.0))
+           (BOXES (CUTS 2.0) (PT 12.0 -5.0) (+X 2.0))
+           (BOXES (CUTS 2.0) (PT 12.0 -5.0) (+X 2.0))
+           (BOXES (DIFF 2.0) (PT 14.0 -5.0) (+X 9.0))
+           (BOXES (IMPLANT 6.0) (PT 14.0 -5.0) (+X 8.0))
+           (BOXES (POLY 6.0) (PT 16.0 -5.0) (+X 4.0))
+           (BOXES (POLY 2.0) (PT 16.0 -8.0) (+X 6.0))
+
+           (BOXES (DIFF 4.0) (PT 21.0 -4.0) (X (the h-pitch)))
+	   (set-the' gnd (wire (metal gnd-width)
+			       (pt (+ 29 (// gnd-width 2)) 0)
+			       (Y -14)))
+
+           (BOXES (POLY 4.0) (PT 22.0 -7.0) (+X 4.0))
+           (BOXES (METAL 6.0) (PT 22.0 -5.0) (+X 4.0))
+           (BOXES (CUTS 4.0) (PT 23.0 -5.0) (+X 2.0)))
+
+
+(deflayout pla-gnd-cross nil
+	   (set-the' pla-gnd (invoke 'pla-gnd nil))
+	   (set-the' pla-connect (invoke 'pla-connect nil))
+	   (set-the' h-pitch (the h-pitch pla-connect))
+	   (boxes (metal 4) (pt 0 (the-y end gnd pla-gnd)) (X (the-x end gnd pla-connect)))
+	   (boxes (metal 4) (pt (the-x end gnd pla-connect) 0) (Y -10)))
+
+(deflayout pla-connect nil
+	   (set-the' h-pitch 16)
+           (boxes (metal 4.0) (pt 0.0 -4.0) (+x 6.0))
+           (boxes (diff 4.0) (pt 0.0 -4.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 0.0 -11.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 0.0 -11.0) (+x 6.0))
+           (boxes (cuts 2.0) (pt 1.0 -4.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 1.0 -11.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 3.0 -4.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 3.0 -11.0) (+x 2.0))
+           (boxes (poly 4.0) (pt 3.0 -11.0) (+x 3.0))
+           (boxes (poly 2.0) (pt 4.0 -12.0) (x 16))	;poly 2 out
+           (boxes (poly 4.0) (pt 3.0 -4.0) (X 6))
+           (boxes (poly 2.0) (pt 6.0 -4.0) (X 16))	;poly 1 out
+	   (set-the' gnd (wire (metal 4) (pt 11 0) (Y -14)))
+;           (boxes (metal 14.0) (pt 9.0 -7.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 9.0 -8.0) (+x 4.0))
+           (boxes (cuts 2.0) (pt 10.0 -8.0) (+x 2.0))
+           (boxes (diff 2.0) (pt 11.0 -9.0) (X 16))	;gnd on diff
+           (boxes (poly 4.0) (pt 14.0 -5.0) (+x 2.0)))
+
+(deflayout pla-diff-gnd ()
+	   (set-the' v-pitch -14)
+	   (set-the' h-pitch 10)
+	   (set-the' first-contact (pt 2 -4))
+	   (contact S diff (the first-contact))
+	   (boxes (metal 4) (the first-contact) (X (the h-pitch)))
+	   (set-the' second-contact (pt 2 -11))
+	   (contact S diff (the second-contact))
+	   (boxes (metal 4) (the second-contact) (X (the h-pitch))))
+
+
+(deflayout pla-or-gnd ()
+	   (set-the' v-pitch -10)
+	   (set-the' h-pitch 10)
+	   (boxes (metal 4) (pt 0 -5) (X (the h-pitch))))
+
+; Origin is upper-left, -10 Lambda high, 
+(deflayout pla-In-gnd nil
+	   (set-the' height 10)
+
+	   (boxes (poly 2) (pt 7 -9) (X 4) (Y -1) (X 7))	;left poly
+							;connect at X = 4 or 6
+	   (boxes (poly 2) (pt 12 -10) (Y 0))		;right poly
+
+	   (contact S diff (pt 8 -5))
+           (set-the' gnd (wire (metal 4.0) (pt 0.0 -5.0) (+x 14.0)))
+	   (boxes (diff 2) (pt 9 -9) (Y 0)))		;gnd
+
+; Origin is upper-left, -10 Lambda high, 
+(deflayout pla-gnd nil
+	   (set-the' height 10)
+
+	   (boxes (poly 2) (pt 7 -9) (X 4) (Y -1) (X 7))	;left poly
+							;connect at X = 4 or 6
+	   (boxes (poly 2) (pt 12 -10) (Y 0))		;right poly
+
+	   (contact S diff (pt 8 -5))
+           (set-the' gnd (wire (metal 4.0) (pt 0.0 -5.0) (x 14.0)))
+	   (boxes (diff 2) (pt 9 -10) (Y 0)))		;gnd
+
+;Origin is in upper right, box overlaps 1 unit over right boundary
+(deflayout PlaIn nil
+           (set-the' VDD (wire (metal 4.0) (pt -14.0 -16.0) (+x 15.0)))
+           (set-the' GND (wire (metal 4.0) (pt -14.0 -34.0) (+x 15.0)))
+
+	   (set-the' ph1-left (pt -14 -50))
+           (boxes (poly 2.0) (pt -14.0 -50.0) (+x 15.0))
+	   (set-the' ph1-right *XY)
+
+           (boxes (poly 4.0) (pt -13.0 -26.0) (+x 4.0))
+           (boxes (poly 6.0) (pt -13.0 -22.0) (+x 2.0))
+           (boxes (poly 6.0) (pt -13.0 -10.0) (+x 2.0))
+           (boxes (poly 4.0) (pt -13.0 -6.0) (+x 4.0))
+           (boxes (metal 4.0) (pt -12.0 -26.0) (+x 6.0))
+           (boxes (implant 6.0) (pt -12.0 -20.0) (+x 6.0))
+           (boxes (poly 2.0) (pt -12.0 -20.0) (+x 9.0))
+           (boxes (implant 6.0) (pt -12.0 -12.0) (+x 6.0))
+           (boxes (poly 2.0) (pt -12.0 -12.0) (+x 6.0))
+           (boxes (metal 4.0) (pt -12.0 -6.0) (+x 6.0))
+
+	   (boxes (poly 2) (pt -11 -5) (Y 0))		;non-invert output
+	   (set-the' A *XY)
+
+           (boxes (cuts 2.0) (pt -11.0 -26.0) (+x 4.0))
+           (boxes (diff 4.0) (pt -11.0 -16.0) (+x 4.0))
+           (boxes (cuts 2.0) (pt -11.0 -6.0) (+x 4.0))
+           (boxes (diff 6.0) (pt -10.0 -25.0) (+x 4.0))
+           (boxes (diff 6.0) (pt -10.0 -20.0) (+x 2.0))
+           (boxes (diff 1.0) (pt -10.0 -22.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt -10.0 -16.0) (+x 2.0))
+           (boxes (diff 6.0) (pt -10.0 -13.0) (+x 2.0))
+           (boxes (diff 1.0) (pt -10.0 -9.5) (+x 2.0))
+           (boxes (diff 6.0) (pt -10.0 -7.0) (+x 4.0))
+
+	   (boxes (diff 4) (pt -8 -44) (Y -53))
+	   (set-the' input *XY)
+
+           (boxes (metal 6.0) (pt -10.0 -45.0) (+x 4.0))
+           (boxes (poly 3.0) (pt -10.0 -43.5) (+x 7.0))
+           (boxes (cuts 4.0) (pt -9.0 -45.0) (+x 2.0))
+           (boxes (diff 16.0) (pt -7.0 -33.0) (+x 8.0))
+           (boxes (diff 8.0) (pt -6.0 -6.0) (+x 7.0))
+	   (boxes (poly 2) (pt -4 -43) (Y -23))
+
+	   (boxes (poly 2) (pt -3 -21) (Y 0))
+	   (set-the' -A *xy)				;inverting output
+
+           (boxes (diff 4.0) (pt -2.0 -34.0) (+x 4.0))
+           (boxes (diff 20.0) (pt -1.0 -16.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt -1.0 -34.0) (+x 2.0)))
+
+;plain without input gate - this is a patch, should use parameter for Plain
+(deflayout PlaIn-un-gated nil
+           (set-the' VDD (wire (metal 4.0) (pt -14.0 -16.0) (+x 15.0)))
+           (set-the' GND (wire (metal 4.0) (pt -14.0 -34.0) (+x 15.0)))
+
+	   (set-the' ph1-left (pt -14 -50))
+;           (boxes (poly 2.0) (pt -14.0 -50.0) (+x 15.0))
+	   (set-the' ph1-right *XY)
+
+           (boxes (poly 4.0) (pt -13.0 -26.0) (+x 4.0))
+           (boxes (poly 6.0) (pt -13.0 -22.0) (+x 2.0))
+           (boxes (poly 6.0) (pt -13.0 -10.0) (+x 2.0))
+           (boxes (poly 4.0) (pt -13.0 -6.0) (+x 4.0))
+           (boxes (metal 4.0) (pt -12.0 -26.0) (+x 6.0))
+           (boxes (implant 6.0) (pt -12.0 -20.0) (+x 6.0))
+           (boxes (poly 2.0) (pt -12.0 -20.0) (+x 9.0))
+           (boxes (implant 6.0) (pt -12.0 -12.0) (+x 6.0))
+           (boxes (poly 2.0) (pt -12.0 -12.0) (+x 6.0))
+           (boxes (metal 4.0) (pt -12.0 -6.0) (+x 6.0))
+
+	   (boxes (poly 2) (pt -11 -5) (Y 0))		;non-invert output
+	   (set-the' A *XY)
+
+           (boxes (cuts 2.0) (pt -11.0 -26.0) (+x 4.0))
+           (boxes (diff 4.0) (pt -11.0 -16.0) (+x 4.0))
+           (boxes (cuts 2.0) (pt -11.0 -6.0) (+x 4.0))
+           (boxes (diff 6.0) (pt -10.0 -25.0) (+x 4.0))
+           (boxes (diff 6.0) (pt -10.0 -20.0) (+x 2.0))
+           (boxes (diff 1.0) (pt -10.0 -22.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt -10.0 -16.0) (+x 2.0))
+           (boxes (diff 6.0) (pt -10.0 -13.0) (+x 2.0))
+           (boxes (diff 1.0) (pt -10.0 -9.5) (+x 2.0))
+           (boxes (diff 6.0) (pt -10.0 -7.0) (+x 4.0))
+
+	   (boxes (diff 4) (pt -8 -44) (Y -53))
+	   (set-the' input *XY)
+
+           (boxes (metal 6.0) (pt -10.0 -45.0) (+x 4.0))
+           (boxes (poly 3.0) (pt -10.0 -43.5) (+x 7.0))
+           (boxes (cuts 4.0) (pt -9.0 -45.0) (+x 2.0))
+           (boxes (diff 16.0) (pt -7.0 -33.0) (+x 8.0))
+           (boxes (diff 8.0) (pt -6.0 -6.0) (+x 7.0))
+	   (boxes (poly 2) (pt -4 -43) (Y -23))
+
+	   (boxes (poly 2) (pt -3 -21) (Y 0))
+	   (set-the' -A *xy)				;inverting output
+
+           (boxes (diff 4.0) (pt -2.0 -34.0) (+x 4.0))
+           (boxes (diff 20.0) (pt -1.0 -16.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt -1.0 -34.0) (+x 2.0)))
+
+
+(DEFLAYOUT PLAINPAIR
+           NIL
+           (CALL 'PLAIN NIL 'TRANS (PT 0.0 0.0))
+           (CALL 'PLAIN NIL 'MIRROR 'X 'TRANS (PT 0.0 0.0)))
+
+
+
+;Origin is upper-left, height from pla-2-out
+(deflayout pla-out-gnd nil
+    (set-the' pla-out (invoke 'pla-out nil))
+    (boxes poly (pt 0 (the-y end ph2 pla-out)) (X 10))
+    (boxes (metal 4) (pt 5 0) (Y (the-y end gnd pla-out)))
+    (boxes (metal 4) (pt 0 (the-y end gnd pla-out)) (X 10))
+    (boxes (metal 4) (pt 0 (the-y end vdd pla-out)) (X 10))
+    (boxes (metal 4) (pt 0 (the-y end vdd2 pla-out)) (X 10)))
+
+;Origin is upper-left, height from pla-2-out
+(deflayout pla-out-break nil
+    (set-the' pla-out (invoke 'pla-out nil))
+;    (boxes poly (pt 0 (the-y end ph2 pla-out)) (X 10))
+    (boxes (metal 4) (pt 5 0) (Y (the-y end gnd pla-out)))
+    (boxes (metal 4) (pt 0 (the-y end gnd pla-out)) (X 10))
+    (boxes (metal 4) (pt 0 (the-y end vdd pla-out)) (X 10))
+    (boxes (metal 4) (pt 0 (the-y end vdd2 pla-out)) (X 10)))
+
+(deflayout pla-out nil
+	   (set-the' h-pitch 14.)
+	   (set-the' v-pitch -68.)
+	   (set-the' top (pt 0 (the v-pitch)))
+	   (set-the' ph2 (wire poly (pt 0 -6) (X (the h-pitch))))
+;           (boxes (poly 2.0) (pt 0.0 -6.0) (+x 14.0))
+
+	   (set-the' gnd (wire (metal 4) (pt 0 -19) (X (the h-pitch))))
+;           (boxes (metal 4.0) (pt 0.0 -19.0) (+x 14.0))
+
+	   (set-the' vdd (wire (metal 4) (pt 0 -44) (X (the h-pitch))))
+;           (boxes (metal 4.0) (pt 0.0 -44.0) (+x 14.0))
+
+	   (set-the' vdd2 (wire (metal 4) (pt 0 -66.) (X (the h-pitch))))
+;           (boxes (metal 4.0) (pt 0.0 -66.0) (+x 14.0))
+
+           (boxes (poly 12.0) (pt 0.0 -18.0) (+x 2.0))
+           (boxes (poly 2.0) (pt 0.0 -24.0) (+x 9.0))
+           (boxes (diff 4.0) (pt 1.0 -2.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 1.0 -2.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 1.0 -10.0) (+x 4.0))
+           (boxes (poly 3.0) (pt 1.0 -12.5) (+x 4.0))
+           (boxes (metal 6.0) (pt 1.0 -11.0) (+x 4.0))
+
+	   (set-the' left-output (pt 2 (the v-pitch)))
+	   (boxes poly (pt 2 -39.) (Y (the v-pitch)))
+;           (boxes (poly 29.0) (pt 1.0 -53.5) (+x 2.0))
+
+           (boxes (cuts 2.0) (pt 2.0 -2.0) (+x 2.0))
+           (boxes (diff 6.0) (pt 2.0 -6.0) (+x 2.0))
+           (boxes (cuts 4.0) (pt 2.0 -11.0) (+x 2.0))
+           (boxes (diff 12.0) (pt 3.0 -21.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 3.0 -29.0) (+x 6.0))
+           (boxes (diff 5.0) (pt 3.0 -29.5) (+x 4.0))
+           (boxes (poly 8.0) (pt 3.0 -37.0) (+x 6.0))
+           (boxes (implant 12.0) (pt 3.0 -37.0) (+x 6.0))
+           (boxes (cuts 2.0) (pt 4.0 -19.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 4.0 -29.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 4.0 -44.0) (+x 4.0))
+           (boxes (diff 13.0) (pt 5.0 -37.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt 5.0 -44.0) (+x 2.0))
+
+	   (set-the' right-output (pt 6 (the v-pitch)))
+	   (boxes poly (pt 6. -61.) (Y (the v-pitch)))
+;           (boxes (poly 7.0) (pt 5.0 -64.5) (+x 2.0))
+
+           (boxes (diff 4.0) (pt 6.0 -17.0) (+x 7.0))
+           (boxes (poly 4.0) (pt 6.0 -29.0) (+x 4.0))
+           (boxes (poly 4.0) (pt 6.0 -51.0) (+x 4.0))
+           (boxes (poly 12.0) (pt 6.0 -57.0) (+x 2.0))
+           (boxes (metal 4.0) (pt 7.0 -51.0) (+x 6.0))
+           (boxes (implant 12.0) (pt 7.0 -59.0) (+x 6.0))
+           (boxes (poly 8.0) (pt 7.0 -59.0) (+x 6.0))
+           (boxes (diff 4.0) (pt 8.0 -2.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 8.0 -2.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 8.0 -10.0) (+x 4.0))
+           (boxes (poly 3.0) (pt 8.0 -12.5) (+x 4.0))
+           (boxes (metal 6.0) (pt 8.0 -11.0) (+x 4.0))
+           (boxes (poly 8.0) (pt 8.0 -17.0) (+x 2.0))
+           (boxes (poly 12.0) (pt 8.0 -35.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 8.0 -51.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 8.0 -66.0) (+x 4.0))
+           (boxes (cuts 2.0) (pt 9.0 -2.0) (+x 2.0))
+           (boxes (diff 6.0) (pt 9.0 -6.0) (+x 2.0))
+           (boxes (cuts 4.0) (pt 9.0 -11.0) (+x 2.0))
+           (boxes (diff 5.0) (pt 9.0 -51.5) (+x 4.0))
+           (boxes (diff 13.0) (pt 9.0 -58.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt 9.0 -66.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 9.0 -66.0) (+x 2.0))
+           (boxes (diff 34.0) (pt 11.0 -35.0) (+x 2.0)))
+
+(deflayout pla-out-un-clocked nil
+	   (set-the' h-pitch 14.)
+	   (set-the' v-pitch -68.)
+	   (set-the' top (pt 0 (the v-pitch)))
+;	   (set-the' ph2 (wire poly (pt 0 -6) (X (the h-pitch))))
+;           (boxes (poly 2.0) (pt 0.0 -6.0) (+x 14.0))
+
+	   (set-the' gnd (wire (metal 4) (pt 0 -19) (X (the h-pitch))))
+;           (boxes (metal 4.0) (pt 0.0 -19.0) (+x 14.0))
+
+	   (set-the' vdd (wire (metal 4) (pt 0 -44) (X (the h-pitch))))
+;           (boxes (metal 4.0) (pt 0.0 -44.0) (+x 14.0))
+
+	   (set-the' vdd2 (wire (metal 4) (pt 0 -66.) (X (the h-pitch))))
+;           (boxes (metal 4.0) (pt 0.0 -66.0) (+x 14.0))
+
+           (boxes (poly 12.0) (pt 0.0 -18.0) (+x 2.0))
+           (boxes (poly 2.0) (pt 0.0 -24.0) (+x 9.0))
+           (boxes (diff 4.0) (pt 1.0 -2.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 1.0 -2.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 1.0 -10.0) (+x 4.0))
+           (boxes (poly 3.0) (pt 1.0 -12.5) (+x 4.0))
+           (boxes (metal 6.0) (pt 1.0 -11.0) (+x 4.0))
+
+	   (set-the' left-output (pt 2 (the v-pitch)))
+	   (boxes poly (pt 2 -39.) (Y (the v-pitch)))
+;           (boxes (poly 29.0) (pt 1.0 -53.5) (+x 2.0))
+
+           (boxes (cuts 2.0) (pt 2.0 -2.0) (+x 2.0))
+           (boxes (diff 6.0) (pt 2.0 -6.0) (+x 2.0))
+           (boxes (cuts 4.0) (pt 2.0 -11.0) (+x 2.0))
+           (boxes (diff 12.0) (pt 3.0 -21.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 3.0 -29.0) (+x 6.0))
+           (boxes (diff 5.0) (pt 3.0 -29.5) (+x 4.0))
+
+	   (boxes (poly 6) (pt 6.0 -37.0) (Y -41.0))	;pullup of 4:1
+;           (boxes (poly 8.0) (pt 3.0 -37.0) (+x 6.0))
+
+           (boxes (implant 12.0) (pt 3.0 -37.0) (+x 6.0))
+           (boxes (cuts 2.0) (pt 4.0 -19.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 4.0 -29.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 4.0 -44.0) (+x 4.0))
+           (boxes (diff 13.0) (pt 5.0 -37.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt 5.0 -44.0) (+x 2.0))
+
+	   (set-the' right-output (pt 6 (the v-pitch)))
+	   (boxes poly (pt 6. -61.) (Y (the v-pitch)))
+;           (boxes (poly 7.0) (pt 5.0 -64.5) (+x 2.0))
+
+           (boxes (diff 4.0) (pt 6.0 -17.0) (+x 7.0))
+           (boxes (poly 4.0) (pt 6.0 -29.0) (+x 4.0))
+           (boxes (poly 4.0) (pt 6.0 -51.0) (+x 4.0))
+           (boxes (poly 12.0) (pt 6.0 -57.0) (+x 2.0))
+           (boxes (metal 4.0) (pt 7.0 -51.0) (+x 6.0))
+           (boxes (implant 12.0) (pt 7.0 -59.0) (+x 6.0))
+
+	   (boxes (poly 6) (pt 10 -59) (Y -63.0))	;pullup of 4:1
+;           (boxes (poly 8.0) (pt 7.0 -59.0) (+x 6.0))
+
+           (boxes (diff 4.0) (pt 8.0 -2.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 8.0 -2.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 8.0 -10.0) (+x 4.0))
+           (boxes (poly 3.0) (pt 8.0 -12.5) (+x 4.0))
+           (boxes (metal 6.0) (pt 8.0 -11.0) (+x 4.0))
+           (boxes (poly 8.0) (pt 8.0 -17.0) (+x 2.0))
+           (boxes (poly 12.0) (pt 8.0 -35.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 8.0 -51.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 8.0 -66.0) (+x 4.0))
+           (boxes (cuts 2.0) (pt 9.0 -2.0) (+x 2.0))
+           (boxes (diff 6.0) (pt 9.0 -6.0) (+x 2.0))
+           (boxes (cuts 4.0) (pt 9.0 -11.0) (+x 2.0))
+           (boxes (diff 5.0) (pt 9.0 -51.5) (+x 4.0))
+           (boxes (diff 13.0) (pt 9.0 -58.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt 9.0 -66.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 9.0 -66.0) (+x 2.0))
+           (boxes (diff 34.0) (pt 11.0 -35.0) (+x 2.0)))
+
+;;PLA output that selects even/odd OR lines
+
+;Origin is upper-left, height from pla-2-out
+(deflayout pla-2-out-gnd nil
+    (set-the' pla-2-out (invoke 'pla-2-out nil))
+    (boxes poly (pt 0 (the-y end ph2 pla-2-out)) (X 10))
+    (boxes poly (pt 0 (the-y end ph2-not pla-2-out)) (X 10))
+    (boxes (metal 4) (pt 5 0) (Y (the-y end gnd pla-2-out)))
+    (boxes (metal 4) (pt 0 (the-y end gnd pla-2-out)) (X 10))
+    (boxes (metal 4) (pt 0 (the-y end vdd pla-2-out)) (X 10)))
+
+;Origin is upper-left, height from pla-2-out
+(deflayout pla-2-out-break nil
+    (set-the' pla-2-out (invoke 'pla-2-out nil))
+;    (boxes poly (pt 0 (the-y end ph2 pla-2-out)) (X 10))
+;    (boxes poly (pt 0 (the-y end ph2-not pla-2-out)) (X 10))
+    (boxes (metal 4) (pt 5 0) (Y (the-y end gnd pla-2-out)))
+    (boxes (metal 4) (pt 0 (the-y end gnd pla-2-out)) (X 10))
+    (boxes (metal 4) (pt 0 (the-y end vdd pla-2-out)) (X 10)))
+
+;Origin in upper left
+(deflayout pla-2-out nil
+	   (set-the' h-pitch 14)
+	   (set-the' v-pitch -57)
+	   (set-the' top (pt 0 (the v-pitch)))
+	   (set-the' even-con1 (pt 3 -2))
+	   (set-the' even-contact (pt 3 -10))
+	   (set-the' odd-con1 (pt 10 -2))
+	   (set-the' odd-con2 (pt 10 -10))
+	   (set-the' even-butting (pt 3 -19))
+	   (set-the' odd-con3 (pt 10 -18))
+	   (set-the' gnd-contact (pt 5 -27))
+	   (set-the' even-q (pt 5 -32))
+	   (set-the' odd-q (pt 9 -25))
+	   (set-the' out-butting (pt 6 -40))
+	   (set-the' pullup (pt 6 -44))
+	   (set-the' vdd-contact (pt 5 -55))
+	   (set-the' output (pt 9 -57))
+	   (set-the' ph2 (wire poly (pt 0 -6) (X (the h-pitch))))
+	   (set-the' ph2-not (wire poly (pt 0 -14) (X (the h-pitch))))
+
+	   (contact S diff (the even-con1))	;even input
+	   (boxes metal (pt 2.5 0) (Y (the-y even-contact)))
+	   (contact S diff (the even-contact))
+	   (boxes diff (the even-contact) (Y (the-y even-butting)))
+	   (call* butting-contact (mirror Y) (trans (the even-butting)))
+
+	   (contact S diff (the odd-con1))			;odd input
+	   (boxes diff (the odd-con1) (Y (the-y odd-con2)))
+	   (contact S diff (the odd-con2))
+	   (boxes (metal 4) (the odd-con2) (Y (the-y odd-con3)))
+	   (contact S poly (the odd-con3))
+
+	   (contact S diff (the gnd-contact))
+	   (set-the' gnd (wire (metal 4) (pt 0 (the-y gnd-contact))
+			       (X (the h-pitch))))
+
+	   (call* (pass-transistor 2 4) (trans (the even-q)))	;output OR
+	   (call* (pass-transistor 2 4) (rot 0 -1) (trans (the odd-q)))
+	   (boxes (diff 4) (pt (the-x gnd-contact) (- (the-y out-butting) 3))
+		  (Y (+ (the-y gnd-contact) 2)) (X (1- (the h-pitch))))
+	   (boxes diff (pt (1- *X) *Y) (Y -35) (X (the-x gnd-contact)))
+	   (boxes poly (pt (- (the-x even-butting) 2) (the-y even-butting))
+		  (Y (1- (the-y even-q))))
+	   (boxes poly (the odd-q) (Y (the-y odd-con3)))
+
+	   (call* butting-contact (rot 0 -1) (trans (the out-butting)))	;output pullup
+	   (call* (general-pullup 8 2) (rot -1 0) (trans (the pullup)))
+	   (boxes poly (pt (+ (the-x out-butting) 3) (the-y out-butting))
+		  (Y (the-y output)))
+	   (set-the'output *XY)
+
+	   (contact S diff (the vdd-contact))
+	   (set-the' vdd (wire (metal 4) (pt 0 (the-y vdd-contact)) (X (the h-pitch)))))
+
+;Origin in upper left
+(deflayout old-pla-2-out nil
+           (boxes (poly 2.0) (pt 0.0 -6.0) (+x 14.0))
+	   (boxes (poly 2) (pt 1 -12) (Y -24) (X 9))		;output gate poly
+           (boxes (metal 4.0) (pt 0.0 -19.0) (+x 14.0))		;GND
+           (boxes (metal 4.0) (pt 0.0 -44.0) (+x 14.0))		;VDD
+
+           (boxes (diff 4.0) (pt 1.0 -2.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 1.0 -2.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 1.0 -10.0) (+x 4.0))
+           (boxes (poly 3.0) (pt 1.0 -12.5) (+x 4.0))
+           (boxes (metal 6.0) (pt 1.0 -11.0) (+x 4.0))
+           (boxes (cuts 2.0) (pt 2.0 -2.0) (+x 2.0))
+           (boxes (diff 6.0) (pt 2.0 -6.0) (+x 2.0))
+           (boxes (cuts 4.0) (pt 2.0 -11.0) (+x 2.0))
+           (boxes (diff 12.0) (pt 3.0 -21.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 3.0 -29.0) (+x 6.0))
+           (boxes (diff 5.0) (pt 3.0 -29.5) (+x 4.0))
+           (boxes (poly 8.0) (pt 3.0 -37.0) (+x 6.0))
+           (boxes (cuts 2.0) (pt 4.0 -19.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 4.0 -29.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 4.0 -44.0) (+x 4.0))
+           (boxes (diff 13.0) (pt 5.0 -37.5) (+x 2.0))
+           (boxes (cuts 2.0) (pt 5.0 -44.0) (+x 2.0))
+           (boxes (diff 4.0) (pt 6.0 -17.0) (+x 7.0))
+           (boxes (poly 4.0) (pt 6.0 -29.0) (+x 4.0))
+
+           (boxes (diff 4.0) (pt 8.0 -2.0) (+x 4.0))
+           (boxes (metal 4.0) (pt 8.0 -2.0) (+x 4.0))
+           (boxes (diff 4.0) (pt 8.0 -10.0) (+x 4.0))
+           (boxes (poly 3.0) (pt 8.0 -12.5) (+x 4.0))
+           (boxes (metal 6.0) (pt 8.0 -11.0) (+x 4.0))
+           (boxes (poly 8.0) (pt 8.0 -17.0) (+x 2.0))
+           (boxes (poly 12.0) (pt 8.0 -35.0) (+x 2.0))
+           (boxes (cuts 2.0) (pt 9.0 -2.0) (+x 2.0))
+           (boxes (diff 6.0) (pt 9.0 -6.0) (+x 2.0))
+           (boxes (cuts 4.0) (pt 9.0 -11.0) (+x 2.0))
+
+	   (boxes (diff 2) (pt 12 -18) (Y -46))
+
+;           (boxes (metal 4.0) (pt 0.0 -66.0) (+x 14.0))
+;           (boxes (poly 29.0) (pt 1.0 -53.5) (+x 2.0))  ;1 3, 29 68
+;           (boxes (implant 12.0) (pt 3.0 -37.0) (+x 6.0))
+;           (boxes (poly 7.0) (pt 5.0 -64.5) (+x 2.0))
+;           (boxes (poly 4.0) (pt 6.0 -51.0) (+x 4.0))
+;           (boxes (poly 12.0) (pt 6.0 -57.0) (+x 2.0))
+;           (boxes (metal 4.0) (pt 7.0 -51.0) (+x 6.0))
+;           (boxes (implant 12.0) (pt 7.0 -59.0) (+x 6.0))
+;           (boxes (poly 8.0) (pt 7.0 -59.0) (+x 6.0))
+;           (boxes (cuts 2.0) (pt 8.0 -51.0) (+x 4.0))
+;           (boxes (diff 4.0) (pt 8.0 -66.0) (+x 4.0))
+;           (boxes (diff 5.0) (pt 9.0 -51.5) (+x 4.0))
+;           (boxes (diff 13.0) (pt 9.0 -58.5) (+x 2.0))
+;           (boxes (cuts 2.0) (pt 9.0 -66.0) (+x 2.0))
+;           (boxes (cuts 2.0) (pt 9.0 -66.0) (+x 2.0))
+
+	   )
+
+
+

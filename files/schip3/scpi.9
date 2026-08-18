@@ -1,0 +1,133 @@
+;;; -*- mode: LISP; package: DPL -*-
+
+;;; Stuff for extracting PI info from the SCHEME-81 layout
+
+;;; Start with a daedalus into which PI,
+;;; and this file have been loaded.
+
+;;; Load the following files:
+;;; BATALI;SYS QFASL
+;;; SCHIP3;SYSDEF >
+
+;;; Then do:
+;;; (MAKE-SYSTEM 'FAKE)
+
+;;; This makes outlines of the pieces of SCHEME-81
+
+(defun make-scheme-81-for-pi ()
+  (let ((*scheme-81-maker-codes*
+	  '(main-regs decoders control-pla land-of-uarg land-of-ns
+		      pads gnd-wiring vdd-wiring))
+	(*faking-it* t))
+    (remtype 'scheme-81)
+    (partq scheme-81 scheme-81)))
+
+;;; This function initializes PI and
+;;; declares the modules and hand-wiring
+
+(defun prepare-scheme-81-for-routing ()
+  (:pi-initialize)
+  (:pi-set-chip-size
+    (>> left scheme-81)
+    (>> bottom scheme-81)
+    (>> right scheme-81)
+    (>> top scheme-81))
+  (declare-schip-modules)
+  (declare-schip-power-busses)
+  'ready)
+
+;;; names for PI will be the first name in the pathname.
+
+(defvar *schip-pathname-list*
+	'((main-regs)
+	  (control-pla)
+	  (constant-decoder decoders)
+	  (non-uarg-decoder decoders)
+	  (uarg-load-decoder decoders)
+	  (uarg-read-decoder decoders)
+	  (uarg-stacks land-of-uarg)
+	  (uarg-op-decoder land-of-uarg)
+	  (next-state land-of-ns)
+	  (ns-op-decoder land-of-ns)
+	  (dispatch-decoder land-of-ns)
+	  (predicate-select land-of-ns)
+	  (bottom-pads pads)
+	  (side-pads pads)
+	  (top-pads pads)))
+
+(defun declare-schip-modules ()
+  (let ((*me* (>> prototype scheme-81)))
+    (dolist (mod *schip-pathname-list*)
+      (let ((part (eval `(>> . ,mod))))
+	(:pi-create-module (car mod)
+			   (the 'left part)
+			   (the 'bottom part)
+			   (the 'right part)
+			   (the 'top part))))))
+
+(defun declare-schip-power-busses ()
+  (hand-wired 'vdd-wiring (>> vdd-wiring))
+  (hand-wired 'gnd-wiring (>> gnd-wiring)))
+
+
+;;; Wiring can now be done in individual groups.
+
+;;; Wiring will be specified as lists of nets.
+;;; Each element of a net will be of the form:
+;;; (<pt1> <mod1> <layer>)
+;;; These triples will be collected into nets.
+;;; And a list of (related) nets will be placed on the
+;;; property of an atom by the macro DEF-PI-WIRES
+;;; These definitions will appear in the file
+;;; SCHIP3;PIWIRE >
+;;; Loading this file will define all the groups of wires.
+
+;;; This variable holds a list of all the wire groups
+(defvar *pi-wire-groups* nil)
+
+(defmacro def-pi-wires (name &body net-lists)
+  `(progn
+     (defprop ,name ,net-lists pi-wires)
+     (setq *pi-wire-groups* (cons ',name (delq ',name *pi-wire-groups*)))
+     ',name))
+
+(defstruct (sc-pi-term (:type :list) :conc-name)
+  pt module layer)
+
+(defun get-pi-wires (name) (get name 'pi-wires))
+
+;;; Run this function on each group to be routed.
+
+(defun process-wiring (name)
+  (dolist (net (get-pi-wires name))
+    (let ((net-name (make-new-symbol (smash name 'net))))
+      (:pi-create-net net-name)
+      (dolist (term net)
+	(let ((pt (sc-pi-term-pt term)))
+	  (:pi-create-terminal
+	    (sc-pi-term-module term)
+	    net-name			  ;only one term per net per module
+	    (x-of-pt pt)
+	    (y-of-pt pt)
+	    (x-of-pt pt)
+	    (y-of-pt pt)
+	    ()				  ;direction-list
+	    (sc-pi-term-layer term))
+	  (:pi-connect-terminal net-name (sc-pi-term-module term) net-name))))))
+
+;;; When all the desired wires are processed, this function will
+;;; set up everything for routing.
+
+(defun scheme-81-grab-pi-problem ()
+  (let ((*me* (>> prototype scheme-81)))
+    (setf (prototype-ive-been-modified *me*) t)
+    (setq-my pi-problem :*pi-problem*)
+    (:pi-final-input-check)))
+
+;;; Now the router can be run, either by doing
+;;; (:PI-ROUTER :*PI-PROBLEM*)
+;;; or
+;;; (RUN-ROUTER (>> SCHEME-81))
+;;; then
+;;; (CONVERT-PROBLEM (>> SCHEME-81))
+

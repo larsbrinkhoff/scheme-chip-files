@@ -1,0 +1,1419 @@
+;;; -*- LISP -*-
+
+(comment SCHIP Compiler - by GJS H)
+
+;!!! there should be micro-instruction to catch non-existant states !!!
+;add some extra dispatches for user data types
+;code for debug from, to
+;arrange that nano-0 exists
+;somehow nano state should come out on RD STATE
+;order of fields into/out of plas correct???
+
+(declare (macros t))
+
+(defmacro defvar (variable &optional initial-value)
+   `(progn 'compile
+	   (declare (special ,variable))
+	   (or (boundp ',variable) (setq ,variable ,initial-value))))
+
+
+(declare (special *s* *block* *tag* *continuation*
+		  *output-list* *jump-at-tail* *sub-tag-no* *sl*
+		  *reserved-regs*
+		  **machine-registers**		     ;These are passed by input file
+		  **pointer**
+		  **pointer-types**
+		  **non-pointer-types**
+		  *ucode*
+		  *ucode-words*
+		  *defreturns*
+		  *defpcs*
+		  *tags*))
+
+(defvar wallpaper nil)
+(putprop 'debug '((dsk liblsp)debug fasl) 'autoload)
+
+;;;Random macros
+
+;MAPC with a prog body instead of a function.  <form> evaluates to a list,
+;and <body> is executed with <var> bound to successive elements of the list.
+(DEFMACRO DOLIST ((VAR FORM) &REST BODY)
+   (LET ((DUMMY (GENSYM))) 
+     `(DO ((,DUMMY ,FORM (CDR ,DUMMY))
+           (,VAR))
+          ((NULL ,DUMMY))
+         (SETQ ,VAR (CAR ,DUMMY))
+         . ,BODY)))
+
+;Repeat a number of times.  <form> evaluates to the number of times,
+;and <body> is executed with <var> bound to 0, 1, ...
+(defmacro dotimes ((var form) &rest body)
+   (let ((dummy (gensym)))
+     `(do ((,var 0 (1+ ,var))
+	   (,dummy ,form))
+	  ((>= ,var ,dummy))
+	. ,body)))
+
+(DEFUN FIND-POSITION-IN-LIST (ITEM IN-LIST)
+    (DO ((L IN-LIST (CDR L))
+	 (C 0 (1+ C)))
+	((NULL L))
+      (AND (eq ITEM (CAR L)) (RETURN C))))
+
+
+(defmacro >= args `(not (< . ,args)))
+
+(defmacro / args `(not (< . ,args)))
+
+(defmacro <= args `(not (> . ,args)))
+
+(defmacro / args `(not (> . ,args)))
+
+(defmacro neq args `(not (eq . ,args)))
+
+(defmacro / args `(not (= . ,args)))
+
+(macro first (x) (displace x `(car ,(cadr x))))
+
+(macro second (x) (displace x `(cadr ,(cadr x)))) 
+
+(macro third (x) (displace x `(caddr ,(cadr x)))) 
+
+(macro fourth (x) (displace x `(cadddr ,(cadr x))))
+
+(macro fifth (x) (displace x `(car (cddddr ,(cadr x)))))
+
+(macro sixth (x) (displace x `(cadr (cddddr ,(cadr x)))))
+
+(macro seventh (x) (displace x `(caddr (cddddr ,(cadr x)))))
+
+(macro rest1 (x) (displace x `(cdr ,(cadr x))))
+(macro rest2 (x) (displace x `(cddr ,(cadr x))))
+(macro rest3 (x) (displace x `(cdddr ,(cadr x))))
+(macro rest4 (x) (displace x `(cddddr ,(cadr x))))
+
+
+(defmacro prog1 (a . b) `(prog2 nil ,a . ,b))
+(defmacro if (p c . a) `(cond (,p ,c) (t . ,a)))
+
+(defun aref macro (x) `(arraycall t . ,(cdr x)))
+(defun aset macro (x)
+       `(store (arraycall t . ,(reverse (cdr (reverse (cdr x)))))
+	       ,(car (last x))))
+
+(DEFUN MEMASSQ (ITEM LIST)
+    (DO L LIST (CDR L) (NULL L)
+      (AND (EQ ITEM (CAAR L)) (RETURN L))))
+
+
+(defun xerror (msg arg)
+  (format t '|~%; ~S -- ~S| msg arg)
+  (break t))
+
+(defun concat n
+    (implode (mapcan '(lambda (x) (explode x))
+		     (listify n))))
+(defun concat* n
+    (implode (mapcan '(lambda (x) (delq '* (explode x)))
+		     (listify n))))
+
+;;;
+
+(DEFPROP TIMESTAMP |DSK:LIBLSP;PHSPRT FASL| AUTOLOAD)
+
+; (UC <file>) - compiles into <file> UCODE
+(defun uc (f)
+   (let ((ifilename (defaultf (mergef f '((dsk *) * >)))))
+	(let ((ifile (open ifilename '(in ascii)))
+	      (ofile (open (mergef '((* *) _umid_ output) ifilename) '(out ascii)))
+	      (osfile (open (mergef '((* *) _usav_ output) ifilename) '(out ascii)))
+	      (eof (list nil)))
+	     (terpri ofile)
+	     (princ '|;This is the assembled microcode for | ofile)
+	     (prin1 (truename ifile) ofile)
+	     (timestamp ofile)
+	     (terpri ofile)
+	     (setq *ucode* nil
+		   *ucode-words* 0
+		   **machine-registers** nil
+		   **pointer-types** nil
+		   **non-pointer-types** nil
+		   *defreturns* nil
+		   *defpcs* nil)
+	     (do ((form (read ifile eof) (read ifile eof)))
+		 ((eq form eof))
+		 (cond ((atom form))
+		       (t (let ((do-it (get (car form) 'def)))
+			       (and do-it (funcall do-it form))))))
+	     (dump-ucode ofile)
+	     (timestamp ofile)
+	     (terpri ofile)
+	     (let ((ofilename (mergef '((* *) * ucode) ifilename)))
+		  (renamef ofile ofilename)
+		  (close ofile))
+	     (save-ucode osfile)
+	     (let ((ofilename (mergef '((* *) * *ucode) ifilename)))
+		  (renamef osfile ofilename)
+		  (close osfile))
+	     f))
+   (uassem f))
+
+(defun dump-ucode (file)
+   (terpri file)
+   (princ '|;;; | file)
+   (let ((base 10.)) (prin1 *ucode-words* file))
+   (princ '| words used.| file)
+   (terpri file)
+   (terpri file)
+   (do ((x *ucode* (cddr x)))
+       ((null x))
+       (print (car x) file) (terpri file)
+       (mapc '(lambda (x)
+		 (princ '|   | file)
+		 (prin1 x file)
+		 (terpri file))
+	     (cadr x))))
+
+(defun save-ucode (file)
+   (let ((base 10.))
+      (princ '|(progn | file)
+      (terpri file)
+      (mapc '(lambda (x) (print `(setq ,x ',(symeval x)) file)
+		     (terpri file))
+	    '(*ucode*
+	      *ucode-words*
+	      **machine-registers**
+	      **pointer-types**
+	      **non-pointer-types**
+	      *defreturns*
+	      *defpcs*))
+      (print `',(truename file) file)
+      (princ '|)| file)))
+
+(defun (defschip def) (s)			     ;parameter passing
+   (eval `(setq . ,(cdr s))))
+
+(defun (defmicromacro def) (s)
+   (eval `(defmacro ,@(cdr s)))			     ;crock!
+   (putprop (second s) (get (second s) 'macro) 'ucode-macro))
+
+(defun (deftype def) (s)
+   (or (assq (second s) **pointer-types**)
+       (assq (second s) **non-pointer-types**)
+       (format t '|~%; *** Deftype of ~S, an unknown type! ***| (second s)))
+   (uc-block (rest2 s) (second s) nil))
+
+(defun (defpc def) (s)
+   (and (memq (second s) *defpcs*)
+	(format t '|~%; *** Multiply defined Defpc - ~S ***| (second s)))
+   (push (second s) *defpcs*)
+   (uc-block (rest2 s) (second s) nil))
+
+(defun (defreturn def) (s)
+   (and (memq (second s) *defreturns*)
+	(format t '|~%; *** Multiply defined Defreturn - ~S ***| (second s)))
+   (push (second s) *defreturns*)
+   (uc-block (rest2 s) (second s) nil))
+
+(defun uc-block (*block* *tag* *continuation*)
+   (let ((*output-list* nil)
+	 (*jump-at-tail* nil)
+	 (*sub-tag-no* 0))
+	(do ((*block* *block* (cdr  *block*))
+	     (*sl*))
+	    ((null *block*))	     ;Can stop if COND does breakoff
+	    (setq *sl* (car *block*))
+	    (uc-statement *sl*))
+	(if (not *jump-at-tail*)
+	    (if *continuation* (output `(((go-to ,*continuation*))))
+			       (break no-continuation)))
+	(let ((output (peep-hole (cdr *output-list*))))
+	     (putprop *tag* output 'uc-block)
+	     (setq *ucode* (nconc *ucode* (list *tag* output)))
+	     (setq *ucode-words* (+ *ucode-words* (length output)))
+	     (cond (wallpaper (print *tag*) (terpri)
+			      (mapc '(lambda (x) (princ '|   |) (prin1 x) (terpri))
+				    output))))
+	*tag*))
+
+(defun peep-hole (s)
+   (do ((ss s (cdr ss)))
+       ((null ss) s)
+       (cond ((and (cdr ss)
+		   (not (atom (caadr ss)))
+		   (eq (caaadr ss) 'go-to)
+		   (null (cdadr ss)))
+	      (and (cddr ss) (error '|Go-to not at end of list| ss))
+	      (rplaca ss (append (car ss) (cadr ss)))
+	      (rplacd ss nil)))))
+
+(defun register? (x) (assq (uc-macro-exp x) **machine-registers**))
+
+(defun map-register-name (x)
+   (let ((reg (assq (uc-macro-exp x) **machine-registers**)))
+       (if reg (if (cdr reg) (cadr reg) (car reg))
+	   (format t '|~%; *** ~S is not a register, in ~S ***| x *sl*))))
+
+(defun addprop (sym val prop)
+   (putprop sym (cons val (get sym prop)) prop))
+
+;;; Define the register naming, and their capabilities
+
+(defvar *capabilities* nil)
+
+(defun (defreg def) (x)
+   (let ((reg (second x))
+	 (to-from (third x))
+	 (tests (fourth x)))
+	(dolist (x (append to-from tests))
+	    (let ((c-name (concat* x '- reg)))
+		 (if (not (assq reg (get x 'defreg)))
+		     (addprop x (cons reg c-name) 'defreg))
+		 (setq *capabilities* (cons c-name (delq c-name *capabilities*)))))))
+
+(defun get-capability (reg capability)
+   (let ((cp (assq (map-register-name reg) (get capability 'defreg))))
+	(or cp (format t '|~%; *** Register ~S is incapable of ~S. In ~S ***|
+		       reg capability *sl*))
+	(if cp (cdr cp) (list reg capability))))
+
+(defun output (l)
+   (mapc '(lambda (x) (setq *output-list* (tconc *output-list* (list x)))) l))
+
+(defun tconc (l x)
+  (cond ((null l) (cons x x))
+	(t (rplacd (car l) x)
+	   (rplaca l x))))
+
+(defun uc-macro-exp (s)
+   (if (atom s) s
+       (let ((m (get (car s) 'ucode-macro)))
+	    (if m (uc-macro-exp (funcall m s)) s))))
+
+(defun uc-statement (s)
+   (setq s (uc-macro-exp s))
+   (let ((m (get (car s) 'ucode))
+	 (*reserved-regs* nil))
+	(if m (funcall m (cdr s))
+	    (break unknown-statement))))
+
+(defvar **the-tems** '(*intermediate-argument*))
+
+(defun alloc-tem ()
+   (do ((tems **the-tems** (cdr tems)))
+       ((null tems)
+	(format t '|~%; *** ~S is too complex. ***| *sl*)
+	(car **the-tems**))
+       (cond ((not (reserved? (car tems)))
+	      (push (car tems) *reserved-regs*)
+	      (return (car tems))))))
+
+(defun reserved? (x) (memq x *reserved-regs*))
+
+(defun uc-form (s target)
+   (setq s (uc-macro-exp s))
+   (cond ((register? s) (map-register-name s))
+	 (t (or target (setq target (alloc-tem)))
+	    (let ((m (get (car s) 'ucode-valform)))
+		 (cond (m (funcall m (cdr s) target)
+			  target)
+		       (t (break unknown-form)))))))
+
+;make sure there is a target for this instruction
+(defmacro assign-target (targ . body)
+   `(let ((,targ (or ,targ (alloc-tem))))
+	 ,@body
+	 ,targ))
+
+;;;The ucode definitions
+;  Ucode - statement types
+;  Ucode-Macros - macro expansion happens only at statement level
+;  Ucode-valforms - ucode forms that return values, therefore take target
+
+(defun (fetch ucode-macro) (s)
+   (cond ((register? (cadr s)) (map-register-name (cadr s)))
+	 (t (format t '|~%; *** ~S is not a register, in ~S. ***| (cadr s) *sl*)
+	    (cadr s))))
+
+(defun (progn ucode) (s)
+   (mapc 'uc-statement s))
+
+(defun (simulation ucode) (s) nil)
+
+(defun (if ucode-macro) (s)
+   `(cond (,(cadr s) ,(caddr s))
+	  (t ,(cadddr s))))
+
+;;;COND
+;;; Will breakoff tail of sequence, depending upon (go-to ,*continuation*)
+;;;  being inserted at end of each Cond clause by UC-Block
+
+(defun (cond ucode) (s)
+   (let ((contin (cond ((cdr *block*) (prog1 (breakoff (cdr *block*) *continuation*)
+					  (setq *block* nil)))	;bletch
+		       (t *continuation*))))
+       (let ((alt (cond ((null (cdr s)) contin)		;falls off end
+			((eq (caadr s) t) (breakoff (cdadr s) contin))	;T clause
+			(t (uc-block `((cond . ,(cdr s))) (new-tag) contin))))
+	     (conseq (breakoff (cdar s) contin)))
+	    (if-cond (caar s) conseq alt)))
+   (setq *jump-at-tail* t))
+
+(defun breakoff (seq contin)
+  (cond ((eq (caar seq) 'go-to) (cadar seq))
+	(t (uc-block seq (new-tag) contin))))
+
+(defun new-tag ()
+   (concat *tag* '- (setq *sub-tag-no* (1+ *sub-tag-no*))))
+
+(defun if-cond (cond tpath fpath)
+  (setq cond (uc-macro-exp cond))
+  (caseq (car cond)
+     (NOT (if-cond (cadr cond) fpath tpath))
+     (AND (let ((t2 (uc-block `((if ,(caddr cond) (go-to ,tpath) (go-to ,fpath)))
+			      (new-tag)
+			      nil)))
+	       (if-cond (cadr cond) t2 fpath)))
+     (OR (let ((f2 (uc-block `((if ,(caddr cond) (go-to ,tpath) (go-to ,fpath)))
+			      (new-tag)
+			      nil)))
+	      (if-cond (cadr cond) tpath f2)))
+     (t (let ((m (get (car cond) 'uc-cond)))
+	   (if m (funcall m (cdr cond) tpath fpath) (break unknown-cond))))))
+
+;;;Simpler functions
+
+(defun (&write-to-pads ucode) (s)
+       (output `(((from ,(uc-form (car s) nil)) (to pads)))))
+
+(defun (&read-from-pads ucode) (s)
+       (output `(((from pads) (to ,(map-register-name (car s))) read))))
+
+(defun (&rplaca ucode) (s)
+  (&rplacx s nil nil nil))
+
+(defun (&rplaca ucode-valform) (s target)
+   (&rplacx s target nil nil))
+
+;; Normal memory operation clear the mark bits, this rplaca is for the
+;; garbage collector mark phase.
+(defun (&rplaca-and-mark! ucode) (s)
+  (&rplacx s nil nil 'set-mark))
+
+(defun (&rplaca-and-mark! ucode-valform) (s target)
+   (&rplacx s target nil 'set-mark))
+
+(defun (&rplacd ucode) (s)
+   (&rplacx s nil 'cdr nil))
+
+(defun (&rplacd ucode-valform) (s target)
+   (&rplacx s target 'cdr nil))
+
+(defun &rplacx (s target cdr set-mark)
+   (let ((arg1 (uc-form (car s) nil))
+	 (arg2 (uc-form (cadr s) nil)))
+      (output `(((from ,arg1) (to pads) ale)
+		((from ,arg2) (to pads) write
+			      ,@(if cdr '(cdr) nil)
+			      ,@(if set-mark '(merge-mark-1) nil))))
+      (cond ((null target) arg1)
+	    ((neq arg1 target)	     ;who depends upon value of RPLACx?
+	     (output `(((from ,arg1) (to ,target))))
+	     target))))
+
+(defun (assign ucode) (s)
+   (let* ((reg (map-register-name (car s)))
+	  (oreg (uc-form (cadr s) reg)))
+	     (if (neq oreg reg) (output `(((from ,oreg) (to ,reg)))))))
+
+; return pointer in <target>
+; may use <target> for intermediate if no conflict (only partially clever)
+(defun (&cons ucode-valform) (s target)
+   (let* ((*reserved-regs* *reserved-regs*)
+	  (arg1 (copy-from-newcell (uc-form (car s) nil)))
+	  (arg2 (copy-from-newcell
+		 (uc-form (cadr s) (if (neq arg1 target) target)))))
+	 (output `(((from ,arg1) ,@(if (and target (neq arg2 target))
+				       (list (list 'to target)) nil)
+				  do-half-cons)
+		   ((from ,arg2) (to pads) write cdr)))	     ;address left from half-cons
+	 (cond ((null target) '*newcell*)
+	       ((eq target arg2)
+		(output `(((from ,(map-register-name '*newcell*)) (to ,target))))
+		target)
+	       (t target))))
+
+;can't leave results in *newcell* over CONS
+(defun copy-from-newcell (x)
+   (cond ((eq x '*newcell*)
+	  (let ((home (alloc-tem)))
+	       (output `(((from ,(map-register-name '*newcell*)) (to ,home))))
+	       home))
+	 (t x)))
+
+(defun (&car ucode-valform) (s target)
+   (assign-target target
+	 (output `(((from ,(uc-form (car s) target)) (to ,target) do-car)))))
+
+(defun (&cdr ucode-valform) (s target)
+   (assign-target target
+	 (output `(((from ,(uc-form (car s) target)) (to ,target) do-cdr)))))
+
+(defun (&get-interrupt-routine-pointer ucode-valform) (s target)
+   (assign-target target
+      (output `(((from pads) (to ,target) read read-interrupt)))))
+
+(defun (save ucode) (s)
+   (output `(((from ,(uc-form (car s) nil)) do-save))))
+
+(defun (restore ucode) (s)
+   (output `(((to ,(map-register-name (car s))) do-restore))))
+
+(defun (dispatch ucode) (s)
+   (setq *jump-at-tail* t)       
+   (output `(((from ,(if s (map-register-name (car s)) '*exp*)) dispatch))))
+
+(defun (popj ucode-macro) (s)
+   `(dispatch *stack*))
+
+(defun (dispatch-on-exp-allowing-interrupts ucode) (s)
+   (setq *jump-at-tail* t)
+   (output `(((from ,(map-register-name '*exp*)) dispatch allow-interrupts))))
+
+(defun (go-to ucode) (s)
+   (setq *jump-at-tail* t)       
+   (output `(((go-to . ,s)))))
+
+(defun (&set-type ucode) (s)
+       (declare (special **micro-or-fields**))
+       (let ((to-reg (concat* 'type- (map-register-name (car s)))))
+	    (let ((dest (cond ((memq to-reg (second (find-field 'TO **micro-or-fields**)))
+			       `(to ,to-reg))
+			      (t (concat* 'to- to-reg)))))
+		 (cond ((register? (cadr s))
+			(output `(((from ,(map-register-name (cadr s))) ,dest))))
+		       (t (output `(((from-constant ,(cadr s)) ,dest))))))))
+
+(defun (&increment-scan-up ucode) (s)
+  (output `((do-increment-newcell))))
+
+(defun (&increment-scan-up-to-val ucode) (s)
+  (output `(((to *val*) from-disable from-incremented-newcell))))
+
+(defun (&decrement-scan-down ucode) (s)
+  (output `(((to address-exp) do-decrement-exp))))
+
+(defun (&decrement-scan-down-to-val ucode) (s)
+  (output `(((to *val*) from-disable from-decremented-exp))))
+
+(defun (&clear-gc-needed ucode) (s)
+   (output `((clr-gc-needed))))
+
+(defun (&decrement-frame ucode) (s)
+   (output `(((to address-exp) do-decrement-exp))))
+
+(defun (&decrement-displacement ucode) (s)
+   (output `(((to displacement-exp) do-decrement-exp))))
+
+(defun (&val-displacement-to-exp-displacement ucode) (s)
+   (output `(((to displacement-exp) (from val)))))
+
+(defun (&val-frame-to-exp-frame ucode) (s)
+   (output `((to-frame-exp (from val)))))
+
+(defun (&global-value ucode-macro) (s)
+   `(&car ,(cadr s)))
+
+(defun (&set-global-value ucode-macro) (s)
+   `(&rplaca ,(cadr s) ,(caddr s)))
+
+(defun (&mark-in-use! ucode) (s)
+   (let ((reg (uc-form (car s) nil))
+	 (intermediate (alloc-tem)))
+	(output `(((from ,reg) (to pads) ale)
+		  ((from pads) (to ,intermediate) read)
+		  ((from ,intermediate) (to pads) write merge-mark-1)))))
+
+(defun (&unmark! ucode) (s)
+   (let ((reg (uc-form (car s) nil))
+	 (intermediate (alloc-tem)))
+	(output `(((from ,reg) (to pads) ale)
+		  ((from pads) (to ,intermediate) read)
+		  ((from ,intermediate) (to pads) write)))))
+
+(defun (&mark-car-being-traced! ucode) (s)
+   (let ((reg (uc-form (car s) nil))
+	 (intermediate (alloc-tem)))
+	(output `(((from ,reg) (to pads) ale)
+		  ((from pads) (to ,intermediate) read cdr)
+		  ((from ,intermediate) (to pads) write merge-mark-1 cdr)))))
+
+(defun (&mark-car-trace-over! ucode) (s)
+   (let ((reg (uc-form (car s) nil))
+	 (intermediate (alloc-tem)))
+	(output `(((from ,reg) (to pads) ale)
+		  ((from pads) (to ,intermediate) read cdr)
+		  ((from ,intermediate) (to pads) write cdr)))))
+
+;;;The machine conditionals
+
+(defun (&eq-val uc-cond) (s tpath fpath)
+   (output `(((from ,(uc-form (car s) nil))
+	      (branch ,(get-capability '*val* '=bus) ,tpath ,fpath)))))
+
+(defun (&=type? uc-cond) (s tpath fpath)
+   (let ((reg (uc-form (car s) nil)))
+	 (output `(((from-constant ,(cadr s))
+	      (branch ,(get-capability reg 'type=bus) ,tpath ,fpath))))))
+
+(defun (&scan-up=memtop? uc-cond) (s tpath fpath)
+   (output `(((from ,(map-register-name '*memtop*))
+	      (branch ,(get-capability '*scan-up* 'address=bus) ,tpath ,fpath)))))
+
+(defun (&scan-up=scan-down? uc-cond) (s tpath fpath)
+   (output `(((from ,(map-register-name '*scan-down*))
+	      (branch ,(get-capability '*scan-up* 'address=bus) ,tpath ,fpath)))))
+
+(defun (&scan-down=0? uc-cond) (s tpath fpath)
+   (output `(((from ,(map-register-name '*scan-down*))
+	      (branch address=0-bus ,tpath ,fpath)))))
+
+(defun (&val=0? uc-cond) (s tpath fpath)
+   (output `(((from ,(map-register-name '*val*))
+	      (branch address=0-bus ,tpath ,fpath)))))
+
+(defun (&frame=0? uc-cond) (s tpath fpath)
+   (output `(((from *exp*) (branch frame=0-bus ,tpath ,fpath)))))
+
+(defun (&displacement=0? uc-cond) (s tpath fpath)	;assume frame=0,
+							;then displacement=0 is address=0
+   (output `(((from *exp*) (branch address=0-bus ,tpath ,fpath)))))
+
+(defun (&pointer? uc-cond) (s tpath fpath)
+   (output `(((from ,(map-register-name (car s)))
+	      (branch type-not-pointer-bus ,fpath ,tpath)))))	;Test is NOT-pointer
+
+;;;These conditionals test memory
+
+(defun (&in-use? uc-cond) (s tpath fpath)
+   (output `(((from ,(uc-form (car s) nil)) (to pads) ale)
+	     ((from pads) read (branch mark-bit-bus ,tpath ,fpath)))))
+
+(defun (&car-being-traced? uc-cond) (s tpath fpath)
+   (output `(((from ,(uc-form (car s) nil)) (to pads) ale)
+	     ((from pads) read cdr (branch mark-bit-bus ,tpath ,fpath)))))
+
+
+;;;Microcode assembler
+(defvar *nano-state-bits* 8)		;wild guess (only needed 6)
+(defvar *nano-tags*)			;assoc of symbolic output, state
+
+;;;Nano memory
+;;; 0 Compiled OR plane output
+;;; 1 Next state (if any)
+;;; 2 Symbolic cruft
+(defvar *nano-memory*)			;array by state: output bits, next state, symbolic
+(defvar **micro-or-fields**)
+(defvar **micro-and-fields**)
+(defvar **nano-or-fields**)
+(defvar **nano-and-fields**)
+(defvar **nano-state-fields**)
+(defvar *to-used*)
+(defvar *from-used*)
+(defvar *nano-or-used*)
+(defvar *tail-size* 1000.)
+(defvar *tails*)
+
+;;;memory array
+;;; 0: NIL if unallocated, TAG if has one, else T if allocated
+;;; 1: Instruction
+;;; 2: Value
+;;; 3: NextState
+;;; 4: Alternative tag if a branch pair
+;;; 5: This instruction's next-state merges 
+;;; 6: List of predecessor states
+(defvar *memory* nil)
+
+;;;Microcode tag list - assq list on tag name, cdar is list of locns where tag is duplicated
+(defvar *tags* nil)
+
+;; depends upon *ucode*, *ucode-words*, *defreturns*, *defpcs*
+
+(defun uassem (file)
+  (let ((filename (defaultf (mergef file '((dsk *) * >)))))
+    (let* (
+;	   (ifile (mergef '((* *) * *ucode) filename))
+	   (ofile (open (mergef '((* *) _uass_ output) filename) '(out ascii)))
+	   (base 8))
+;       (load ifile)
+;	  (linel ofile 120.)
+	(terpri ofile)
+	(princ '|;This is the assembled PLA for | ofile)
+	(prin1 (probef filename) ofile)
+	(timestamp ofile)
+	(terpri ofile)
+	(p1 *ucode*)
+	(p2 *ucode* nil)
+
+	(dump-micro ofile)
+	(let ((ofilename (mergef '((* *) MICRO PLA) filename)))
+	     (renamef ofile ofilename)
+	     (close ofile))
+	(setq ofile (open (mergef '((* *) _uass_ output) filename) '(out ascii)))
+	(linel ofile 120.)
+	(dump-nano ofile)
+	(let ((ofilename (mergef '((* *) NANO PLA) filename)))
+	     (renamef ofile ofilename)
+	     (close ofile))
+)))
+
+(defun dump-micro (ofile)
+	(let* ((memory-length (car (last (arraydims *memory*))))
+	       (instruction-count
+		(do ((i 0 (1+ i))
+		     (count 0))
+		    ((>= i memory-length) count)
+		    (and (aref *memory* 0 i)		;allocated
+			 (aref *memory* 2 i)		;and assembled value
+			 (setq count (1+ count))))))
+
+	      (format ofile '(|~%(make-pla micro-pla|
+			|~% ~D.   ;AND field|
+			|~% ~D.   ;OR field|
+			|~% ~D.   ;PLA size |)
+		      (car **micro-and-fields**)
+		      (car **micro-or-fields**)
+		      instruction-count)
+	      (format ofile
+		      '|~%~%;PLA-AND field definitions - LSB is farthest from OR plane~%(|)
+	      (print-field-list **micro-and-fields** ofile)
+	      (format ofile '|~%)~%~%;PLA-OR field definitions - LSB is closest to AND plane~%(|)
+	      (print-field-list **micro-or-fields** ofile)
+	      (format ofile '|~%)~%~%|)
+	      (dotimes (i memory-length)
+		  (let ((tag (aref *memory* 0 i))
+			(instr (aref *memory* 1 i))
+			(val (aref *memory* 2 i))
+			(next-state (aref *memory* 3 i))
+			(br-alt (aref *memory* 4 i))
+			(merge-flag (aref *memory* 5 i)))
+		       (cond ((not tag))
+			     ((not val)
+			      (format ofile
+				      '|~%; No value assembled for ~S, at ~O|
+				      tag
+				      i))
+			     (t (cond ((and (not next-state)
+					    (not (memq 'dispatch instr))
+					    (not (assq 'branch instr)))
+				       (format ofile
+					       '|~%; No next address field !!!|)))
+				(print-micro (dpb i 'state 0 **micro-and-fields**)
+					     (car **micro-and-fields**)
+					     (if next-state
+						 (dpb next-state
+						      'next
+						      val
+						      **micro-or-fields**)
+						 val)
+					     **micro-or-fields**
+					     tag
+					     instr
+					     (if merge-flag '|M| '| |)
+					     (if br-alt '|2| '| |)
+					     ofile)))))
+	      (format ofile '|~%)~%|)))
+
+(defun dump-nano (ofile)
+   (let* ((nano-memory-length (car (last (arraydims *nano-memory*))))
+	  (and-state (find-field 'nano-and-state **nano-and-fields**))
+	  (or-state (find-field 'nano-or-state **nano-or-fields**))
+	  (from* (dpb 1 'from* 0 **nano-state-fields**))
+	  (to* (dpb 1 'to* 0 **nano-state-fields**))
+	  (micro-from (find-field 'from **micro-or-fields**))
+	  (micro-to (find-field 'to **micro-or-fields**))
+	  (instruction-count
+	   (plus (length (fifth micro-from))		;used field decodes
+		 (length (fifth micro-to))
+		 (do ((i 0 (1+ i)) (count 0))
+		     ((>= i nano-memory-length) count)
+		     (and (aref *nano-memory* 0 i)	;allocated
+			  ;;0 decode, next-state; no minterm needed, PLA generates 0's
+			  (not (and (zerop (aref *nano-memory* 0 i))
+				    (zerop (aref *nano-memory* 1 i))))
+			  (setq count (1+ count)))))))
+	 (format ofile '(|~%(make-pla nano-pla|
+			 |~% ~D.   ;AND field|
+			 |~% ~D.   ;OR field|
+			 |~% ~D.   ;PLA size |)
+		 (car **nano-and-fields**)
+		 (car **nano-or-fields**)
+		 instruction-count)
+	 (format ofile
+		 '|~%~%;PLA-AND field definitions - LSB is farthest from OR plane~%(|)
+	 (print-field-list **nano-and-fields** ofile)
+	 (format ofile '|)~%~%;PLA-OR field definitions - LSB is closest to AND plane~%(|)
+	 (print-field-list **nano-or-fields** ofile)
+	 (format ofile '|)~%~%|)
+	 (dotimes (i nano-memory-length)
+	    (let ((value (aref *nano-memory* 0 i))
+		  (next (aref *nano-memory* 1 i))
+		  (cruft (aref *nano-memory* 2 i)))
+		 (cond ((and value (not (and (zerop value) (zerop next))))
+			(print-nano (field-dpb* i and-state 0)
+				    (field-mask and-state)
+				    **nano-and-fields**
+				    (field-dpb* next or-state value)
+				    **nano-or-fields**
+				    ofile)))))
+	 (generate-decodes 'to to* micro-to ofile)
+	 (generate-decodes 'from from* micro-from ofile)
+	 (format ofile '|~%)~%|)))
+
+(defun generate-decodes (prefix from-to* micro-field file)
+   (do ((i 0 (1+ i))
+	(l (second micro-field) (cdr l))
+	(from-to*-bit (dpb* from-to* 'nano-and-state 0 **nano-and-fields**))
+	(decode))
+       ((null l))
+       (setq decode (car l))
+       (cond ((memq decode (fifth micro-field))		;used?
+	      (let* ((nano-name (concat prefix '- decode))
+		     (decode-expand (get nano-name 'defdecode))
+		     (val))
+		   (cond ((assq nano-name (cdr **nano-or-fields**))
+			  (setq val (mask nano-name **nano-or-fields**)))
+			 (decode-expand
+			  (setq val
+				(apply 'plus
+				       (mapcar '(lambda (nano-name)
+							(mask nano-name **nano-or-fields**))
+					       decode-expand))))
+			 (t (xerror '|Bad to-from field - Generate Decodes| nano-name)))
+		   (print-nano (dpb* i prefix from-to*-bit **nano-and-fields**)
+			       (plus (mask prefix **nano-and-fields**)
+				     from-to*-bit)
+			       **nano-and-fields**
+			       val
+			       **nano-or-fields**
+			       file))))))
+
+(defun print-nano (and and-mask and-fields or or-fields file)
+   (terpri file)
+   (princ '|((| file)
+   (prinnum and (car and-fields) file)
+   (princ '| | file)
+   (prinnum and-mask (car and-fields) file)
+   (princ '|) (| file)
+   (print-fields and and-fields file)
+   (princ '|) | file)
+   (prinnum or (car or-fields) file)
+   (terpri file)
+   (princ '|		| file)
+   (print-decoded-fields or or-fields file)
+   (princ '|)| file))
+
+(defun print-decoded-fields (in fields file)
+   (do ((fs (cdr fields) (cdr fs))
+	(val))
+       ((null fs))
+       (setq val (field-ldb (car fs) in))
+       (cond ((zerop val))
+	     ((atom (second (car fs)))
+	      (if (> (third (car fs)) 1)
+		  (format file '|(~A ~O) | (first (car fs)) val)
+		  (format file '|~A | (first (car fs)))))
+	     (t (format file '|~A | (nth val (second (car fs))))))))
+
+(defun print-field-list (fields file)
+   (dolist (f (cdr fields))
+       (terpri file)
+       (princ '|(field | file)
+       (prinnum (field-mask f) (car fields) file)
+       (princ '|       | file)
+       (format file '|(~S ~A ~O ~O ~S)|
+	       (first f)				;field name
+	       (cond ((eq (seventh f) 'bit-reverse) 'BIT-REVERSE)
+		     ((not (atom (second f))) 'NUMBER)
+		     (t (second f)))
+	       (third f)				;size
+	       (fourth f)				;position
+	       (sixth f))				;gate name
+       (princ '|)| file)
+       (cond ((not (atom (second f)))
+	      (do ((n 0 (1+ n))
+		   (l (second f) (cdr l)))
+		  ((null l))
+		  (format file '|~%      ;~O   ~A| n (car l)))
+	      (check-used (second f) (fifth f) file)))))
+
+(defun check-used (l used file)
+   (do ((use used (cdr use))
+	(ll (append l nil)))
+       ((null use) (if ll (format file '|~%; Unused field decodes - ~S| ll)))
+       (setq ll (delq (car use) ll))))
+
+(defun print-micro (loc locbits val val-fields tag symbolic merge-flag br-flag file)
+   (terpri file)
+   (princ '|(| file)
+   (prinnum loc locbits file)
+   (princ '| | file)
+   (prinnum val (car val-fields) file)
+   (princ '| (| file)
+   (print-fields val val-fields file)
+   (princ '|) | file)
+   (princ merge-flag file)
+   (princ br-flag file)
+   (terpri file)
+   (princ '|		| file)
+   (and tag (princ tag file) (princ '|  | file))
+   (princ symbolic file)
+   (format file '|)|))
+
+
+(defun print-fields (val fields file)
+   (do ((fields (cdr fields) (cdr fields))
+	(f))
+       ((null fields))
+       (setq f (car fields))
+       (prinnum (field-ldb f val) (third f) file)
+       (and (cdr fields) (tyo 40 file))))
+
+(defun prinnum (num nbits ofile)
+       (cond ((< nbits 4)
+	      (princ num ofile))
+	     (t (prinnum (quotient num 8) (- nbits 3) ofile)
+		(princ (remainder num 8) ofile))))
+
+;P1 - assigns tags, initial allocation of microcode memory
+
+(defun p1 (ucode)
+   (setq *tags* (append **pointer-types** **non-pointer-types** nil))
+   (let ((max-tag 0)
+	 (maxlen))
+	(mapc '(lambda (x) (and (> (second x) max-tag) (setq max-tag (second x))))
+	      *tags*)
+	(setq maxlen (^ 2 (haulong (max max-tag *ucode-words*)))
+	      *memory* (*array nil t 7 maxlen))
+	;; initialize memory
+	(format t '|~%Initialize memory|)
+	(dotimes (i maxlen)
+		 (aset *memory* 0 i nil))
+	;; mark out deftype
+	(format t '|~%Mark deftype|)
+	(dolist (x *tags*)
+		(aset *memory* 0 (cadr x) (car x)))
+	(dolist (defr *defreturns*)
+		(if (assq defr *tags*)
+		    (format t '|~%; *** Multiple tags - ~S, ~S ***| defr (assq defr *tags*)))
+		(let ((loc (find-one *memory*)))
+		     (cond ((>= loc **pointer**)
+			    (format t '|~% No room left for ~S, a defreturn. First =~O|
+				    defr loc)
+			    (break t)))
+		     (aset *memory* 0 loc defr)
+		     (push (list defr loc) *tags*)))
+	(format t '|~%Allocate branch tags|)
+	;; now allocate branch tags
+	(do ((ucode ucode (cddr ucode)))
+	    ((null ucode))
+	    (dolist (word (cadr ucode))
+		    (let ((br (assq 'branch word)))
+			 (if br (find-pair (third br) (fourth br) 'allocate)))))
+	(format t '|~%Define defpcs|)
+	;; now define states for for all other tags
+	(do ((x ucode (cddr x))
+	     (tag))
+	    ((null x))
+	    (setq tag (car x))
+	    (cond ((not (assq tag *tags*))
+		   (let ((loc (find-one *memory*)))
+			(push (list tag loc) *tags*)
+			(aset *memory* 0 loc tag)))))))
+
+(defun find-pair (conseq altern alloc)
+   (let ((tag1 (memassq conseq *tags*))
+	 (tag2 (memassq altern *tags*)))
+	(or (and tag1 (dolist (i (cdar tag1))
+			      (and (oddp i)
+				   (eq (aref *memory* 0 i) conseq)
+				   (eq (aref *memory* 0 (1- i)) altern)
+				   (return (1- i)))))     ;already exists
+	    (and (not alloc) (xerror '|Missing branch pair| (list conseq altern)))
+	    (let ((adr (alloc-2)))
+		 (aset *memory* 0 adr altern)	     ;conseq in odd part
+		 (aset *memory* 4 adr conseq)
+		 (aset *memory* 0 (1+ adr) conseq)
+		 (aset *memory* 4 (1+ adr) altern)
+		 (if tag1 (rplaca tag1 (append (car tag1) (list (1+ adr))))
+		     (push (list conseq (1+ adr)) *tags*))
+		 (if tag2 (rplaca tag2 (append (car tag2) (list adr)))
+		     (push (list altern adr) *tags*))
+		 adr))))
+
+(defun find-one (*memory*)
+   (do ((max (car (last (arraydims *memory*))))
+	(i 0 (+ i 1)))
+       ((>= i max) (xerror '|Bloated beyond belief!!| max))
+       (cond ((null (aref *memory* 0 i)) (return i)))))
+
+(defun alloc-2 ()
+   (do ((max (car (last (arraydims *memory*))))
+	(i 0 (+ i 2)))
+       ((>= i max) (xerror '|Bloated beyond belief!!| max))
+       (or (aref *memory* 0 i) (aref *memory* 0 (1+ i)) (return i))))
+
+;;;Pass 2
+
+(defun p2 (ucode verbose)
+   (setq *nano-tags* nil)			;no assembled nano inst
+   (setq *nano-memory* (*array nil t 3 (^ 2 *nano-state-bits*)))
+   (setq *tails* nil)
+   (mapc '(lambda (x) (clean-fields (symeval x)))
+	 '(**micro-or-fields** **micro-and-fields**
+	   **nano-or-fields** **nano-and-fields**))
+   (nano-compile-1 nil nil)			;allocate 0 nano-op as no-op
+   (do ((l ucode (cddr l))
+	(new-block))
+       ((null l))
+       (and verbose (format t '|~%~S :| (car l)))
+       (setq new-block (collapse (cadr l) *tails*))
+       (do ((block new-block (cdr block))
+	    (tag (assq (car l) *tags*) nil)
+	    (prev nil locs)
+	    (n 0 (1+ n))
+	    (locs))
+	   ((atom block))				;may be terminated by merge #
+	   (let* ((val (micro-eval (car block)))	;(value . next-state)
+		 (next-state (cdr val))
+		 (merge (if (atom (cdr block)) (cdr block) nil)))
+		(cond ((and next-state (cdr block))
+		       (xerror '|Go not at end of block| (list (car l) (car block)))))
+		(if merge (setq next-state merge))
+		(cond (tag (setq locs (cdr tag)))
+		      (t (setq locs (list (find-one *memory*)))
+			 (aset *memory* 0 (car locs) (list (car l) n))))
+		;; chain previous states to here
+		(dolist (i prev)
+			(aset *memory* 3 i (car locs)))
+		;;Duplicate instructions that were part of branch pairs
+		(dolist (i locs)
+			(cond (verbose
+			       (format t '|~%  ~S: ~S => | i (car block))
+			       (print-fields (car val) **micro-or-fields** t)
+			       (format t '| Next=~S| next-state)))
+			(aset *memory* 1 i (car block))
+			(aset *memory* 2 i (car val))
+			(aset *memory* 6 i prev)	;predecessors
+			(cond (merge
+			        (aset *memory* 5 i T)
+				(aset *memory* 6 next-state
+				      (cons i (aref *memory* 6 next-state)))))
+			(if next-state (aset *memory* 3 i next-state))
+			)
+		(cond ((and (atom (cdr block)) (not merge))	;last, and new tail
+		       (setq *tails* (cons (cons (canonicalize (car block)) (car locs))
+					   *tails*))))
+		))))
+
+(defun collapse (block tails)
+    (let* ((rblock (reverse block))
+	   (x (assoc (canonicalize (car rblock)) tails)))
+	  (cond ((not x) block)
+		((null (cdr block)) block)
+		(t (let* ((new (collapse-1 (cdr rblock) (cdr x) (list (car rblock))))
+			  (merger (first new))
+			  (newer (reverse (second new))))
+			 (rplacd (last newer) merger)
+			 (format t '|~%; Merging ~S to ~S|
+				 (third new) (aref *memory* 0 merger))
+			 newer)))))
+
+(defun collapse-1 (list i merged)
+   (do ((x (aref *memory* 6 i) (cdr x))
+	(instr (canonicalize (car list))))
+       ((or (null x) (null (cdr list)))
+	(list i list merged))
+       (cond ((equal instr (canonicalize (aref *memory* 1 (car x))))
+	      (return (collapse-1 (cdr list) (car x) (cons (car list) merged)))))))
+
+(defun canonicalize (items)
+       (sort (append items nil)
+	     '(lambda (x y) (alphalessp (if (atom x) x (car x))
+					(if (atom y) y (car y))))))
+
+;; assemble one microinstruction, return cons (value, next-state)
+
+(defun micro-eval (word)
+   (do ((word word (cdr word))
+	(val 0)
+	(next-state nil)
+	(froms (find-field 'FROM **micro-or-fields**))
+	(nano)
+	(item))
+       ((null word) (cons (dpb (nano-eval nano)
+			       'nano-op
+			       val
+			       **micro-or-fields**)
+			  next-state))
+       (setq item (car word))
+       (if (atom item)
+	   (push item nano)
+	   (caseq (car item)
+	      (TO (cond ((neq (cadr item) 'pads)
+			 (setq val (set-field val
+					      (concat* (cadr item))
+					      'TO **micro-or-fields**)))))
+	      (FROM (cond ((eq (cadr item) 'pads) (push 'from-disable nano))
+			  (t (setq val (set-field val
+						  (concat* (cadr item))
+						  'FROM **micro-or-fields**)))))
+	      (FROM-CONSTANT
+	       (let ((x (assq (cadr item) *tags*)))
+		    (if x (setq val (field-dpb (cadr x) froms val))
+			(xerror '|Bad FROM-CONSTANT field| item))
+		    (push 'from-disable nano)
+		    (push 'from-constant nano)))
+	      (BRANCH
+	       (push (list 'branch (second item)) nano)		;The branch test
+	       (setq next-state (find-pair (third item) (fourth item) nil)))
+	      (GO-TO
+	       (let ((x (assq (second item) *tags*)))
+		    (if x (setq next-state (cadr x)) (xerror '|Go to unknown tag| item))))))))
+
+;;;Nano
+
+(defun new-nano-tag (items state)
+   (list (canonicalize items) state))
+
+;; Note the from-disable kludge
+(defun nano-eval (items)				;items may be nil
+    (let* ((defnano (and (null (cdr items)) (get (car items) 'defnano)))
+	   (item (car items))
+	   (defval (assoc item *nano-tags*))
+	   (from-to (if (memq 'from-disable items) '(to*) '(from* to*)))
+	   (items (canonicalize (delete 'from-disable (append items from-to))))
+	   (nano-line (assoc items *nano-tags*)))
+	  (cond (nano-line (second nano-line))
+		(defnano (if defval (second defval)
+			     (nano-compile item defnano)))
+		(t (setq nano-line (nano-compile-1 items from-to))
+		   (push (new-nano-tag items nano-line) *nano-tags*)
+		   nano-line))))
+
+;Compile a nano-sequence
+(defun nano-compile (name ops)
+   (do ((ops ops (cdr ops))
+	state prev first items)
+       ((null ops) (push (list name first) *nano-tags*)
+		   first)
+       (setq items (canonicalize (append (cadar ops) (caar ops))))
+       (cond ((cdr ops)
+	      (setq state (nano-compile-1 (append items '(nano-run))
+					  (caar ops))))
+	     ((setq state (second (assoc items *nano-tags*))))
+	     (t (setq state (nano-compile-1 items (caar ops)))
+		(push (new-nano-tag items state) *nano-tags*)))
+       (if prev (aset *nano-memory* 1 prev state)
+	        (setq first state))
+       (setq prev state))))
+
+;Compile a state into Nano-PLA
+(defun nano-compile-1 (cruft from-to)
+   (do ((x cruft (cdr x))
+	(val 0)
+	(state (find-nano-state
+		(apply 'plus (mapcar '(lambda (x) (dpb 1 x 0 **nano-state-fields**))
+					    from-to)))))
+       ((null x) (aset *nano-memory* 0 state val)
+		 (aset *nano-memory* 1 state 0)	;no next address
+		 (aset *nano-memory* 2 state cruft)
+		 state)
+       (cond ((memq (car x) '(from-disable from* to*)))
+	     ((atom (car x))
+	      (setq val (dpb 1 (car x) val **nano-or-fields**)))
+	     (t (setq val (set-field val (cadar x) (caar x) **nano-or-fields**))))))
+
+
+;; find next available nanostate, with same high order bits as from*-to*
+(defun find-nano-state (from-to)
+   (do ((max (min (+ from-to (^ 2 (- *nano-state-bits* 2)))
+		  (car (last (arraydims *nano-memory*)))))
+	(i from-to (+ i 1)))
+       ((>= i max) (xerror '|Bloated beyond belief!!| max))
+       (cond ((null (aref *nano-memory* 0 i)) (return i)))))
+
+;;; Field definitions - from SCHIP; UMIDAS
+;;; returns (total-bits field1 ... fieldn)
+;;; where fieldj = (name type width leftshift usedp field-gate bit-reverse-p)
+;;; where type is "bit", "number", or
+;;; a list of valid symbolic values.
+
+;;;input is one of: bitname,
+;;;		(fieldname width {bit-reverse} {output-gate-name}) 
+;;;		(name width field-list {bit-reverse} {output-gate-name})
+;;; field gate is the name of the output control signal for this field
+
+(defun parse-fields fexpr (specs)
+       (pf specs))
+
+(defun pf (specs)
+  (do ((l specs (cdr l))
+       spec
+       (lsh 0)
+       (out nil))
+      ((null l) (cons lsh (reverse out)))
+      (setq spec (car l))
+      (cond ((atom spec) (push (list spec 'BIT 1 lsh nil nil nil) out)
+			 (setq lsh (1+ lsh)))
+	    (t (let ((size (eval (second spec))))
+		  (cond ((atom (third spec))
+			 (push (list (first spec)
+				     'NUMBER
+				     size
+				     lsh
+				     nil
+				     (third spec)
+				     (fourth spec))
+			       out)
+			 (setq lsh (+ lsh size)))
+			(t (let* ((length (length (third spec)))
+				  (width (haulong (1- length)))
+				  (rwidth (if size size width)))
+				 (if (> width rwidth) (error '|Bad field spec| spec))
+				 (push (list (first spec)
+					     (third spec)
+					     rwidth
+					     lsh
+					     nil
+					     (fourth spec)
+					     (fifth spec))
+				       out)
+				 (setq lsh (+ lsh rwidth))))))))))
+	    
+
+(defun ldb (field val fields)
+    (field-ldb (find-field field fields) val))
+
+(defun dpb (x field val fields)
+    (field-dpb x (find-field field fields) val))
+
+(defun dpb* (x field val fields)
+    (field-dpb* x (find-field field fields) val))
+
+(defun set-field (x name field fields)
+  (let ((fs (find-field field fields))
+	(pos))
+       (cond ((and fs
+		   (not (atom (second fs)))
+		   (setq pos (find-position-in-list name (second fs))))
+	      (rplaca (rest4 fs) (cons name (delq name (fifth fs))))
+	      (field-dpb pos fs x))
+	     (t (xerror '|Field not found| (list field name))
+		x))))
+
+(defun mask (name fields)
+   (field-mask (find-field name fields)))
+
+(defun clean-fields (fields)
+    (dolist (f (cdr fields))
+	(rplaca (rest4 f) nil)))
+
+(defun find-field (field-spec fields)
+   (let ((fs (assq field-spec (cdr fields))))
+       (or fs (progn (xerror '|Field not found| field-spec)
+		     '(foo bit 1 0 nil)))))
+
+(defun field-ldb (fs val)
+   (let ((x (remainder (quotient val (expt 2 (fourth fs)))
+		       (expt 2 (third fs)))))
+	(if (eq (seventh fs) 'bit-reverse)
+	    (bit-reverse x (third fs)) x)))
+
+(defun field-dpb (x fs val)
+   (or (lessp x (expt 2 (third fs)))
+       (xerror '|Field too large| (list x fs)))
+   (or (zerop (field-ldb fs val))
+       (xerror '|Field conflict| (list fs val)))
+   (cond ((atom (second fs)) (rplaca (rest4 fs) 'used)))
+   (plus val (times (if (eq (seventh fs) 'bit-reverse)
+			(bit-reverse x (third fs)) x)
+		    (expt 2 (fourth fs)))))
+
+(defun field-dpb* (x fs val)
+   (or (lessp x (expt 2 (third fs)))
+       (xerror '|Field too large| (list x fs)))
+   (or (zerop (field-ldb fs val))
+       (xerror '|Field conflict| (list fs val)))
+;   (cond ((atom (second fs)) (rplaca (rest4 fs) 'used)))
+   (plus val (times (if (eq (seventh fs) 'bit-reverse)
+			(bit-reverse x (third fs)) x)
+		    (expt 2 (fourth fs)))))
+
+(defun field-mask (f)
+   (times (1- (^ 2 (third f))) (expt 2 (fourth f))))
+
+(defun bit-reverse (x size)
+   (do ((i 0 (1+ i))
+	(out 0 (plus (times out 2) (remainder in 2)))
+	(in x (quotient in 2)))
+       ((>= i size) out)))
+
+
+;;;Field definitions
+
+(setq **micro-and-fields**
+   (parse-fields (state 9 ph1 bit-reverse)))		;LSB is furthest from OR plane
+
+(setq **micro-or-fields**				;LSB is closest to AND plane
+    (parse-fields (next 9 ph2)
+		  (nano-op *nano-state-bits* un-clocked bit-reverse)
+		  (from 7				;room for use as constant
+			(exp				; decremented-exp
+			newcell				;incremented-newcell
+			val
+			retpc-count-mark
+			stack
+			memtop
+			args
+			display
+			intermediate-argument
+			nil)
+			un-clocked)			;no gating on outputs
+		  (to nil				;not all these are used
+		      (no-op
+		       displacement-exp address-exp exp ;type-exp
+		       type-newcell newcell		;address-newcell
+		       type-val val			;address-val
+		       type-retpc-count-mark retpc-count-mark    ;address-retpc-count-mark
+		       type-stack stack			;address-stack
+		       memtop
+		       args
+		       display
+		       intermediate-argument)
+		      un-clocked)))
+
+(setq **nano-and-fields**				;LSB is farthest from OR plane
+   (parse-fields (to (third (find-field 'to **micro-or-fields**))
+		     ph1
+		     bit-reverse)
+		 (from (haulong (1- (length (second (find-field 'from **micro-or-fields**)))))
+		       ph1 bit-reverse)
+		 (nano-and-state *nano-state-bits* ph1 bit-reverse)))
+
+(setq **nano-state-fields**
+   (parse-fields (state (- *nano-state-bits* 2)) to* from*))
+
+(setq **nano-or-fields**				;LSB is closest to AND plane
+   (parse-fields (nano-or-state *nano-state-bits*)
+		 from-constant
+		 (branch 3
+		     (nil
+		      frame=0-bus
+		      address=0-bus
+		      address=bus-newcell
+		      type=bus-val
+		      =bus-val				;AND of type, address=bus
+		      type-not-pointer-bus
+		      mark-bit-bus))
+		 dispatch
+		 nano-run
+		 allow-interrupts			;must occur only with dispatch
+
+		 to-frame-exp
+		 to-displacement-exp
+		 to-type-exp
+		 from-exp
+		 from-decremented-exp
+		 to-address-newcell
+		 to-type-newcell
+		 from-newcell
+		 from-incremented-newcell
+		 to-address-val
+		 to-type-val
+		 from-val
+		 to-address-stack			;moved because driver couldn't fit
+		 to-address-retpc-count-mark
+		 to-type-retpc-count-mark
+		 from-retpc-count-mark
+		 to-type-stack
+		 from-stack
+		 to-intermediate-argument
+		 from-intermediate-argument
+		 to-display
+		 from-display
+		 to-args
+		 from-args
+		 to-memtop
+		 from-memtop
+		 from-nil
+
+		 read
+		 merge-mark-1
+		 merge-mark-0				;not really used
+		 set-gc-needed-if-address-newcell=bus
+		 clr-gc-needed
+		 read-interrupt
+		 write
+		 ale
+		 cdr))
+
+;;; Nano code definitions
+
+
+(defun defdecode fexpr (crud)
+   (putprop (car crud) (cadr crud) 'defdecode))
+
+(defdecode to-address-exp (to-displacement-exp to-frame-exp))
+(defdecode to-exp (to-displacement-exp to-frame-exp to-type-exp))
+(defdecode to-newcell (to-address-newcell to-type-newcell))
+(defdecode to-val (to-address-val to-type-val))
+(defdecode to-retpc-count-mark (to-address-retpc-count-mark to-type-retpc-count-mark))
+(defdecode to-stack (to-address-stack to-type-stack))
+
+(defun defnano fexpr (crud)
+   (putprop (caar crud) (cdr crud) 'defnano))
+
+;defnano (<input-terms>) ( <state> (<output-terms>))*
+; where <state> is ({to* from*} #)
+
+(defnano (do-half-cons) 
+    (() (from-incremented-newcell to-address-retpc-count-mark ale))
+         ;Don't clobber type of retpc-count-mark, it's used by the microcode across nano-calls
+    (() (from-retpc-count-mark to-address-newcell))
+    (() (from-memtop set-gc-needed-if-address-newcell=bus))
+    ((from*) (write))					;Caller will have to write CDR
+    ((to*) (from-newcell)))				;CROCK! - must use type of newcell
+
+
+(defnano (do-increment-newcell)
+    (() (from-incremented-newcell to-address-retpc-count-mark))
+    (() (from-memtop set-gc-needed-if-address-newcell=bus))
+    (() (from-retpc-count-mark to-address-newcell)))
+
+(defnano (do-save)
+   (() (from-incremented-newcell to-address-retpc-count-mark ale))
+   (() (from-memtop set-gc-needed-if-address-newcell=bus))
+   (() (from-retpc-count-mark to-address-newcell))
+   ((from*) (write))
+   (() (from-stack write cdr))
+   (() (from-newcell to-address-stack to-type-stack)))
+
+(defnano (do-restore)
+   (() (from-stack ale))
+   ((to*) (read))
+   (() (read cdr to-address-stack to-type-stack)))
+
+(defnano (do-car)
+   ((from*) (ale))
+   ((to*) (read)))
+
+(defnano (do-cdr)
+   ((from*) (ale))
+   ((to*) (read cdr)))
+
+;do-decrement-exp with (to address-exp), (to displacement-exp)
+(defnano (do-decrement-exp)
+    (() (from-decremented-exp to-address-retpc-count-mark))
+    ((to*) (from-retpc-count-mark)))
+

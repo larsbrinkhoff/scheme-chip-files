@@ -1,0 +1,13 @@
+;;; -*- package: dpl -*-
+
+(defprop logo
+	 ((schip-part logo (scheme-81-logo fake-scheme-81-logo)
+	    (bottom-center (pt-offset (>> top-center decoder-gnd gnd-wiring) -6 124)))
+	  (schip-part logo2 (bakman rectangle)
+	    (apparent-bottom-center
+	      (pt-offset (>> apparent-top-center uarg-op-decoder land-of-uarg)
+			 50 140))
+	    (layer 'metal)
+	    (length 80)
+	    (width 300)))
+	 schip-code)

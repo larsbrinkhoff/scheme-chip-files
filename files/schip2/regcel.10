@@ -1,0 +1,85 @@
+;;; Simple Steele register cell
+
+(deflayout regcell ()
+   (set-the' v-pitch 40)
+   (set-the' h-pitch 38)
+   (set-the' gnd-height 4)
+   (set-the' bus-height 24)
+   (set-the' left-bus-contact (pt 2 (the bus-height)))
+   (set-the' right-bus-contact (pt 40 (the bus-height)))
+   (set-the' vdd-height 31)
+   (set-the' boundary (pt 42 40))
+   (set-the' q1-gate-contact (pt 9 13))
+   (set-the' q1 (pt 16 13))
+   (set-the' q1-gate (pt 16 8))
+   (set-the' q2-output-contact (pt 34 16))
+   (set-the' q2 (pt 24 17))
+   (set-the' q2-gate (pt (- (the-x q2) .5) 12))
+
+   (set-the' ph1-to
+	     (wire poly (pt 4 0) (+Y 20) (+X 2) (+Y 8) (-X 2) (Y (the-y boundary))))
+   (set-the' ph2 (wire poly (pt 30 0) (Y (the-y boundary))))
+   (set-the' ph1-from (wire poly (pt 38 0) (+Y 20) (-X 2) (+Y 8) (+X 2) (Y (the-y boundary))))
+   ;Q1
+   (set-the' q1-pullup (call 'pullup '(8) 'trans (the q1)))
+   (boxes (diff 4) (pt (the-x q1) (1+ (the-y q1))) (Y (the gnd-height)))
+   (contact S diff *xy)
+   (boxes diff (the-pt top q1-pullup) (Y (the vdd-height)))
+   (contact S diff *xy)
+   ;Q1 to Q2
+   (boxes poly (pt (the-x q1) (1+ (the-y q1)))
+	  (+X 4) (Y (the-y q2-gate)) (X (+ 1.5 *poly-overhang* (the-x q2-gate))))
+   ;Q2
+   (set-the' q2-pullup (call 'pullup '(5) 'trans (the q2)))
+   (boxes metal (pt (the-x q2-output-contact) (- (the-y q2-output-contact) .5))
+	  (X (- (the-x q2) 2)))
+   (boxes (diff 3) (pt (- (the-x q2) .5) (+ (the-y q2) 1))
+	  (Y (the gnd-height)))
+   (contact S diff (pt (the-x q2) (the gnd-height)))
+   (boxes diff (the-pt top q2-pullup) (Y (the vdd-height)))
+   (contact S diff *XY)
+   
+   ;feedback
+   (call 'butting-contact '() 'mirror 'Y 'trans (the q1-gate-contact))
+   (boxes poly (pt (+ (the-x q1-gate-contact) 1) (the-y q1-gate-contact))
+	  (Y (the-y q1-gate)) (X (+ 2 *poly-overhang* (the-x q1-gate))))
+   (boxes diff (the q1-gate-contact)
+	  (+Y 24) (X (1- (the-x q2-output-contact))) (Y (the-y q2-output-contact)))
+   (contact S diff (the q2-output-contact))
+
+   ;From and To pass gates
+   (boxes (diff 4) (the left-bus-contact) (X (the-x q1-gate-contact)))
+   (boxes (diff 4) (the right-bus-contact) (X (the-x q2-output-contact)))
+
+   ;The busses
+   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the-x boundary))))
+   (set-the' gnd (wire (metal 4) (pt 0 (the gnd-height)) (X (the-x boundary))))
+   (set-the' bus (wire metal (pt 0 (+ .5 (the-y left-bus-contact)))
+		       (X (the-x right-bus-contact))))
+   (contact S diff (the left-bus-contact))
+   (contact S diff (the right-bus-contact))
+
+   (boxes (diff 4) (pt (- (the-x q1) 2) (the vdd-height)) (X (+ 2 (the-x q2))))
+   (boxes (diff 4) (pt (- (the-x q1) 2) (the gnd-height)) (X (+ 2 (the-x q2))))
+  )
+
+(deflayout pullup (length)
+   (call 'butting-contact nil)
+   (boxes (poly 6) (pt 0 0) (+Y (1+ length)))
+   (boxes diff (pt 0 0) (+Y (1+ length)))
+   (set-the' top *XY)
+   (boxes implant (pt 0 0) (+Y (1+ length))))
+
+(deflayout butting-contact ()
+   (boxes (diff 4) (pt 0 1) (-Y 4))
+   (boxes (poly 4) (pt 0 0) (+Y 3))
+   (boxes (metal 4) (pt 0 -3) (+Y 6))
+   (boxes (cuts 2) (pt 0 -2) (+Y 4)))
+
+(defun register (n name)
+       (column 'regcell nil n name 0 (1- n)))
+
+(defun regarray (n name)
+       (row 'register nil n name 0 (1- n)))
+
+

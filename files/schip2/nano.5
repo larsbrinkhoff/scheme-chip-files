@@ -1,0 +1,68 @@
+;;; Nano code  -*- Lisp -*-
+
+;;;Micro PLA fields
+; Next state	9
+; Dispatch	1
+; Branch select 4
+;	0	-
+;	1	eq-val-to-bus
+;	2	eq-type-to-bus - constant compared to type field of bus
+;	3	scan-up-eq-bus
+;	4	scan-down=0
+;	5	frame=0
+;	6	displacement=0
+;	7	bus-type-is-pointer
+;	10	bus-mark-bit
+
+; Constant (in place of output field) ??
+
+
+;;;Nano code definitions
+
+
+;;; Reserve certain of the 64 states for implying decodes
+
+(implied end      (bits 1 x x x x x))
+(implied (from *) (bits x 1 x x x x))
+(implied (to *)   (bits x x 1 x x x))
+	  
+(defnano do-half-cons
+	 ((from *scan-up+1*) (to *nano-tem*) ale)
+	 ((from *nano-tem*) (to *scan-up*) (to *))
+	 ((from *memtop*) set-gc-needed-if-scan-up-eq-bus)
+	 ((from *) write end))				;Caller will have to write CDR
+
+(defnano do-save
+	((from *scan-up+1*) (to *nano-tem*) ale)
+	((from *nano-tem*) (to *scan-up*))
+	((from *memtop*) set-gc-needed-if-scan-up-eq-bus)
+	((from *) write)
+	((from *stack*) write cdr)
+	((from *scan-up*) (to *stack) end))
+
+(defnano do-restore
+	 ((from *stack*) ale)
+	 (read (to *))
+	 (read cdr (to *stack*) end)
+)
+
+(defnano do-car
+	 ((from *) ale)
+	 (read (to *) end))
+
+(defnano do-cdr
+	 ((from *) ale)
+	 (read cdr (to *) end))
+
+(defnano do-increment-scan-up
+    ((from *scan-up+1*) (to *nano-tem*))
+    ((from *nano-tem*) (to *scan-up*) end))
+(defnano do-decrement-scan-down
+    ((from *scan-down-1*) (to *nano-tem*))
+    ((from *nano-tem*) (to *scan-down* end)))
+(defnano do-decrement-frame
+    ((from *frame-1*) (to *nano-tem*))
+    ((from *nano-tem*) (to *frame*) end))
+(defnano do-decrement-displacement
+    ((from *displacement-1*) (to *nano-tem*))
+    ((from *nano-tem*) (to *displacement*) end))

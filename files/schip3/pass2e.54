@@ -1,0 +1,128 @@
+;;; -*- mode:LISP; package:SCHIP -*-
+;;; PASS2E, the compiler's environment for SCHEME-81, by HANSON.
+;;; this file contains the chip-specific information required by PASS2.
+
+(eval-when (compile) (load "xlang"))
+
+(declare (*lexpr cerr))
+(declare (*expr subfield-error-check expression-walk predicate-walk))
+(declare (*expr make-constant-register constant? constant-merge-fields?))
+(defvar *me*)
+
+;;; definitions of constant-registers known to be used in the scheme chip.
+
+(eval-when (eval load)
+
+(defmacro def-constant-register (field &rest clauses)
+  `(let ((var (constant-merge-fields? '(merge ,field ,@clauses))))
+     (if (null var)
+	 (cerr "illegal constant-register clauses" clauses)
+	 (make-constant-register nil ',field var))))
+
+(def-constant-register (word) ((type) *nil) ((datum) 0))
+(def-constant-register (word) ((type) list) ((datum) entry-vector-pointer))
+(def-constant-register (word) ((type) unbound) ((datum) 0))
+)
+
+;;; these things define a reasonable interface to the simulator.
+;;; for one reason or another, the simulator needs code to do
+;;; certain things, which the compiler is not really interested in.
+;;; this code transforms these cases into cleaner forms, thus
+;;; making the compiler relatively independent of the simulator.
+
+(defun (defpc-body cmacro) (ignore body) body)
+
+;;; SEND takes special argument forms which essentially give just
+;;; a target and source for each argument.  this code extracts that
+;;; information from the more complicated syntax.
+
+(defun (send cmacro) (pc-name &rest arg-forms)
+  `(call ,pc-name
+	 (arg-stack-push ,pc-name pc-stack nil)
+	 ,@(let-mapcar ((arg-form arg-forms))
+	     (let ((src-form (cadadr arg-form)))
+	       `(arg-stack-push ,pc-name
+				,(car arg-form)
+				,(if (and (not (atom src-form))
+					  (eq (car src-form) 'read-reg))
+				     (caddr src-form)
+				     src-form))))))
+
+(defun (clear-controller-stacks cmacro) () `(expression (clear-controller-stacks*)))
+
+(defun (clear-controller-stacks* norm-expr) () (list () () '(clear-controller-stacks)))
+
+(defun (pclsr-save-1 cmacro) (reg) `(expression (pclsr-save-2 ,reg)))
+
+(defun (pclsr-save-2 norm-expr) (reg) `((,reg) (,reg) (pclsr-save)))
+
+(defun (pclsr-restore-1 cmacro) (reg) `(expression (pclsr-restore-2 ,reg)))
+
+(defun (pclsr-restore-2 norm-expr) (reg) `((,reg) (,reg) (pclsr-restore)))
+
+;;; the simulator likes to have its code optimized when register references
+;;; do not involve field extraction, but the compiler wants regularity.
+
+(defun (read-reg cmacro) (field reg-name)
+  `(read-subfield nil ,field ,reg-name))
+
+(defun (extract cmacro) (subfield field thing)
+  `(read-subfield ,subfield
+		  ,field
+		  ,(if (and (not (atom thing)) (eq (car thing) 'read-reg))
+		       (caddr thing)
+		       thing)))
+
+(defun (write-reg cmacro) (field reg-name exp)
+  `(write-subfield nil ,field ,reg-name ,exp))
+
+(defun (write-reg-value cmacro) (field reg-name exp)
+  `(write-subfield-value nil ,field ,reg-name ,exp))
+
+(defun (set-flag-subfield cmacro) (subfield field reg value)
+  `(write-subfield ,subfield ,field ,reg (read-subfield ,subfield ,field ,value)))
+
+(defun (set-flag-conditional-subfield pred-expr) (subfield field flag value pred)
+  (predicate-walk pred))
+
+(defun (sense-pad-fun cmacro) (field name)
+  `(read-subfield nil ,field ,name))
+
+(defun (drive-pad-fun cmacro) (field name value)
+  `(write-subfield nil ,field ,name ,value))
+
+(defun (test-bit cmacro) (source) source)
+
+(defun (same-state cmacro) (&rest x) `(same-state-linear ,@x))
+
+(defun (same-state-prog cmacro) (&rest x) `(same-state-linear ,@x))
+
+(defun (progn cmacro) (&rest x) `(block ,@x))
+
+(defun (reply cmacro) (&rest x)
+  `(return pc-stack ,@x))
+
+;;; these are specific to the SCHEME chip.
+
+(defun (left-address cmacro) (x)
+  `(merge-fields (memory-address) (datum) ,x (low-bit) 0))
+
+(defun (right-address cmacro) (x)
+  `(merge-fields (memory-address) (datum) ,x (low-bit) 1))
+
+(defun (add-field valid-read-source) (subfield field source)
+  (subfield-error-check subfield field nil (cadr source))
+  *me*)
+
+(defun (add-field norm-expr) (ignore &rest stuff)
+  (let ((values (mapcar #'expression-walk stuff)))
+    (list (mapcan #'car values)
+	  (mapcan #'cadr values)
+	  (cons 'add-field (mapcan #'caddr values)))))
+
+(defun (add-field pred-expr) (ignore &rest stuff)
+  (let ((values (mapcar #'predicate-walk stuff)))
+    (list (mapcan #'car values)
+	  (cons 'add-field (mapcan #'cadr values)))))
+
+(defun (vnot norm-expr) (ignore thing) (expression-walk thing))

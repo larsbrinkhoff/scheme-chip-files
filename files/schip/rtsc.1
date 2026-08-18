@@ -1,0 +1,293 @@
+Outline of the Production System talk for the RTSC Workshop.
+C. L. Forgy  17Nov78
+
+[Comments about the talk are enclosed in square brackets.  In
+particular, the slides to be used are so indicated.]
+
+
+1. INTRODUCTION.
+
+1.0. I am scheduled to discuss Production Systems (PSs) vis a vis
+other AI languages.  The obvious place to start is to ask what are
+the distinguishing characteristics of PSs.  Though others might
+disagree, I would argue that there are two distinguishing
+characteristics [SLIDE]
+	a. Their heavy reliance on pattern directed evocation.
+	b. Their abandoning of hierarchical control structures.
+	   (Eg, The PS architecture includes no subroutine construct.)
+
+1.1. Let me briefly describe the PSs we are currently using at CMU
+[SLIDE showing a PS]
+	a. A PS comprises two memories, Production Memory and Working
+	   Memory.
+	b. The contents of Production Memory are condition-action
+	   pairs called Productions.
+	c. The contents of Working Memory are simply symbol structures
+	   of some kind.  In our present system they are lists.
+	d. The condition part of each production is a collection
+	   of patterns.
+	e. The interpreter executes the PS by examining the condition
+	   parts of all the productions, determining which match
+	   elements in Working Memory (all the patterns in a condition
+	   part must match elements), and then choosing one of those
+	   condition parts and executing the corresponding action
+	   part.
+	f. The action part of the production can be thought of as
+	   the body of a subroutine.  Since OPS2 is implemented in
+	   Lisp, the action part is much like a Lisp PROG.
+	g. The action part of the production will generally affect
+	   the contents of Working Memory -- perhaps adding one or
+	   more new lists and deleting one or more existing lists.
+	   (The action parts are not required to change Working
+	   Memory.)
+	h. The action part can perform almost any operation.
+	   One operation that is specifically disallowed is evoking
+	   another production.  Only after the action part surrenders
+	   control back to the interpreter is the next production
+	   evoked.
+	i. The interpreter chooses the next production to evoke in the
+	   same way as before.  It examines all the condition parts,
+	   and then selects from among those whose patterns are
+	   satisfied.  If the production that just fired changed
+	   Working Memory, the set of satisfied condition parts is
+	   probably changed.
+The heavy use of pattern directed evocation should be obvious now.
+(In this context it might be noted that we generally try to make the
+action parts of the productions short.)  The non-hierarchical nature
+of the system derives from not allowing one production to call another
+production.
+
+1.3. People at CMU have been using PSs for a number of years now.  As
+they gain more experience and  attempt more complex tasks, the PSs of
+course become larger.  By their current standards, a system with 1000
+productions would be considered quite large.  (To convert this number
+into  more familiar terms,  consider it the equivalent  of 1000 short
+Lisp functions -- or  perhaps more accurately 1000 Planner theorems.)
+For philosophical reasons, an  attempt is made to keep Working Memory
+small.  A typical Working Memory might average 100 or 200 lists, each
+list containing about 10 atoms.
+
+1.4. There is a community of researchers who believe that PSs are
+appropriate for the building of intelligent programs.  Since this
+is still an active research area, I choose not to argue either for
+or against their position.  Instead, I am going to take one of the
+PS's distinguishing characteristics and discuss its implications
+for computer design.  This is a reasonable course for two reasons
+	a. The characteristic I will focus on, the heavy reliance
+	   on pattern directed evocation, is the feature that is of
+	   greatest concern to implementors of PS interpreters.  As an
+	   implementor myself, I can state that one tends to spend all
+	   his time worrying about how to get the pattern matching 
+	   done efficiently.  
+	b. The algorithms and the hardware that have been developed
+	   for this task would be useful for other programming
+	   languages as well.  Since this is not at all obvious, I
+	   will have more to say about it in a few minutes.
+
+
+2. THE ALGORITHM.
+
+2.1. [SLIDE showing an abstract network] For several years we at CMU
+have been using an algorithm called the Rete Match Algorithm (RMA)
+for our production systems.  The RMA is compiler based.  Before
+execution of a program begins, the entire collection of patterns in
+the program is compiled into a single graph structure.  This graph
+consists of four parts.  The first part could be viewed as the dual
+of a discrimination net; that is, it is a subgraph such that if one
+converted the nodes into edges and the edges into nodes, a
+discrimination net would result.  The objects in the data base are
+filtered through this part of the graph so that each individual node
+in the later parts of the graph sees only a few of the objects.  The
+second part to the graph is a collection of nodes with memory.  A
+memory node remembers every object that reaches it; consequently, on
+successive activations of the graph, it is sufficient to feed through
+the graph only the objects that have changed since the last
+activation.  (If these nodes were not in the graph, it would be
+necessary to process the entire data base.)  The third part of the
+graph is a set of nodes which combine the objects passed by the
+various paths in the first part of the graph.  This third part is
+needed because some condition parts are conjunctions of several
+patterns.  The last part of the graph is a connection back to the
+rest of the PS interpreter.  The nodes in this part of the graph
+inform the interpreter when a condition part is satisfied.
+
+2.2. The RMA is not particularly restrictive in the kind of patterns
+it will support.  For example in our current production system
+(which uses list structured data objects) patterns may contain
+[SLIDE]
+	a. Constants, variables, and user-defined predicates.
+	b. A limited form of segment variable.
+	c. Pattern-and.
+	d. Conjunction of patterns.
+	e. Negation of patterns and conjunctions of patterns.
+It could be extended to other things.  For example
+	f. Data types other than lists.
+	g. Pattern-or.
+
+2.3. The RMA is efficient because
+[SLIDE]
+	a.  The compiler recognizes and exploits the similarities
+	    in the patterns.
+	b.  Since the memory nodes store information, the effort
+	    does not depend strongly on the absolute size of the
+	    data base.
+
+
+3. THE TIME AND SPACE COSTS OF INTERPRETING A PS.
+
+3.1. Before we can discuss the effort of interpreting a PS, it is
+necessary to choose a measure of effort.  Counting the number of
+primary memory references has been a fairly accurate measure for all
+the cases we have looked at.  In all the implementations we have
+considered, the amount of processing that takes place after each
+memory reference is small, and even a fairly primitive processor
+should be able to run at close to memory speed.
+
+3.2. The amount of effort required to monitor changes in the data
+base depends on
+	a. The rate of change of the data base.
+	b. The number of condition parts in the system.
+	c. The size of the data base.
+The dependence for the RMA is as follows
+	a. The effort varies directly with the rate of change of the
+	   data base.
+	b. The effort of monitoring should be a log function of the
+	   number of condition parts.  (Making some very reasonable
+	   assumptions one can show that this is the best that any
+	   algorithm can manage.)
+	c. The effect of data base size depends on the complexity of
+	   the condition parts.  If the user writes combinatorially 
+	   difficult patterns, the effort will be high.  But if the 
+	   allows it to, the RMA will do well here.
+
+
+3.3. The effort of course also depends on the PS being interpreted.
+Some PSs have more complex condition parts than others, and some have
+longer action parts.  Let us ignore that for a moment and concentrate
+on one typical PS.  The PH-632 PS, which solves textbook physics
+problems, is a good example; it is neither the simplest nor the most
+complex PS being used now.
+
+3.4. Using PH-632 as the archetype, one can derive the following
+cost formula.  If the PS contains P productions, and performs
+W changes to Working Memory each second, the number of memory
+references each second is
+
+	16 * W * Log2(P)
+
+From this, we can plot a family of curves showing the number of
+memory references required to attain a given performance level.
+[SLIDE]
+
+3.5. To help make some sense from the graph
+	a. A PS that performed about 100 Working Memory changes
+	   each second would about equal a Lisp program run on
+	   a KA-10. [cf. McCracken's thesis; Rychener's thesis]
+	b. A KA-10 has a memory bandwidth of about 0.5 million
+	   words per second.
+	c. The Lisp Machine has a memory bandwidth of about
+	   ? million words per second.
+
+3.6. The space cost of the algorithm is linear.  The compiled form of
+the typical PH-632 condition part requires about 20 words.  The
+uncompiled condition part is about twice as big.
+
+
+4. THE HARDWARE SUPPORT FOR THE ALGORITHM.
+
+4.1. At one time we were considering use of a special function box to
+perform the match. [SLIDE] But as our understanding of the task
+increased, we discovered that nothing so extreme was needed.  We
+found that by changing the format of the data and by giving more
+responsibility to the compiler, we could get comparable performance
+with very little hardware enhancement.
+
+4.2. We now know how to support the Rete Match on an ordinary
+von Neumann processor augmented with
+[SLIDE]
+	a. A few hundred words of writable control store.
+	b. A few hundred words of high speed scratch pad memory.
+
+4.3. Of course, if even that hardware is not available, the Rete
+Match can be run on the processor.  We have made some estimates of
+the benefit of the hardware.  The following table contains the
+relative number of memory references that would be required by four
+possible implementations.  It is normalized so that the
+implementation just discussed shows 1.
+[SLIDE]
+
+	Implementation		Memory References
+
+	Microcode and		  1
+	Scratchpad
+
+	Microcode alone		  3
+
+	Assembly Language	 15
+
+	Lisp (current OPS2)	150
+
+
+5. PARALLELISM.
+
+5.1. In order to achieve real time response from a large production
+system, one would almost certainly have to use parallelism.  For
+example, to execute a Hearsay-II PS in real time (a 1000 word
+vocabulary) one would have to perform on the order of 40 million
+memory references per second.
+
+5.2. The Rete Match Algorithm is well suited to parallel 
+implementation.  The match can operate with quite high degrees
+of internal parallelism.  (The degree of parallelism possible
+increases with the number of productions in the system.)
+
+5.3. An interesting point about this kind of parallelism is that 
+the user need not worry about it.  Since the parallelism is buried
+in the interpreter, he sees and programs an ordinary, sequential
+production system interpreter.
+
+
+6. RELATIONSHIP OF PSs TO OTHER PROGRAMMING LANGUAGES.
+
+
+6.1. The feature of PSs that we have been discussing might be called
+pattern-directed monitoring of a changing data base.  I believe that
+this control structure, or variations thereof, will become more and
+more common in future AI programs.  Evidence for this can be found in
+at least two quarters.
+	a. The languages that are proposed for successors to Lisp
+	   (Planner, QA4, Conniver, Qlisp, ...) generally include
+	   mechanisms for pattern directed evocation of procedures.
+	b. Programs that are written in Lisp or other languages 
+	   that lack pattern matching often make use of specially
+	   written pattern matchers.  Mycin is a well known
+	   example of these programs.
+
+6.2. Certainly the kinds of pattern-matching used by these systems
+is not identical to that used in our PSs, but then the Rete Match
+Algorithm is not specific to just those PSs.  It could, with the
+use of an appropriate compiler, handle patterns like those in the
+other languages as well.  
+
+6.3. However, since the patterns used in most of the other languages
+are rather restricted, one might want to change the patterns anyway.
+
+6.4. If users of these languages do start writing more complex
+patterns, or if they do start using pattern directed evocation
+more frequently, then the efficiency of the pattern matcher in
+the interpreter will become more important.  The algorithm and
+the hardware described here will then also become more important.
+
+
+7. CONCLUSIONS.
+
+[SLIDE -- one for both]
+
+7.1. The main conclusion is that with some quite inexpensive
+hardware support, the match algorithm would provide efficient
+pattern directed monitoring of changing data bases.
+
+7.2. This is obviously of use to people who use PSs, but there is
+reason to believe that it will also be of use to the users of other
+programming languages.
+ 

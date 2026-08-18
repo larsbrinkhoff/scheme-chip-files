@@ -1,0 +1,31 @@
+
+Date:  7 JUL 1979 1734-PDT
+From: ABELL at PARC-MAXC
+Subject: cif files
+To:   GJS at MIT-AI, H at MIT-AI
+cc:   abell
+
+I have been looking at the cif file REG.CIF.  I have encountered
+a few problems.  Some are with my software and some with the CIF file.
+
+1.) The comment (USES: ...) does not have a semicolon after it.  I edited
+the version with teco but you might fix the generator.
+
+2.) In symbol 1067, there are several boxes with a center 
+of 582, 2000000.  This is a little meaningless and causes problems for
+my software.
+
+3.) There are several symbols which are empty.  These cause
+some problems.  I agree this is legal CIF however
+it is not trivial to fix the software.  Is it easy to remove
+these or will they go away when the design is complete?  If not,
+I can dig deeper and fix it on my end.
+
+I have not had a chance to plot it yet.
+
+I plan on making some suggestion on how to use user extension
+commands for setting the symbol name and text for interconnections
+after I figure out if it is doable.
+Alan
+-------
+

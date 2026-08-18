@@ -1,0 +1,6 @@
+(setq baz 
+      '(defun foo (x)
+	      (setq x
+		    (cons x
+			  (catch m (setq bar m) 1)))
+	      (cons 'a x)))

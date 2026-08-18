@@ -1,0 +1,165 @@
+;;; -*- mode: LISP; package: DPL -*-
+
+;;;; Data path translations
+
+(defvar *dpath-path-rules* nil)
+
+(defvar *answer*)
+
+(defun translate-to-dpath-path (path)
+  (let ((*statement* path)
+	(*answer* path))
+    (dolist (rule *dpath-path-rules*)
+      (if (apply-rule rule *statement*)
+	  (return t)))
+    `(input ,*answer*)))
+
+(defmacro def-dpath-rule (name pattern filter &body body)
+  `(let ((nm (:join 'dpath-rule- ',name)))
+    (putprop nm ',pattern 'rule-pattern)
+    (putprop nm ',filter 'rule-filter)
+    (putprop nm '(progn . ,body) 'rule-body)
+    (setq *dpath-path-rules* (:cons-new nm *dpath-path-rules*))
+    nm))
+
+(def-dpath-rule read-3 (read-local (? sub) (? part) (? reg))
+		(not (memq (? sub) '(increment decrement)))
+  (setq *answer* `(read ,(? sub) ,(? part) ,(? reg))))
+
+(def-dpath-rule read-2 (read-local (? part) (? reg))
+		t
+  (setq *answer* `(read ,(? part) ,(? reg))))
+
+(def-dpath-rule inc-dec-datum (read-local (? id) datum (? reg))
+		(memq (? id) '(increment decrement))
+  (setq *answer* `(input ,(? id) ,(? reg))))
+
+(def-dpath-rule inc-dec-reg (read-local (? id) (? reg))
+		(memq (? id) '(increment decrement))
+  (setq *answer* `(input ,(? id) ,(? reg))))
+
+(def-dpath-rule env-stack-id (read-local (? id) count env-stack)
+		(memq (? id) '(increment decrement))
+  (setq *answer* `(input ,(:join (? id) '-count) env-stack)))
+
+(def-dpath-rule shift-datum (read-local (? shift) datum (? reg))
+		(memq (? shift) '(right-shift-0 left-shift-0 left-shift-1))
+  (setq *answer* `(read ,(? shift) ,(? reg))))
+
+(def-dpath-rule shift-reg (read-local (? shift) (? reg))
+		(memq (? shift) '(right-shift-0 left-shift-0 left-shift-1))
+  (setq *answer* `(read ,(? shift) ,(? reg))))
+
+(def-dpath-rule cdr-bit-val (cdr-bit val)
+		t
+  (setq *answer* '(cdr-bit cdr-bit val)))
+
+(def-dpath-rule cdr-bit (read-global (? which) cdr-bit)
+		t
+  (setq *answer* `(,(if (eq (? which) 'one)
+			'input-1
+			'input-2)
+		   cdr-bit)))
+
+(def-dpath-rule read-global-reg (read-global (? reg))
+		(not (eq (? reg) 'index-adder))
+  (setq *answer* `(read ,(? reg))))
+
+(def-dpath-rule read-global-reg-2 (read-global (? sub) (? reg))
+		(not (eq (? reg) 'cdr-bit))
+  (setq *answer* `(read ,(? sub) ,(? reg))))
+
+(def-dpath-rule index-adder (read-global index-adder)
+		t
+  (setq *answer* '(read array-index-adder)))
+
+
+;;;; Predicate translations
+
+(defvar *pred-path-rules* nil)
+
+(defmacro def-pred-rule (name pattern filter &body body)
+  `(let ((nm (:join 'pred-rule- ',name)))
+    (putprop nm ',pattern 'rule-pattern)
+    (putprop nm ',filter 'rule-filter)
+    (putprop nm '(progn . ,body) 'rule-body)
+    (setq *pred-path-rules* (:cons-new nm *pred-path-rules*))
+    nm))
+
+(defvar *answer*)
+
+(defun translate-from-dpath-to-pred (path)
+  (let ((*statement* path)
+	(*answer* path))
+    (dolist (rule *pred-path-rules*)
+      (if (apply-rule rule *statement*)
+	  (return t)))
+    (append *answer* '(data-senses))))
+
+(def-pred-rule pointer-bit ((cross-bus 0) pointer-bit)
+	       t
+  (setq *answer* '(pointer-bit main-bus)))
+
+(def-pred-rule signal=17 (signal =17)
+	       t
+  (setq *answer* '(=17 class main-bus)))
+
+(def-pred-rule signal=0 (signal (? which) =0)
+	       t
+  (setq *answer* `(=0 ,(? which) main-bus)))
+
+(def-pred-rule cross-bus-output-bits
+		((cross-bus (? n)) output-bits interrupt-enables)
+		t
+  (setq *answer*  `(,(nth (? n) '(gc cons-server dma external))
+		    interrupt-enables)))
+
+(def-pred-rule bus=scan (signal bus= scan)
+	       t
+  (setq *answer* '(bus= scan)))
+
+(def-pred-rule free-memtop (signal free=memtop)
+	       t
+  (setq *answer* '(free=memtop)))
+
+(def-pred-rule equal-machine-number (signal temporary-equal-machine-number)
+	       t
+  (setq *answer* '(temporary=machine-number)))
+
+(def-pred-rule pure-pointer (signal pure-pointer temporary)
+	       t
+  (setq *answer* '(=-1 machine-number datum temporary)))
+
+(def-pred-rule bus= (signal (? which) bus= (? where))
+	       t
+  (setq *answer* `(bus= ,(? which) ,(? where))))
+
+(def-pred-rule sign-bit ((cross-bus 0) sign-bit (? reg))
+	       t
+  (setq *answer* `(sign-bit datum ,(? reg))))
+
+(def-pred-rule adder-sign-bit (sign-bit-out array-index-adder)
+	       t
+  (setq *answer* '(sign-bit array-index-adder)))
+
+(def-pred-rule =2-type (signal =2-type exp)
+	       t
+  (setq *answer* '(=2 type exp)))
+
+(def-pred-rule zero-high-bits (signal zero-high-bits? exp)
+	       t
+  (setq *answer* '(=0 high-bits datum exp)))
+
+(def-pred-rule exp-low-bit ((cross-bus 0) low-bit? exp)
+	       t
+  (setq *answer* '(low-bit datum exp)))
+
+(def-pred-rule stack-cdr-bit ((cross-bus 0) rack-flag (? which))
+	       t
+  (setq *answer* `(cdr-bit ,(? which))))
+
+(def-pred-rule env-counts (signal (? which) env-stack)
+	       t
+  (setq *answer* `(,(cdr (assq (? which) '((rack-count-full? . =36)
+					   (zero-count? . =0))))
+		   count env-stack)))

@@ -1,0 +1,382 @@
+;;; -*-LISP-*-
+
+(declare (*lexpr cons-name))
+(defvar *pc-list*)
+(defvar *current-pc*)
+
+(defun pass3 ()
+  (mapc #'pass3-pc *pc-list*)
+  'done)
+
+(defun pass3-pc (pc)
+  (setq *current-pc* pc)
+  (let ((v (pass3-pc-exp (pass2-pc-output pc))))
+    (if (not (null (right-hooks v)))
+	(break "PC with right hooks -- PASS3-PC"))
+    (putprop pc (left-hook v) 'entry-hook)
+    (mapc #'(lambda (rn) (primitive-introduce (get pc 'return-hooks) rn '*))
+	  (get pc 'pending-return-points))
+    (primitive-introduce (get pc 'pending-entry-points) (left-hook v) '*)
+    (remprop pc 'pending-entry-points)
+    (remprop pc 'pending-return-points)
+    v))
+
+(defun pass3-pc-exp (exp)
+  (if (atom exp)
+      (cond ((predicate? exp)
+	     (addprop *current-pc* exp 'primitive-operations)
+	     (make-predicate-hooks exp (list exp) (list exp)))
+	    ((statement? exp)
+	     (addprop *current-pc* exp 'primitive-operations)
+	     (make-statement-hooks exp (list exp)))
+	    ((null exp)
+	     (let ((nop (make-atomic-statement '(null-operation))))
+	       (make-statement-hooks nop (list nop))))
+	    (t
+	     (break "Unknown atomic statement -- PASS3-PC-EXP")))
+      (let ((p3 (get (car exp) 'pass3-procedure)))
+	(if (not (null p3))
+	    (funcall p3 exp)
+	    (break "Unknown pass3 keyword -- PASS3-PC-EXP")))))
+
+(defun (block pass3-procedure) (exp)
+  (introduce-neighbors (mapcar #'pass3-pc-exp (progn-body exp)) 'nil))
+
+(defun (same-state-linear pass3-procedure) (exp)
+  (introduce-neighbors (mapcar #'pass3-pc-exp (progn-body exp)) 't)))
+
+(defun (if pass3-procedure) (exp)
+  (let ((pred (pass3-pc-exp (predicate exp)))
+	(conseq (pass3-pc-exp (consequent exp)))
+	(alt (pass3-pc-exp (alternative exp))))
+    (introduce-branch 'consequent-neighbor
+		      (consequent-hooks pred)
+		      (left-hook conseq)
+		      (pred-overlap? (left-hook conseq)))
+    (introduce-branch 'alternative-neighbor
+		      (alternative-hooks pred)
+		      (left-hook alt)
+		      (pred-overlap? (left-hook alt)))
+    (make-statement-hooks (left-hook pred)
+			  (union (right-hooks conseq)
+				 (right-hooks alt)))))
+
+(defun (same-cycle pass3-procedure) (exp)
+  (let ((body-hooks (mapcar #'pass3-pc-exp (progn-body exp))))
+    (if (not (same-cycle-statements? body-hooks))
+	(break "Illegal operation found in SAME-CYCLE:PASS3"))
+    (let ((newnode (make-atomic-statement '(same-cycle))))
+      (putprop newnode
+	       (mapcar #'left-hook body-hooks)
+	       'single-cycled-statements)
+      (make-statement-hooks newnode (list newnode)))))
+
+(defun (same-cycle-prog1 pass3-procedure) (exp)
+  (let ((statement-hooks (mapcar #'pass3-pc-exp (same-cycle-prog1-statements exp)))
+	(pred-hooks (pass3-pc-exp (same-cycle-prog1-predicate exp))))
+    (if (or (> (length (consequent-hooks pred-hooks)) 1)
+	    (not (equal (consequent-hooks pred-hooks) (alternative-hooks pred-hooks)))
+	    (not (equal (left-hook pred-hooks) (car (consequent-hooks pred-hooks))))
+	    (not (same-cycle-statements? statement-hooks)))
+	(break "Illegal operation found in SAME-CYCLE-PROG1:PASS3"))
+    (let ((newnode (make-atomic-predicate '(same-cycle))))
+      (putprop newnode (left-hook pred-hooks) 'single-cycle-predicate)
+      (putprop newnode 
+	       (mapcar #'left-hook statement-hooks)
+	       'single-cycled-statements)
+      (make-predicate-hooks newnode (list newnode) (list newnode)))))
+
+(defun same-cycle-statements? (body-hooks)
+  (do ((stl body-hooks (cdr stl))) ((null stl) 't)
+    (let ((st-hooks (car stl)))
+      (if (and (not (pred-overlap? (left-hook st-hooks)))
+	       (or (> (length (right-hooks st-hooks)) 1)
+		   (not (equal (left-hook st-hooks)
+			       (car (right-hooks st-hooks))))))
+	  (return nil)))))
+
+(defun (same-state-prog1 pass3-procedure) (exp)
+  (let ((chooks (mapcar #'pass3-pc-exp (same-cycle-prog1-statements exp)))
+	(ahooks (mapcar #'pass3-pc-exp
+			(copy-pass2-expression (same-cycle-prog1-statements exp))))
+	(phooks (pass3-pc-exp (same-cycle-prog1-predicate exp))))
+    (introduce-neighbors chooks 't)
+    (introduce-neighbors ahooks 't)
+    (introduce-branch 'consequent-neighbor
+		      (consequent-hooks phooks)
+		      (left-hook (car chooks))
+		      't)
+    (introduce-branch 'alternative-neighbor
+		      (alternative-hooks phooks)
+		      (left-hook (car ahooks))
+		      't)
+    (make-predicate-hooks (left-hook phooks)
+			  (right-hooks (car (last chooks)))
+			  (right-hooks (car (last ahooks))))))
+
+(defun (wait pass3-procedure) (exp)
+  (let ((s (make-atomic-statement '(wait))))
+    (putprop s (wait-predicate exp) 'wait-predicate)
+    (make-statement-hooks s (list s))))
+
+
+(defun (call pass3-procedure) (exp)
+  (let ((s (make-atomic-statement '(call)))
+	(targ (call-target-pc exp)))
+    (putprop s targ 'target-pc)
+    (putprop s (call-stacks exp) 'call-stacks)
+    (introduce-goto s targ)
+    (make-statement-hooks s (list s))))
+
+(defun (return pass3-procedure) (exp)
+  (let ((s (make-atomic-statement '(return))))
+    (putprop s (return-stacks exp) 'return-stacks)
+    (addprop *current-pc* s 'return-hooks)
+    (make-statement-hooks s '())))
+
+(defun (dispatch pass3-procedure) (exp)
+  (let ((s (make-atomic-statement '(dispatch))))
+    (putprop s (dispatch-target-class exp) 'target-class)
+    (putprop s (dispatch-source exp) 'dispatch-source)
+    (make-statement-hooks s '())))
+
+(defun (goto pass3-procedure) (exp)
+  (let ((s (make-atomic-statement '(goto)))
+	(targ (goto-target-pc exp)))
+    (putprop s targ 'target-pc)
+    (introduce-goto s targ)
+    (make-statement-hooks s '())))
+
+
+(defun introduce-neighbors (hooks-list overlap-flag)
+ (do ((n hooks-list (cdr n)))
+     ((null (cdr n))
+      (make-statement-hooks (left-hook (car hooks-list))
+			   (right-hooks (car n))))
+   (introduce (right-hooks (car n))
+	      (left-hook (cadr n))
+	      overlap-flag)))
+
+(defun introduce-goto (s targ)				;s is GOTO, targ is target-PC
+  (let ((entry-hook (get targ 'entry-hook)))
+    (if (not (null entry-hook))
+	(primitive-introduce (list s) entry-hook '*)
+	(putprop targ
+		 (union (get targ 'pending-entry-points)
+			(list s))
+		 'pending-entry-points))))
+
+(defun introduce-branch (name phooks chook overlap-flag)
+  (mapc #'(lambda (phook)
+	    (if (predicate? phook)
+		(progn (if (not (null (get phook name)))
+			   (break "Multiple right-neighbor -- INTRODUCE-BRANCH"))
+		       (putprop phook (list chook overlap-flag) name)
+		       (addprop chook (list phook overlap-flag) 'left-neighbors))
+		(introduce phooks chook overlap-flag)))
+	phooks))
+
+(defun primitive-introduce (right-hooks left-hook of)
+  (mapc #'(lambda (rh)
+	    (if (predicate? rh) (break "Predicate -- PRIMITIVE-INTRODUCE"))
+	    (if (not (null (get rh 'right-neighbor)))
+		(break "Multiple right-neighbor -- PRIMITIVE-INTRODUCE"))
+	    (putprop rh (list left-hook of) 'right-neighbor)
+	    (addprop left-hook (list rh of) 'left-neighbors))
+	right-hooks))
+
+(defun introduce (right-hooks left-hook of)
+  (mapc #'(lambda (rh)
+	    (cond ((call-statement? rh)
+		   (if (not (null (get rh 'continuation)))
+		       (break "Multiple continuation -- INTRODUCE"))
+		   (putprop rh (list left-hook of) 'continuation)
+		   (addprop left-hook (list rh of) 'predecessors)
+		   (do ((stacks-pushed (get rh 'call-stacks) (cdr stacks-pushed)))
+		       ((null stacks-pushed)
+			(break "Call without PC-STACK push -- INTRODUCE"))
+		     (if (eq (call-stack-name (car stacks-pushed)) 'pc-stack)
+			 (progn (if (null (call-stack-source (car stacks-pushed)))
+				    (set-call-stack-source (car stacks-pushed) left-hook))
+				(return t))))
+;;; Very clever, but a bastard!  When we have more time...
+;		 (let ((subr-name (get rh 'target-pc)))
+;		   (if (get subr-name 'entry-hook)
+;		       (primitive-introduce (get subr-name 'return-hooks)
+;					    left-hook
+;					    of)
+;		       (putprop subr-name
+;				(union (get subr-name 'pending-returns)
+;				       (list left-hook))
+;				'pending-returns)))
+		   )
+		  (t (primitive-introduce (list rh) left-hook of))))
+	right-hooks))
+
+;;; THE LINE!  Concrete data types below.
+
+(defun pass2-pc-output (pc) (get pc 'new-pc-def))
+
+
+;;; Concrete syntax
+
+(defun predicate (exp) (cadr exp))
+(defun consequent (exp) (caddr exp))
+(defun alternative (exp) (cadddr exp))
+
+(defun progn-body (exp) (cdr exp))
+(defun same-cycle-prog1-statements (exp) (cddr exp))
+(defun same-cycle-prog1-predicate (exp) (cadr exp))
+
+
+(defun wait-predicate (exp) (cadr exp))
+
+
+(defun return-stacks (exp) (cdr exp))
+
+(defun call-stacks (exp) (cddr exp))
+(defun call-stack-name (exp) (cadr exp))
+(defun call-stack-source (exp) (caddr exp))
+(defun set-call-stack-source (exp value) (rplaca (cddr exp) value))
+
+(defun call-target-pc (exp) (cadr exp))
+(defun goto-target-pc (exp) (cadr exp))
+(defun dispatch-target-class (exp) (caddr exp))
+(defun dispatch-source (exp) (cadr exp))
+
+
+;;; Nodes and hooks.
+
+(defun make-statement-hooks (lh rh)
+  `(statement-hooks ,lh ,rh))
+
+(defun left-hook (node)
+  (if (memq (car node) '(statement-hooks predicate-hooks))
+      (cadr node)
+      (break "Unknown node type -- LEFT-HOOK")))
+
+(defun right-hooks (node)
+  (if (eq (car node) 'statement-hooks)
+      (caddr node)
+      (break "Unknown node type -- RIGHT-HOOKS")))
+
+
+(defun make-predicate-hooks (lh crh arh)
+  `(predicate-hooks ,lh ,crh ,arh))
+
+(defun consequent-hooks (node)
+  (if (eq (car node) 'predicate-hooks)
+      (caddr node)
+      (break "Unknown node type -- CONSEQUENT-HOOKS")))
+
+(defun alternative-hooks (node)
+  (if (eq (car node) 'predicate-hooks)
+      (cadddr node)
+      (break "Unknown node type -- ALTERNATIVE-HOOKS")))
+
+;;; Statements
+
+(defun statement? (s)
+  (and (symbolp s)
+       (eq (ctype s) 'statement)))
+
+(defun predicate? (s)
+  (and (statement? s)
+       (memq 'predicate (statement-type s))))
+
+(defun return-statement? (s)
+  (and (statement? s)
+       (memq 'return (statement-type s))))
+
+(defun call-statement? (s)
+  (and (statement? s)
+       (memq 'call (statement-type s))))
+
+(defun goto-statement? (s)
+  (and (statement? s)
+       (memq 'goto (statement-type s))))
+
+(defun dispatch-statement? (s)
+  (and (statement? s)
+       (memq 'dispatch (statement-type s))))
+
+(defun unconditional-transfer-of-control? (s)
+  (and (statement? s)
+       (not (null (intersect '(goto dispatch call return)
+			     (statement-type s))))))
+
+(defun pred-overlap? (s)
+  (and (statement? s)
+       (null (get s 'expression))
+       (subset? (statement-type s)
+		'(goto dispatch call return null-operation))))
+
+
+(defun make-atomic-predicate (statement-type)
+  (make-atomic-statement (cons 'predicate statement-type)))
+
+(defun make-atomic-statement (statement-type)
+  (let ((new (intern (gensym))))
+    (putprop new 'statement 'ctype)
+    (putprop new *current-pc* 'pc-name)
+    (addprop *current-pc* new 'primitive-operations)
+    (putprop new statement-type 'statement-type)
+    new))
+
+
+(defun copy-pass2-expression (exp)
+  (if (atom exp)
+      (if (statement? exp)
+	  (copy-pass2-primitive exp)
+	  exp)
+      (cons (copy-pass2-expression (car exp))
+	    (copy-pass2-expression (cdr exp)))))
+
+(defun copy-pass2-primitive (sym)
+  (let ((nsym (cons-name sym 'copy)))
+    (setplist nsym (append (plist sym) nil))
+    (putprop nsym sym 'copy)
+    nsym))
+
+;;; Utilities
+
+(defun union (h1 h2)
+  (cond ((null h1) h2)
+	((member (car h1) h2)
+	 (union (cdr h1) h2))
+	(t (cons (car h1) (union (cdr h1) h2)))))
+
+(defun intersect (s1 s2)
+  (cond ((null s1) nil)
+	((member (car s1) s2)
+	 (cons (car s1) (intersect (cdr s1) s2)))
+	(t (intersect (cdr s1) s2))))
+
+(defun set-difference (s1 s2)
+  (cond ((null s1) nil)
+	((member (car s1) s2)
+	 (set-difference (cdr s1) s2))
+	(t (cons (car s1) (set-difference (cdr s1) s2)))))
+
+(defun subset? (s1 s2)
+  (do ((el s1 (cdr el))) ((null el) t)
+    (if (not (member (car el) s2)) (return nil))))
+
+
+
+(defun ctype (exp)
+  (get exp 'ctype))
+
+(defun statement-type (s)
+  (get s 'statement-type))
+
+(defun addprop (a v i)
+  (if (not (member v (get a i)))
+      (putprop a
+	       (cons v (get a i))
+	       i)))
+
+(defun delprop (a v i)
+  (putprop a
+	   (delete v (get a i))
+	   i))

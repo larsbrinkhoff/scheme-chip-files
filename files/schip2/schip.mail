@@ -1,0 +1,600 @@
+Date: 10 FEB 1980 2018-EST
+From: H at MIT-AI (Jack Holloway)
+Subject: Yield testing of 2nd batch of bonded parts
+To: (BUG SCHIP) at MIT-AI
+
+We have made a preliminary pass over the overglassed
+chips, with the following results:
+
+Chip #		Comment
+------		-------
+6		Won, runs at PHI1=1500, PHI2=250
+7		Won, 1500, 500 ?
+8		Lose, fails at State 277, apparently to-address-VAL doesn't work ?
+9		Lose, won't even Freeze state
+10		Lose, Nano sequencing fails
+11		Won, 2000, 625 (or better)
+12		Won, 2000, 625   "
+13		Lose, (Dropped on floor)
+14		Lose, load state to 657
+15		Lose, Nano problem
+16		Lose, Bus always 77717777 ?
+17		Lose, Nano problem
+18		Lose, State loads to 676, not 776
+19		Lose, State loads to 756, not 776
+20		Lose, State 437 always ???
+21		Lose, dies between 0-400 steps ??
+22		Lose, state always 0
+23		Lose, state always 0
+24		Won, 2000,625
+25		Lose, Bus always all ones
+
+This indicates a 25% yield in the second batch of chips.
+The chips tested at PHI1=2000ns, PHI2=625 were not tried at
+a higher speed.  Chip 7, however, seems to need a longer PHI2
+than 250ns, but we haven't really examined the failure carefully.
+
+
+Date: 9 FEB 1980 0127-EST
+From: H at MIT-AI (Jack Holloway)
+Subject: Testing new batch
+To: (BUG SCHIP) at MIT-AI
+
+We started testing the new batch of Scheme chips last
+night.  The first one (labeled "5") didn't work, it was
+damaged by handling.  #6 seems to work, the speed points
+are as follows: (PHI2 = 250ns, D1=62ns, D2=62ns)
+	PHI1	Step fails	State
+	----	----------	-----
+	500ns	234		267
+	562ns	6557		55	SWEEP, just after branch on TYPE=BUS
+	625ns	Test sequence runs
+	1000ns	Fails somehow running FIB(20)
+	1060ns	Runs FIB(20)
+This is similar to #3 which was the first chip that seemed to work.
+
+
+Date: 12 JAN 1980 1604-EST
+From: h at MIT-AI (Jack Holloway)
+Sent-by: GJS at MIT-AI
+Subject: Winnage
+To: HIC at MIT-AI
+CC: H at MIT-AI, GJS at MIT-AI, abell at PARC-MAXC
+
+Played around for several hours, and finally got the
+chip to reliably garbage-collect and execute simple
+programs.
+
+There is a logic bug in the god damn GC-NEEDED-PAD!!!!
+We thought there would be a problem there, and there was,
+in spite of 5 or 6 versions.  The Pad tests the ADDRESS-NEWCELL=BUS
+at the beginning of PHI1, when the condition wasn't setup yet.
+I used this to exercise the garbage collector interrupt stuff.
+The GC was going off almost every other useful cycle in
+the evaluator, but with a user GC handler function (it worked!)
+the chip kept doing garbage collections until it got thru the
+program. 
+
+We'll have to patch this in the interface so that CHIP
+GC-NEEDED isn't looked at, and use an invalid page to detect
+when the CONSing has run out.  Then we can turn the page on
+temporarily and give an external-interrupt request to the chip
+pointing at the GC handler.  When the handler gets done,
+it can reference the map itself and turn off access to that page.
+
+The interface has a sight bug where single steps over 40 octal
+screw the chip.  I haven't investigated.
+
+
+H@MIT-AI 01/10/80 11:26:13 Re: SCHIP debugging
+To: HIC at MIT-AI
+CC: H at MIT-AI, GJS at MIT-AI, TK at MIT-AI
+Got the chip to go thru a garbage collection finally.  There
+are several bugs that I didn't get to trace down.
+
+The fact that read-interrupt doesn't seem to work causes
+the GC bug mentioned in the BUG-SCHIP note to happen fairly
+regularly because NIL ends up pointing to NIL in the CAR.
+To make the chip run around the read-interrupt bug, the following
+works (?)
+	(SCI-SETUP-MEMORY)	;This tries to clear 2000 SCHEME nodes.
+	(SCI-DEBUG)
+	L776
+	S13			;should go to MARK+2
+	D0 0 41 2		;fixup the read-interrupt
+	S600			;start the sweep phase
+
+At about step 2427 it finishes the GC and tries to run a program,
+but seems to get an interrupt right away.  No interrupt is shown
+on the status line, I hope it's not in the chip.
+
+Also, when I had the contents of location 2 (CAR 1) set to 1000, the
+garbage collector lost because the interface seemed to reference 66
+when trying for 1066 (LISPM address).  I reduced the memtop to 200
+so that it was below the 1000 boundary always.
+
+There is some stuff to display register contents (type T when in debug
+loop) but you better not do it when in a NANO sequence.  Unfortunately
+this is hard to tell if you aren't following the chip step by step
+and impossible to tell by a program.  The nano-run bit should have
+come out of the package somehow, oh well.
+
+Haven't tried #4 at all, this chip seems to work so far.
+I will probably be gone until late this evening.  You might
+look at the SCHSIM compiler if you run out of debug program hacking.
+
+When we look at speed testing, I think we will do some sort of
+multiple step run searching.  Start the chip at fast speed, run
+N steps, record the state (STATE + some memory?), try again at
+slow speed, and do binary search on the step count until the
+first diverging point is detected.  This is essentially
+what was done when testing CHEOPS in days of yore.
+
+Date: 12 JAN 1980 0130-EST
+From: H at MIT-AI (Jack Holloway)
+Subject: Non-features
+To: (BUG SCHIP) at MIT-AI
+
+The next time, it would be nice if NANO-RUN came out
+externally, perhaps with the NANO-STATE when doing
+a READ-STATE.  As it is, you can't stop in the
+middle of a nano sequence and execute debug microcode.
+
+The microcode for READ-INTERRUPT-VECTOR should only
+assert CHIP-READ-INTERRUPT, it currently asserts READ
+also....
+
+
+Date: 10 JAN 1980 1058-EST
+From: H at MIT-AI (Jack Holloway)
+To: (BUG SCHIP) at MIT-AI
+
+First the good news.  The SCHEME chip was powered-up last night
+and initial debugging has been started.  One of the packaged chips
+has a gross defect in the VDD metalization around the CONTROL PLA,
+as noticed by GJS.  The second chip tried has some problem that
+shows up whenever it tries to do a nano-sequence.  No clear problem
+has been located by optical inspection yet.  
+
+The third chip shows many signs of life however!  It can single-step,
+load and read state, and apparently run the garbage collector.  There
+are some problems but they seem to be bugs in the interface that
+we haven't tracked down yet.
+
+Now the not so good news.  In spite of many simulations, both of the
+microcode in LISP on the PDP-10 and also of the circuit, there is a
+subtle bug in the GC microcode.  If a node being marked
+points to itself in the CAR, the mark-node sequence follows the
+CAR again right away.  This is because it tests to see if it is
+going to trace in the CAR direction before actually setting the mark
+bit for the current node.  The code is below:
+
+(defpc mark-node
+       (assign *leader* (&car (fetch *node-pointer*)))
+       (cond ((and (&pointer? (fetch *leader*))
+		   (not (&in-use? (fetch *leader*))))
+	      (&mark-car-being-traced! (fetch *node-pointer*))
+	      (&rplaca-and-mark! (fetch *node-pointer*) (fetch *stack-top*))
+	      (go-to down-trace))
+	     (t 
+	      (&mark-in-use! (fetch *node-pointer*))
+	      (go-to trace-cdr))))
+
+Date: 9 JAN 1980 0159-EST
+From: H at MIT-AI (Jack Holloway)
+Subject: History
+To: (BUG SCHIP) at MIT-AI
+
+
+It would be nice to have some record of the errors that were
+discovered in the SCHEME chip after it was "finished".  As you might
+recall, the chip was finally put together at 6AM PDST on July 19,
+1979.  Here is a fragmentary (and probably incorrect) list of the bugs
+as I remember them.  I've tried to identify the type of error into the
+rough classes of Logic, Artwork (usually a manual error while
+ICARUSing), Design-rule, or Program.  I'm also not sure that the
+ordering is exactly as the bugs were found.
+
+;;Discoverd by inspection of checkplots
+1. Artwork	Micro PLA LSB select wired to wrong point in PLA output drivers.
+2. Logic	Timing error in GC-NEEDED pad, which tried to set at the beginning
+		  of PHI1 when the conditions tested were not yet valid.
+3. Artwork	45 degree swath of Implant on top of the GC-NEEDED pad.
+4. Design-rule	Poly-Poly spacing on PH1, Freeze, PH2 contacts.
+
+;;Discovered by hand simulation of layout
+5. Design-rule	Pullup/pulldown ratio of ZEROP detector wrong.
+6. Logic	Control PLA programming incorrect. PADS-IN looked at READ-STATE
+		  instead of LOAD-STATE.
+7. Design-rule	(?) Various metal-metal spacings wrong, discovered by Abell.
+8. Design-rule	Metal-metal spacing between VDD and GND, bug in PLA synthesis.
+
+;;Discovered during node extraction and simulation
+9. Artwork	Extra VDD pad on top of bit-11!
+10. Logic	PLA folding was so brain damaged that it was using pass-transistors
+		  as logic.
+11. Artwork	Extra piece of Poly shorted many signals in NANO PLA wiring.
+12. Logic	Control PLA asserted NANO-HOLD even on LOAD-STATE, preventing
+		  new state from initializing the NANO PLA.
+13. Program	Roundoff error in the CIF generator causes a 1/2 Lambda gap.
+14. Program	Microcode compiler code generator for MARK-CAR-BEING-TRACED
+		  left off the CDR bit in the memory refernces.
+15. Logic	The branch test on POINTER? was inverted.
+16. Logic	The TYPE-OF-VAL=BUS branch condition was really testing 
+		  ADDRESS-VAL=BUS.
+17. Logic	The TYPE-OF-VAL=BUS comparator also compared the MARK bit.
+
+Corrections or additions are solicited.
+
+Date: 8 JAN 1980 2211-EST
+From: H at MIT-AI (Jack Holloway)
+To: (BUG SCHIP) at MIT-AI
+
+This supposedly is the corrected pinout for the SCHEME chip.
+
+The following is the pin out for the Scheme chip in the 64 pin
+Quil packages.  It is a top view diagram of the scheme chip with
+the package pin number for each pad.
+
+26  (Gnd)                                      41  (Gnd)
+25  CDR                                        42  (Int request)
+24  ALE                                        43  (Load state)
+23  WRITE                                      44  (Read State)
+22  READ-INTERRUPT                             45  (Read)
+21  GC-NEEDED                                  46  (Ph2)
+20  B31                                        47  (Freeze)
+19  B30                                        48  (Ph1)
+18  B29                                        49  B11
+17  B28                                        50  B10
+16  B27                                        51  B9
+15  B26                                        52  B8
+14  B25                                        53  B7
+13  B24                                        54  B6
+12  B23                                        55  B5
+11  B22                                        56  B4
+10  B21
+09  (Gnd)
+
+
+
+    07  06  05  04  03  02  64  63  62  61  60  59  58  57
+  (Vdd) B20 B19 B18 B17 B16 B15 B14 B13 B12 B0  B1  B2  B3
+
+Where B0 is the LSB, and B31 is the MSB (Mark).
+Pin 1 is the substrate connection and should be grounded.
+
+The following is a top view of the plastic socket:
+
+   01              64
+02                    63
+   03              62
+04                    61
+   05              60
+06                    59
+   07              58
+08                    57
+   09              56
+10                    55
+   11              54
+
+. 
+. 
+. 
+
+30                    35
+   31              34
+32                    33
+
+Pin 1 is the angled edge of the socket.
+-------
+
+Date: 5 DEC 1979 1655-EST
+From: H at MIT-AI (Jack Holloway)
+To: (BUG SCHIP) at MIT-AI
+
+    Date:  5-Dec-79  4:42:50
+    From: MPC79@Parc-Maxc
+
+    Design is acceptable
+    [Maxc1]<ABELL>SCHIP2E.CIF;1 written at  4-Dec-79 14:02:05
+    Bounding box: 5926 x 7548
+    Space State is Queued with allocation
+
+    0 wire(s), 0 flash(es), 0 polygon(s), 109559 box(es).
+
+Date: 4 DEC 1979 0143-EST
+From: h at MIT-AI (Jack Holloway)
+Sent-by: CARL0 at MIT-AI
+Subject: Simulation of interpreter
+To: (BUG SCHIP) at MIT-AI
+
+After 907 half-steps, the losing chip managed to run
+a user program to completion!
+   (BLOCK
+    (ASET' H (LAMBDA (X)
+	       (LAMBDA (Y Z) (CONS (CONS Y X) Z))))
+    ((H 1) H 3))
+
+   which produced:
+   ((1 . #<closure 21>) . 3)
+
+This has checked out a good part of the S-code ops,
+but many primitives like rplacx, eq, cond, peano's, etc.
+weren't tested.  Also, the garbage collector has been
+simulated in several non-working forms, and we are trusting
+that the last bug fix was the final one.  In addition, interrupts
+and GC-NEEDED hasn't really been checked.
+
+But we can probably go ahead and fry some silicon, the chip
+will likely generate and collect garbage, which is all
+it is good for anyway.
+
+Date: 3 DEC 1979 1924-EST
+From: H at MIT-AI (Jack Holloway)
+Subject: The fix for the TYPE-EQ-BUS testing the mark bit
+To: (BUG SCHIP) at MIT-AI
+
+Alan:
+
+To fix the bug where the VAL register tests the mark bit
+as part of the type, the cell
+	(THE COLUMN-3 REGISTER-ARRAY REGISTERS-WITH-DRIVERS COMPLETE-REGISTERS SCHIP2)
+needs to be edited so that one of the 8 TYPE-FIELD-ROWS called is a new
+version that has an HEQ-DUMMY in place of the HEQ.
+
+The following CIF defined in 2.5 micron lambdas is the new symbol and
+the corrected version of COLUMN-3.
+
+
+DS 1200;     ( Name: TYPE-FIELD-ROW-NO-HEQ );
+( 21 Items. );
+(A new symbol almost like 1020);
+C 1019 T 142500,0;
+C 1017 T 133000,0;
+C 1017 T 123500,0;
+C 1017 T 114000,0;
+C 1017 T 104500,0;
+C 1017 T 95000,0;
+C 1018 T 93000,0;
+C 1017 T 83500,0;
+C 1014 T 82000,0;
+C 1009 T 70750,0; (was C 1013 T 70750,0);
+C 1006 T 60750,0;
+C 1008 T 59500,0;
+C 1007 T 48750,0;
+C 1009 T 37500,0;
+C 1006 T 27500,0;
+C 1008 T 26250,0;
+C 1007 T 15500,0;
+C 1006 T 5500,0;
+C 1002 T 3750,0;
+C 1001 T 1250,0;
+C 1000;
+DF;
+
+
+DS 1021;     ( Name: COLUMN-3 );
+( 8 Items. );
+C 1020 T 0,70000;
+C 1020 T 0,60000;
+C 1020 T 0,50000;
+C 1020 T 0,40000;
+C 1020 T 0,30000;
+C 1020 T 0,20000;
+C 1020 T 0,10000;
+C 1200;               (was C 1020);
+DF;
+
+This came from SCHIP2;SCHP2C CIF and is H;SCHPAT CIF.
+
+I think the 1200 symbol name shouldn't conflict with anything.
+
+
+Date: 30 NOV 1979 1645-EST
+From: gls at MIT-AI (Guy L. Steele, Jr.)
+Sent-by: GJS at MIT-AI
+Subject: NOT A BUG AFTER ALL!!!
+To: (BUG SCHIP) at MIT-AI
+
+The "algorithmic bug" which I thought I had found is NOT A BUG after all.
+It appeared to be one as a result of the broken type-dispatch bug
+already reported.  The microcode should not be changed.  Fixing the
+type-dispatch bug should make everything all right.
+Sorry -- GLS
+
+Date: 30 November 1979 15:09-EST
+From: "Guy L. Steele, Jr." <GLS at MIT-AI>
+Subject: YAB
+To: BUG-SCHIP at MIT-AI
+
+I agree that probably the mark bit should not be compared at all.
+
+Also, I think that the piece of code UP-TRACE has a bug in it.
+The old code is:
+
+(DEFPC UP-TRACE
+       (COND ((&=TYPE? (FETCH *STACK-TOP*) GC-SPECIAL-TYPE)
+	      (GO-TO SWEEP))
+	     (T (ASSIGN *LEADER* (FETCH *STACK-TOP*))
+		(COND ((&CAR-BEING-TRACED? (FETCH *LEADER*))
+		       (&MARK-CAR-TRACE-OVER! (FETCH *LEADER*))
+		       (ASSIGN *STACK-TOP* (&CAR (FETCH *LEADER*)))
+		       (&RPLACA-AND-MARK! (FETCH *LEADER*)
+					  (FETCH *NODE-POINTER*))
+		       (ASSIGN *NODE-POINTER* (FETCH *LEADER*))
+		       (GO-TO TRACE-CDR))
+		      (T (ASSIGN *STACK-TOP* (&CDR (FETCH *LEADER*)))
+			 (&RPLACD (FETCH *LEADER*) (FETCH *NODE-POINTER*))
+			 (ASSIGN *NODE-POINTER* (FETCH *LEADER*))
+			 (GO-TO UP-TRACE))))))
+
+I believe it should be:
+
+(DEFPC UP-TRACE
+       (ASSIGN *LEADER* (FETCH *STACK-TOP*))
+       (COND ((&CAR-BEING-TRACED? (FETCH *LEADER*))
+	      (&MARK-CAR-TRACE-OVER! (FETCH *LEADER*))
+	      (ASSIGN *STACK-TOP* (&CAR (FETCH *LEADER*)))
+	      (&RPLACA-AND-MARK! (FETCH *LEADER*)
+				 (FETCH *NODE-POINTER*))
+	      (ASSIGN *NODE-POINTER* (FETCH *LEADER*))
+	      (GO-TO TRACE-CDR))
+	     ((&=TYPE? (FETCH *STACK-TOP*) GC-SPECIAL-TYPE)
+	      (GO-TO SWEEP))
+	     (T (ASSIGN *STACK-TOP* (&CDR (FETCH *LEADER*)))
+		(&RPLACD (FETCH *LEADER*) (FETCH *NODE-POINTER*))
+		(ASSIGN *NODE-POINTER* (FETCH *LEADER*))
+		(GO-TO UP-TRACE))))
+
+That is, one should check car-being-traced *before* checking for
+GC-SPECIAL-TYPE.  Otherwise it seems that the CDR of NIL never
+gets marked, and (the bug!) the original contents of the CAR of NIL
+is never restored.  (I can't understand why the PDP-10 simulation
+did not catch this.  Or am I wrong?
+
+Date: 30 NOV 1979 0934-EST
+From: H at MIT-AI (Jack Holloway)
+Subject: YAB
+To: (BUG SCHIP) at MIT-AI
+
+Another bug was turned up by the simulator.  It turns
+out that the branch condition on type-val=bus was wrong.
+The branch selector input is wired to address-val=bus
+instead. I patched this in the simulator database and
+have restarted the simulation.  Looking at the chip
+it seems easy to swap the two signal wires (that is
+probably why the error happened in the first place.)
+
+Alan:
+If you look at the top of the register array above the
+column that is the EQ comaparator for the VAL register
+(about the 7th column of cruft from the left side of the
+register array) there are two wires that come out on diffusion
+that jumper to metal and run over to an AND gate (producing
+val=bus) and one of them goes up to the branch selector.
+The easiest thing to do is to swap the two wires where they
+jumper to the metal, their order in the AND gate input doesn't 
+matter, obviously.
+
+GJS GLS:
+While trying to trace down this (the) last bug, it occured to me
+that there might be a problem where the end test for the mark
+phase which is testing to see if the back pointer coming out
+of UP-TRACE is of GC-SPECIAL-TYPE.  This might lose if that
+pointer was saved in the CAR of NIL and was marked while there.
+The TYPE-VAL=BUS test also compares the mark bit, and it
+can be on.  The other places where there are test that might
+be screwed by the mark bit, it seems as if that bit can be guarunteed
+to be off.  When the machine is running, the mark bits have been
+cleared by the final stages of the garbage collector.  In the one
+other place in the garbage collector where an EQ test is made,
+the only words that can be equal to GC-SPECIAL-TYPE have had their
+mark bit cleared when the forwarding pointer was stored.
+
+It seems that one fix might be to flush the output of the mark-bit
+cell from the EQ test in the register array.  I don't see
+why the mark-bit wants to be compared at all anyway.
+
+The PDP-10 simulator doesn't seem to model the fact that the
+mark-bit is really part of the registers, it just assumes
+that the registers have just a type field and an address field.
+
+Date: 31 JUL 1979 1207-EDT
+From: H at MIT-AI (Jack Holloway)
+Subject: Zerop bug
+To: ABELL at PARC-MAXC
+CC: (BUG SCHIP) at MIT-AI
+
+Probably the most straightforward thing is to edit the
+definition of the ZEROP pulldown in Icaraus.  The pullup
+could be changed, but overall it is better to beef up
+the pulldown because of the capacitive load that the zero
+detect has to drive.  The symbol is named ZEROP, and should
+have plenty of room to widen the diffusion.  There are
+symbols zerop-column, zerop-dummy, etc. but I don't think
+that any of those matter.
+
+Date: 28 JUL 1979 1734-EDT
+From: GJS at MIT-AI (Gerald Jay Sussman)
+Subject: New bugs
+To: (BUG SCHIP) at MIT-AI
+
+H and GJS have hand simulated the chip for the first 2 cycles starting
+with a load-state of BOOT-LOAD.
+
+Two new bugs have been discovered:
+1) The pulldown ratio on the ZEROP detector in the register array is wrong,
+	it should be twice as wide.
+2) There was a bug in the programming for the contrl pla. The PADS IN term
+	was looking at READ-STATE, it should have looked at LOAD-STATE.
+	This has been fixed in the source, and there is a new <MIT>CONTRL.CIF.
+
+
+Date: 20 JUL 1979 1101-EDT
+From: H at MIT-AI (Jack Holloway)
+To: (BUG SCHIP) at MIT-AI
+
+I've created a mailing list for the Scheme chip.
+
+Bugs to date are:
+1)	The LSB of next state coming from the Micro PLA
+	spastically comes into the contact of the output
+	pullup - not the Poly stub where it should go. (GLS)
+2)	The logic in the GC-Needed-Pad was wrong. (H)
+	The old logic set a FF on the AND of PH1,
+	Set-GC-needed-if-address-newcell=Bus, address-newcell=Bus
+	which loses because the newcell=bus condition hasn't had a
+	chance to setup when gated by the PH1, resulting in
+	the likelyhood that every test GC-needed cycle would
+	set the FF.  The new logic has a gate that computes
+	(GC-needed and not-Clr-GC-needed) or (Set-GC-needed and
+	address-newcell=Bus).  This gate is then held in a
+	standard PH1-PH2 latch built onto the pad.  I have
+	changed Allpads.IC into new-Allpads.IC with this
+	correction.  This will require some wiring changes around
+	this pad as well as running PH2 to the pad.  (PH2
+	isn't absolutely needed, since the feedback term in
+	the input gate will hold the FF state as long as PH1's
+	happen often enough.  I just decided to be somewhat
+	conservative.)
+3)	While editing the Allpads file I noticed a 45 degree
+	stripe of implant over the top of the GC-needed-pad,
+	in the old version as well as the new.  I've flushed it. (H)
+4)	Three is a poly-poly design rule violation at three
+	contacts on the rigfht side of the chip - I think
+	they are the connections of PH1, Freeze, and PH2
+	to the Poly that runs to pads.				(H)
+
+Remember that there is a prize of a free dinner for two at
+Louie's for the hacker with the highest count of discovered bugs
+(As long as Louie's is still around.)  The decision of the
+judges will be final.
+
+
+Date: 28 JUL 1979 2029-PDT
+From: ABELL at PARC-MAXC
+To:   GJS at MIT-AI, H at MIT-AI
+
+I have created a cif version of NHREG.IC.  It is called
+<MIT>NHREG.CIF.  It has the names as comments as opposed
+to user extension commands.  I could change that if it
+were important.  I have not checked the translation
+so be a little cafeful.  it should contain all the changes
+you need.
+
+The note about the zerop detector did not really give
+me enough info.  Why can't the pullup be changed instead?
+There would seem to be two possible ways to fix it:
+1) Patch the icarus file
+2) Rework the REGS file in your design system.  This also
+means folding in the other changes.
+
+Which do you prefer?
+If you want me to do it, let me know which symbol that is.
+
+
+I tried CIFing Grand-scheme and seemed to be working but
+I ran out of disk space so I will have to create a double
+disk file system.
+Alan
+-------

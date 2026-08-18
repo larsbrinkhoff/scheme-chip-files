@@ -1,0 +1,20 @@
+(if-for-maclisp
+   (load '((schip2) layout))
+   (alloc '(list 103000 array 4000 flonum 6000))
+   (load '((schip2) librar))
+   (load '((schip2) stippl))
+   (load '((schip2) mpla))
+   (load '((schip2) mplap))
+(DEFPROP TIMESTAMP |DSK:LIBLSP;PHSPRT FASL| AUTOLOAD)
+)
+
+
+;(defprop micro-pla state-0 folded)
+;(defprop nano-pla nil folded)
+
+;Do the SCHIP2 PLAs into a file PLA CIF
+(defun do-schip ()
+   (do-pla 'micro 10. 20. 'state-0)
+   (do-pla 'nano 9. 20. nil)
+   (do-pla 'contrl 99. 8. nil))
+

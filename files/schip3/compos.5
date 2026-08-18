@@ -1,0 +1,2312 @@
+;;; -*- Package:dpl; Mode:Lisp; Base:10.-*-
+
+;;;; preliminaries
+
+;;; a useful error checking macro
+
+(defmacro barf-if-illegal (object test msg)
+  `(if (not (,test ,object))
+       (error ,msg ,object 'fail-act)))
+
+;;; the replicators etc needed to build a register file with multiple options
+
+(defreplicator uneven-array (i j)
+  `((primary-parameters (h-pitch-array v-pitch-array object-array))
+    (unique? t))
+  (replicator-instance (aref (>> object-array) i j))
+  (replicator-transform 'identity (aref (>> h-pitch-array) i) (aref (>> v-pitch-array) j)))
+
+(defreplicator uneven-row (i)
+  `((primary-parameters (h-pitch-array object-array))
+    (unique? t)
+    (bbox-function corners-bounding-box))
+  (replicator-instance (aref (>> object-array) i))
+  (replicator-transform 'identity (aref (>> h-pitch-array) i) 0))
+
+(defreplicator uneven-column (j)
+  `((primary-parameters (v-pitch-array object-array))
+    (unique? t)
+    (bbox-function corners-bounding-box))
+  (replicator-instance (aref (>> object-array) j))
+  (replicator-transform 'identity 0 (aref (>> v-pitch-array) j)))
+
+
+(defreplicator uneven-single-instance-column (j)
+  `((primary-parameters (v-pitch-array object-array))
+    (unique? t)
+    (bbox-function corners-bounding-box))
+  (replicator-instance (>> (*rep-instance 0)))
+  (replicator-transform 'identity 0 (aref (>> v-pitch-array) j)))
+
+(defreplicator uneven-bit-patterned-single-instance-column (j)
+  `((primary-parameters (v-pitch-array object-array bit-pattern-array))
+    (unique? t)
+    (bbox-function corners-bounding-box))
+  (replicator-instance (if (or (eq t (>> bit-pattern-array))
+			       (= (aref (>> bit-pattern-array) j) 1))
+			   (>> (*rep-instance 0))
+			   nil))
+  (replicator-transform 'identity 0 (aref (>> v-pitch-array) j)))
+
+
+
+(comment Input register file description should look like
+
+	 (name type
+	       (size <number-of-bits>)
+	       (starting-position <bit-number>)
+	       (sub-fields
+		 (<Name> <type> (starting-bit <starting-bit>) (size <size>)) ...)
+	       (associates
+		 (<name> <type> (starting-bit <starting-bit> (size <size>))) ...))
+
+	 subfield type will default to parents type if nil.
+	 since this is keyword syntax ordering is not important
+	 each register type has properties for which control lines it takes
+         and which sense lines it produces 
+	 these are called control-line-names and sense-line-names
+	 it also has a register-mapping property mapping 
+	 to the dpl type name and options necessary to make one of these
+	 if not present dpl type = given type and options are null
+         similarly each associate type name has associate mapping property
+)
+
+
+
+
+;;;; macros to extract fields from input
+
+(defmacro register-options-list (register) `(cddr ,register))
+(defmacro register-name (register) `(car ,register))
+(defmacro register-type (register) `(cadr ,register))
+
+(defmacro subfield-options (subfield) `(cddr ,subfield))
+(defmacro subfield-name (subfield) `(car ,subfield))
+(defmacro subfield-type (subfield) `(cadr ,subfield))
+
+(defmacro associate-name (associate) `(car ,associate))
+(defmacro associate-type (associate) `(cadr ,associate))
+(defmacro associate-options (associate) `(cddr ,associate))
+
+(defmacro shadow-name (shadow) `(car ,shadow)) ; name and type are
+(defmacro shadow-type (shadow) `(car ,shadow))   ; the same for shadow
+(defmacro shadow-options (shadow) `(cdr ,shadow))
+
+
+(defvar *register-types* nil)
+(defvar *valid-defregtype-keywords*
+	'(sense-line-names control-line-names
+          repeated-control-line-names
+	  repeated-sense-line-names
+	  repeated-driver
+          driver mirror-next-guy
+          connect-to-next-guy connect-to-previous-guy
+	  register-mapping associate-mapping
+	  bottom-bitting? top-bitting?
+	  bit-patterned? position-programming?
+	  self-operator external-control-names))
+
+(defmacro defregtype (name &body forms)
+  `(progn (if (not (memq ',name *register-types*)) (push ',name *register-types*))
+	  (dolist (form ',forms)
+	    (cond
+	      ((memq (car form) *valid-defregtype-keywords*)
+	       (putprop ',name (if (caddr form) (cdr form) (cadr form)) (car form)))
+	      (t (error "Invalid defregtype keyword" (list (car form) ',name) 'fail-act))))))
+
+(defvar *driver-types* nil)
+(defmacro defdrivertype (name &body forms)
+  `(progn (push ',name *driver-types*)
+	  (dolist (form ',forms)
+	    (putprop ',name (cadr form) (car form)))))
+
+
+
+
+
+;;;; canonicalization of input
+
+;;; this function goes through the initial specs, error checking on the way
+;;; it calculates the size of the register file and
+;;; also figures out where there are horizontal and vertical gaps and how
+;;; many control lines each gap needs
+;;; it also extracts in easily usable form the starting position and size
+;;; of each register and the subfield structure (as a list of start size pairs)
+;;; for each register
+
+(defstruct (canonical-field :conc-name :list)
+  (thing-class 'canonical-field)
+  name type start size index options mirrored? drivers output-wires)
+
+(defstruct (canonical-object :conc-name :list (:include canonical-field))
+  subfields)
+
+(defstruct (canonical-reg :conc-name :list (:include canonical-object))
+  associates shadowed? block-start block-size connect-to-next connect-to-previous)
+
+(defstruct (canonical-subfield :conc-name :list (:include canonical-field))
+  shadowed?)
+
+(defstruct (canonical-associate :conc-name :list (:include canonical-object))
+  field-size field-start)
+
+(defstruct (canonical-shadow :conc-name :list (:include canonical-field (name 'shadow))))
+
+;;; make all of these be thing classes which the can operate on
+;;; (the 'x canonical-field) is the value of the cell named x in the canonical-field-options
+;;; slot of the structure.  Since canonical-reg, subfield, shadow, associate are all
+;;; cases of canonical-field this extractor works for all of them.
+;;; this makes the assumption that an unspecified xfrm means identity
+
+(define-thing-classes canonical-field)
+
+(defun (canonical-field the-extractor) (ident thing &aux cell)
+  (setq cell (assq ident (canonical-field-options thing)))
+  (if cell
+      (contents cell)
+    (if (eq ident 'xfrm)
+	'identity
+      (error '|Unbound identifier -- find-local| (list ident thing) 'fail-act))))
+
+
+
+(local-declare ((special *h-gaps* *v-gaps* *register-count* *word-size*))
+(defun canonicalize-register-file (file &aux (*register-count* 0) (*word-size* 0)
+				     canonical-register-descriptions
+				     occurence-map block-ranges
+				     *h-gaps* *v-gaps*
+				     connect-to-next connect-to-previous)
+  (do ((register (car file) (car remaining-regs))
+       (remaining-regs (cdr file) (cdr remaining-regs))
+       (this-reg-description)
+       (mirror-next-guy?)
+       (block-end)
+       (block-start 0))
+      ((null register) (setq *register-count* (1+ block-end)))
+    (multiple-value (this-reg-description block-end mirror-next-guy?
+		     connect-to-previous connect-to-next)
+      (canonicalize-register register block-start mirror-next-guy? connect-to-next))
+    (if (and connect-to-previous canonical-register-descriptions)
+	(setf (canonical-reg-connect-to-next (car canonical-register-descriptions)) t))
+    (push this-reg-description canonical-register-descriptions)
+    (push (list block-start block-end) block-ranges)
+    (setq block-start (1+ block-end)))
+  (setq canonical-register-descriptions (nreverse canonical-register-descriptions)
+	block-ranges (nreverse block-ranges))
+  (multiple-value (*h-gaps* *v-gaps*)
+    (locate-gaps canonical-register-descriptions *register-count* *word-size*))
+  (setq occurence-map
+	(continue-value-map *register-count* *word-size* canonical-register-descriptions))
+  (values *register-count* *word-size* occurence-map
+	  canonical-register-descriptions block-ranges *h-gaps* *v-gaps*)))
+
+
+
+(local-declare ((special *h-gaps* *v-gaps* *register-count* *word-size*))
+(defun canonicalize-register (register block-start mirror-me? connect-to-previous
+			      &aux block-size block-end options-list
+			      size-list current-top
+			      associates shadowed?
+			      (first-associate (1+ block-start))
+			      (main-loc block-start)
+			      register-type map-type
+			      register-size register-start register-name
+			      subfields canonical-register
+			      connect-to-next)
+  (declare
+    (return-list register blk-end mirror-next-guy? connect-to-previous? connect-to-next?))
+  (setq options-list (register-options-list register)
+	associates (cdr (assq 'associates options-list))
+	shadowed? (canonicalize-shadow (assq 'shadowed options-list) block-start)
+	subfields (cdr (assq 'subfields options-list))
+	register-name (register-name register)
+	register-type (register-type register)
+	map-type (get register-type 'register-mapping)
+	connect-to-previous (or (get register-type 'connect-to-previous-guy)
+				(get map-type 'connect-to-previous-guy)
+				connect-to-previous)
+	connect-to-next (or (get register-type 'connect-to-next-guy)
+			 (get map-type 'connect-to-next-guy))
+	register-size (cadr (assq 'size options-list))
+	register-start (cadr (assq 'starting-position options-list)))
+    (barf-if-illegal register-size numberp "non numeric register size")
+    (barf-if-illegal register-start numberp
+		     "non numeric register starting position")
+    (setq options-list (remove-standard-options options-list))
+    (setq block-size (1+ (length associates)))
+    (if shadowed? (setq block-size (1+ block-size)
+			main-loc (1+ main-loc)
+			first-associate (1+ first-associate)))
+    (setq current-top (+ register-size register-start))
+    (if (> current-top *word-size*) (setq *word-size* current-top))
+    (push (list register-start register-size) size-list)
+    (if subfields
+	(setq subfields
+	      (canonicalize-subfields register-type subfields main-loc shadowed?)))
+    (setq associates
+	  (do ((associate (car associates) (car associates))
+	       (associates (cdr associates) (cdr associates))
+	       (canonical-associates)
+	       (index first-associate (1+ index)))
+	      ((null associate) (nreverse canonical-associates))
+	    (push (canonicalize-associate associate index) canonical-associates)))
+    (setq block-end (+ block-start block-size -1))
+    (setq canonical-register
+	  (make-canonical-reg type register-type name register-name index main-loc
+			      start register-start size register-size
+			      subfields subfields associates associates
+			      mirrored? mirror-me? shadowed? shadowed?
+			      block-start block-start block-size block-size
+			      options options-list
+			      connect-to-next connect-to-next
+			      connect-to-previous connect-to-previous))
+    (if mirror-me? (reverse-indices canonical-register associates subfields
+				    shadowed? block-start block-end))
+    (values canonical-register block-end
+	    (or (get register-type 'mirror-next-guy)
+		(get map-type 'mirror-next-guy))
+	    connect-to-previous connect-to-next)))
+
+(defun reverse-indices (register associates subfields shadow start end)
+  (cond (shadow (setf (canonical-field-index shadow)
+		      (- end (- (canonical-field-index shadow) start)))
+		(setf (canonical-field-mirrored? shadow) t)))
+  (setf (canonical-field-index register)
+	(- end (- (canonical-field-index register) start)))
+  (dolist (subfield subfields)
+    (setf (canonical-field-mirrored? subfield) t)
+    (setf (canonical-field-index subfield)
+	  (- end (- (canonical-field-index subfield) start))))
+  (dolist (associate associates)
+    (dolist (subfield (canonical-object-subfields associate))
+      (setf (canonical-field-mirrored? subfield) t)
+      (setf (canonical-field-index subfield)
+	    (- end (- (canonical-field-index subfield) start))))
+    (setf (canonical-field-mirrored? associate) t)
+    (setf (canonical-field-index associate)
+	  (- end (- (canonical-field-index associate) start)))))
+
+(defvar register-standard-options
+	'(shadowed associates subfields size starting-position))
+
+(defun remove-standard-options (options-list)
+  (do ((o options-list (cdr o)))
+      ((null o))
+    (cond ((memq (caar o) register-standard-options)
+	   (setq options-list (remove (car o) options-list)))))
+  options-list)
+
+
+
+(defun canonicalize-subfields (register-type subfields block-start shadowed?
+			       &aux this-count subfield-locations)
+  (setq this-count (length (get register-type 'control-line-names)))
+  (barf-if-illegal this-count numberp "bad control line count on register")
+  (do ((subfield (car subfields) (car subfields))
+       (subfields (cdr subfields)(cdr subfields))
+       (options) (start) (name) (field-size) (type))
+      ((null subfield))
+    (setq options (subfield-options subfield)
+	  start (cadr (assq 'starting-position options))
+	  field-size (cadr (assq 'size options))
+	  name (subfield-name subfield)
+	  type (or (subfield-type subfield) register-type))
+    (barf-if-illegal start numberp "field beginning isn't a number")
+    (barf-if-illegal field-size numberp "non numeric subfield size")
+    (setq options (remove-standard-options options))
+    (push
+      (make-canonical-subfield type type name name options options shadowed? shadowed?
+			       start start size field-size index block-start)
+      subfield-locations))
+  (setq subfield-locations
+	(sort subfield-locations #'(lambda (a b) (< (canonical-field-start a)
+						    (canonical-field-start b))))))
+
+
+
+
+
+(defun canonicalize-associate (associate index
+			       &aux name type start size options subfields
+			       field-start field-size)
+  (setq options (associate-options associate)
+	name (associate-name associate)
+	type (associate-type associate)
+	start (cadr (assq 'starting-position options))
+	size (cadr (assq 'size options))
+	subfields (cdr (assq 'subfields options))
+	field-start (cadr (assq 'field-start options))
+	field-size (cadr (assq 'field-size options)))
+  (barf-if-illegal start numberp "non numeric field start")
+  (barf-if-illegal size numberp "non numeric field size")
+  (setq options (remove-standard-options options))
+  (if subfields (setq subfields (canonicalize-subfields type subfields index nil)))
+  (make-canonical-associate type type start start index index subfields subfields
+			    name name size size options options
+			    field-start field-start field-size field-size))
+
+(defun canonicalize-shadow (shadow i &aux start-cell size-cell start size options)
+  (cond ((null shadow) nil)
+	(t (setq options (shadow-options shadow)
+		 start-cell (assq 'starting-position options)
+		 start (cadr start-cell)
+		 size-cell (assq 'size options)
+		 size (cadr size-cell))
+	   (barf-if-illegal start numberp "non numeric field start")
+	   (barf-if-illegal size numberp "non numeric field size")
+	   (setq options (remove start-cell (remove size-cell options)))
+	   (make-canonical-shadow start start size size index i
+				  type 'shadow options options))))
+
+
+;;;; building bit map of location of goodies
+(defun continue-value-map (nwords nbits regs
+				&aux (c-array (make-array (list nwords nbits)
+							':type ':art-1b))
+				(o-array (make-array (list nwords nbits)
+							     ':type ':art-1b))
+				start size first-hit last-hit end index
+				shadowed? subfields
+				last-block-start last-block-end
+				next-block-start next-block-end
+				connect-to-next connect-to-previous
+				stuff-in-previous-block stuff-in-next-block)
+  (dolist (reg regs)
+    (setq start (canonical-field-start reg)
+	  size (canonical-field-size reg)
+	  index (canonical-field-index reg)
+	  subfields (canonical-object-subfields reg)
+	  shadowed? (canonical-reg-shadowed? reg))
+    (if shadowed?
+	(mark-bits o-array (canonical-field-index shadowed?)
+		   (canonical-field-start shadowed?)
+		   (canonical-field-size shadowed?)))
+    (if subfields
+	(dolist (subfield subfields)
+	  (mark-bits o-array (canonical-field-index subfield)
+		     (canonical-field-start subfield)
+		     (canonical-field-size subfield)))
+	(mark-bits o-array index start size))
+    (dolist (associate (canonical-reg-associates reg))
+      (if (canonical-object-subfields associate)
+	  (dolist (subfield (canonical-object-subfields associate))
+	    (mark-bits o-array (canonical-field-index subfield)
+		       (canonical-field-start subfield)
+		       (canonical-field-size subfield)))
+	  (mark-bits o-array (canonical-field-index associate)
+		     (canonical-field-start associate)
+		     (canonical-field-size associate)))))
+  (dotimes (j nbits)
+    (do ((regs regs (cdr regs))
+	 (reg nil) (next-reg nil))
+	((null regs))
+      (setq reg (car regs) next-reg (cadr regs))
+      (setq last-block-start start
+	    last-block-end end
+	    next-block-start (if next-reg (canonical-reg-block-start next-reg))
+	    next-block-end (if next-reg (+ (canonical-reg-block-size next-reg)
+					   next-block-start -1))
+	    start (canonical-reg-block-start reg)
+	    size (canonical-reg-block-size reg)
+	    end (+ start size -1)
+	    connect-to-next (canonical-reg-connect-to-next reg)
+	    connect-to-previous (canonical-reg-connect-to-previous reg)
+	    first-hit nil last-hit nil)
+      (if connect-to-previous
+	  (setq stuff-in-previous-block
+		(do ((i last-block-start (1+ i)))
+		    ((> i last-block-end) nil)
+		  (if (= 1 (aref o-array i j)) (return t)))))
+      (do ((i start (1+ i)))
+	  ((> i end))
+	(aset 0 c-array i j))
+      (do ((i start (1+ i)))
+	  ((> i end))
+	(cond ((= 1 (aref o-array i j)) (setq first-hit i) (return t))))
+      (if connect-to-next
+	  (setq stuff-in-next-block
+		(do ((i next-block-start (1+ i)))
+		    ((> i next-block-end) nil)
+		  (if (= 1 (aref o-array i j)) (return t)))))
+      (do ((i end (1- i)))
+	  ((< i start))
+	(cond ((= 1 (aref o-array i j)) (setq last-hit i) (return t))))
+
+      (cond ((not first-hit))
+	    ((and connect-to-next stuff-in-next-block) (setq last-hit end))
+	    ((and connect-to-previous stuff-in-previous-block) (setq first-hit start))
+	    (t (setq last-hit (1- last-hit))))
+      (if (and first-hit last-hit)
+	  (do ((i (max first-hit start) (1+ i)))
+	      ((> i (min last-hit end)))
+	    (aset 1 c-array i j)))))
+  c-array)
+
+(defun print-bit-map (array x y)
+  (dotimes (j y)
+    (terpri)
+    (dotimes (i x)
+      (princ (aref array i j)))))
+
+(defun mark-bits (array xpos ystart ysize)
+  (do ((y ystart (1+ y))
+       (j 0 (1+ j)))
+      ((= j ysize))
+    (aset 1 array xpos y)))
+
+
+
+;;;; finding the gaps
+
+;;; every independent subfield brings in its control wires on the right
+;;; every independent subfield brings out sense lines to its left
+
+(defun locate-gaps (register-file xdim ydim
+		    &aux (control-line-gaps (make-array (list xdim)))
+		    (sense-line-gaps (make-array (list xdim)))
+		    *h-gaps* *v-gaps*)
+  (make-gap-map register-file xdim control-line-gaps sense-line-gaps)
+  (setq *h-gaps* (compute-h-gaps control-line-gaps sense-line-gaps xdim))
+  (setq *v-gaps* (compute-v-gaps control-line-gaps sense-line-gaps xdim ydim))
+  (values (sortcar *h-gaps* #'<) (sortcar *v-gaps* #'<)))
+
+(defun make-gap-map (register-file xdim control-line-gaps sense-line-gaps
+		     &aux size start type control-line-count sense-line-count index
+		     map-type)
+  (do ((regs register-file (cdr regs))
+       (associates) (subfields) (reg))
+      ((null regs))
+    (setq reg (car regs)
+	  associates (canonical-reg-associates reg)
+	  subfields (canonical-object-subfields reg))
+    (dolist (subfield subfields)
+      (setq type (canonical-field-type subfield)
+	    map-type (car (get type 'register-mapping))
+	    control-line-count (length (or (get type 'control-line-names)
+					   (get map-type 'control-line-names)))
+	    sense-line-count (length (or (get type 'sense-line-names)
+					 (get map-type 'sense-line-names)))
+	    start (canonical-field-start subfield)
+	    size (canonical-field-size subfield)
+	    index (canonical-field-index subfield))
+      (if (not (= 0 control-line-count)) 
+	  (push (list start control-line-count) (aref control-line-gaps index)))
+      (if (not (= 0 sense-line-count))
+	  (push (list (+ start size -1) sense-line-count) (aref sense-line-gaps index))))
+    (dolist (associate associates)
+      (dolist (subfield (canonical-object-subfields associate))
+	(setq type (canonical-field-type subfield)
+	      map-type (car (get type 'associate-mapping))
+	      control-line-count (length (or (get type 'control-line-names)
+					     (get map-type 'control-line-names)))
+	      sense-line-count (length (or (get type 'sense-line-names)
+					   (get map-type 'sense-line-names)))
+	      start (canonical-field-start subfield)
+	      size (canonical-field-size subfield)
+	      index (canonical-field-index subfield))
+	(if (not (= 0 control-line-count))
+	    (push (list start control-line-count) (aref control-line-gaps index)))
+	(if (not (= 0 sense-line-count))
+	    (push (list (+ start size -1) sense-line-count) (aref sense-line-gaps index))))))
+    (dotimes (i xdim)
+      (aset (sortcar (aref control-line-gaps i) #'<) control-line-gaps i)
+      (aset (sortcar (aref sense-line-gaps i) #'<) sense-line-gaps i)))
+
+
+
+;;; computing the horizontal gap sizes
+
+(defun compute-h-gaps (control-line-gaps sense-line-gaps xdim
+		       &aux control-gaps neighbor-sense-gaps
+		       this-h-gap-size control-lines-in-gap sense-lines-in-gap
+		       overlap first-sense-line last-poly h-gaps)
+  (dotimes (i xdim)
+    (setq control-gaps (aref control-line-gaps i)
+	  neighbor-sense-gaps (if (< i (1- xdim)) (aref sense-line-gaps (1+ i))))
+    (setq control-lines-in-gap 0 sense-lines-in-gap 0 first-sense-line 0 last-poly 0)
+    ;;; find out how many poly lines and where they stop
+    (dolist (c-gap (cdr control-gaps))
+      (setq control-lines-in-gap (+ control-lines-in-gap (cadr c-gap))
+	    last-poly (car c-gap)))
+    ;;; find out how many sense lines and where they begin
+    (dolist (s-gap (butlast neighbor-sense-gaps))
+      (setq sense-lines-in-gap (+ sense-lines-in-gap (cadr s-gap)))
+      (if (= first-sense-line 0) (setq first-sense-line (car s-gap))))
+    (cond ((= first-sense-line 0) (setq overlap t))
+	  ((= last-poly 0) (setq overlap t))
+	  (t (setq overlap (> first-sense-line last-poly))))
+    (cond ((and (= control-lines-in-gap 0) (= sense-lines-in-gap 0))
+	   (setq this-h-gap-size 0))
+	  (overlap
+	   (setq this-h-gap-size
+		 (max (* control-lines-in-gap (+ *poly-to-poly* *min-poly-size*))
+		      (* sense-lines-in-gap (+ *poly-to-poly* *min-poly-size*)))))
+	  (t (setq this-h-gap-size
+		   (+ (- *poly-to-poly* 1)	;left by left cell
+		      (* control-lines-in-gap *min-poly-size*)	;the poly lines
+		      (* (1- control-lines-in-gap) *poly-to-poly*)	;the interpoly spaces
+		      *poly-to-poly*		;the space to the sense line
+		      (* sense-lines-in-gap *min-poly-size*)	;the sense lines
+		      (* (1- sense-lines-in-gap) *poly-to-poly*)	;the intersense spaces
+		      (- *poly-to-poly* 2)))))	;left by right hand cell
+    (if (not (= this-h-gap-size 0))
+	(push (list i this-h-gap-size control-lines-in-gap sense-lines-in-gap overlap)
+	      h-gaps)))
+  (sortcar h-gaps #'<))
+
+
+
+;;; computing the vertical gaps sizes
+
+(defun compute-v-gaps (control-line-gaps sense-line-gaps xdim ydim
+		       &aux v-gaps this-gap-size control-lines-in-gap sense-lines-in-gap
+		       same-gap control-gaps sense-gaps)
+  (dotimes (i xdim)
+    (setq control-gaps (aref control-line-gaps i) sense-gaps (aref sense-line-gaps i))
+    (dolist (c-gap  (cdr (aref control-line-gaps i)))
+      (cond ((= (car c-gap) 0))
+	    (t (setq control-lines-in-gap (cadr c-gap))
+	       (cond ((setq same-gap (assoc (car c-gap) sense-gaps))
+		      (setq sense-lines-in-gap (cadr same-gap)))
+		     (t (setq sense-lines-in-gap 0)))))
+      (cond ((= 0 sense-lines-in-gap)
+	     (setq this-gap-size
+		   (+ *poly-to-poly*		;for the top
+		      (* control-lines-in-gap *min-poly-size*)	;the wires
+		      (* (1- control-lines-in-gap) *poly-to-poly*)	;the intergaps
+		      *poly-to-poly*)))		;the bottom
+	    (t (setq this-gap-size
+		     (+ *poly-to-poly*		;for the top
+			(* control-lines-in-gap *min-poly-size*)	;the poly wires
+			(* (1- control-lines-in-gap) *poly-to-poly*)	;the interpoly gaps
+			*poly-to-poly*		;the poly to sense break
+			(* sense-lines-in-gap *min-poly-size*)	;the sense wires
+			(* (1- sense-lines-in-gap) *poly-to-poly*)	;the intersense gaps
+			*poly-to-poly*))))
+      (cond ((setq same-gap (assoc (car c-gap) v-gaps))
+	     (if (> this-gap-size (cadr same-gap))
+		 (rplaca (cdr same-gap) this-gap-size)))
+	    ((= this-gap-size 0))
+	    (t (push (list (car c-gap) this-gap-size) v-gaps))))
+    (dolist (s-gap (butlast sense-gaps))
+      (cond ((= (car s-gap) ydim))
+	    ((assoc (car s-gap) control-gaps))
+	    (t (setq sense-lines-in-gap (cadr s-gap))
+	       (setq this-gap-size
+		     (+ *poly-to-poly*		;gap to top
+			(* sense-lines-in-gap *min-poly-size*)	;the wires
+			(* (1- sense-lines-in-gap) *poly-to-poly*)	;the interwire gaps
+			*poly-to-poly*))	;the top
+	       (cond ((setq same-gap (assoc (car s-gap) v-gaps))
+		      (if (> this-gap-size (cadr same-gap))
+			  (rplaca (cdr same-gap) this-gap-size)))
+		     ((= this-gap-size 0))
+		     (t (push (list (car s-gap) this-gap-size) v-gaps)))))))
+  (sortcar v-gaps #'<))
+
+
+
+;;;; building the register file
+
+(deflayout register-file
+  '((primary-parameters
+      (description
+	(power-bus-size 8)
+	(left-power-jumper-layer 'poly) (right-power-jumper-layer 'poly)
+	(left-power-jumper-cut t) (right-power-jumper-cut t)
+	(left-power-jumper-bridge t) (right-power-jumper-bridge t)
+	(left-jumpers? t) (right-jumpers? t)
+	(left-power? nil)
+	(driver-scaling 1)
+	(cell-power-bus-stretch 0)
+	(driver-power-bus-size 4)
+	(driver-lower-power-bus-size 4)))
+    (auxiliary-parameters ((cell-power-bus-size 4)))
+    (constraints ((c+ cell-power-bus-size 4 cell-power-bus-stretch)))
+    (*path-processor register-file-*path-processor))
+  (make-register-file (>> description)))
+
+(local-declare ((special *instance-list* *type-list* *object-array* *v-gaps* *h-gaps*
+			 *h-pitch-array* *v-pitch-array* *rep-partition*
+			 *continue?-map* *block-ranges*
+			 *control-connections* *my-types*))
+(defun make-register-file (file &aux xdim ydim rep *continue?-map* *block-ranges*
+			   *instance-list* *my-types* *object-array*
+			   *h-pitch-array* *v-pitch-array* *rep-partition*
+			   *h-gaps* *v-gaps* *control-connections*)
+  (multiple-value (xdim ydim *continue?-map* file *block-ranges* *h-gaps* *v-gaps*)
+    (canonicalize-register-file file))
+  (setq *object-array* (make-array (list xdim ydim))
+	*h-pitch-array* (make-array (list xdim))
+	*v-pitch-array* (make-array (list ydim)))
+  (setq-my canonical-description file)
+  (setq-my number-of-columns xdim)
+  (setq-my number-of-rows ydim)
+  (unwind-protect
+    (mapc #'build-register file)
+    (mapc #'(lambda (type) (remprop type 'cell-descriptor))
+	  (cons 'matrix *my-types*)))
+  (build-pitch-arrays xdim ydim)
+  (setq rep
+	(replicate 'cells uneven-array (list xdim ydim)
+		   *instance-list*
+		   (xfrm 'negy)
+		   (h-pitch-array *h-pitch-array*)
+		   (v-pitch-array *v-pitch-array*)
+		   (object-array *object-array*)))
+  (let ((proto (instance-prototype rep)))
+    (assign-to-the 'replicator-partition proto *rep-partition*)
+    (setf (prototype-bounding-box proto)
+	  (make-box 'bounary (make-xy-pair 0 0)
+		    (make-xy-pair (aref (replicator-partition-xmax *rep-partition*)
+					(1- xdim))
+				  (aref (replicator-partition-ymax *rep-partition*)
+					(1- ydim))))))
+  (wire-the-gaps file rep *h-gaps*)
+  (setq *control-connections* (sort *control-connections* #'<))
+  (setq-my control-connections *control-connections*)
+  (try-a-placement file rep *control-connections*)
+  (add-the-connection-points (>> canonical-description))
+  (add-the-bnodes)))
+
+
+(defun build-register (register &aux index associates shadowed? mirrored?
+		       register-map type start size subfields params)
+  (setq size (canonical-field-size register)
+	start (canonical-field-start register)
+	index (canonical-field-index register)
+	subfields (canonical-object-subfields register)
+	type (canonical-field-type register)
+	register-map (get type 'register-mapping)
+	associates (canonical-reg-associates register)
+	shadowed? (canonical-reg-shadowed? register)
+	mirrored? (canonical-field-mirrored? register)
+	params (canonical-field-options register))
+  (if register-map
+      (setq params `(,@params ,@(cdr register-map))))
+  (if shadowed? (build-shadow shadowed?))
+  (cond
+    ((null subfields)
+     (build-field type (car register-map) start size index mirrored? shadowed? params))
+    (t (dolist (subfield subfields) (build-subfield subfield params 'register))))
+  (mapc #'build-associate associates)) 
+
+(defun build-shadow (shadow &aux index start size map param-list type mirrored?)
+  (setq index (canonical-field-index shadow)
+	start (canonical-field-start shadow)
+	size (canonical-field-size shadow)
+	mirrored? (canonical-field-mirrored? shadow)
+	param-list (canonical-field-options shadow)
+	type (canonical-field-type shadow)
+	map (get type 'associate-mapping))
+  (if map (setq param-list `(,@(cdr map) ,@param-list)))
+  (build-field type (car map) start size index mirrored? nil param-list))
+					  
+(defun build-associate (associate &aux index start size map value-producing-associate?
+			param-list type subfields mirrored? field-start field-size)
+    (setq param-list (canonical-field-options associate)
+	  type (canonical-field-type associate)
+	  subfields (canonical-object-subfields associate)
+	  start (canonical-field-start associate)
+	  size (canonical-field-size associate)
+	  index (canonical-field-index associate)
+	  mirrored? (canonical-field-mirrored? associate)
+	  map (get type 'associate-mapping)
+	  field-start (canonical-associate-field-start associate)
+	  field-size (canonical-associate-field-size associate)
+	  value-producing-associate? (or (get type 'self-operator)
+					 (get (car map) 'self-operator)))
+    (if map (setq param-list `(,@(cdr map) ,@param-list)))
+    (cond
+      ((and (not (null field-start)) value-producing-associate?)
+       (build-filled-in-associate type (car map) start size index mirrored? field-start
+				  field-size param-list))
+      ((null subfields)
+       (build-field type (car map) start size index mirrored? nil param-list))
+      (t (dolist (subfield subfields)
+	   (build-subfield subfield param-list 'associate)))))
+
+(defun build-filled-in-associate (type map-type start size index mirrored? field-start
+				  field-size param-list
+				  &aux true-type filler-left-stretch filler-right-stretch
+				  typical-cell filler-cell control-name
+				  fill-above fill-below)
+  (setq true-type (or map-type type)
+	typical-cell (get-cell true-type 0 0 nil nil nil param-list)
+	filler-cell (get-cell 'dummy-associate 0 0 nil nil nil param-list) 
+	control-name (car (get true-type 'control-line-names))
+	filler-left-stretch (- (- (the 'x (the 'bottom-left (the control-name typical-cell)))
+				  (the 'x (the 'bottom-left typical-cell)))
+			       (- (the 'x (the 'bottom-left (the 'read-to-local-bus
+								 filler-cell)))
+				  (the 'x (the 'bottom-left filler-cell))))
+	filler-right-stretch (- (- (the 'xdim typical-cell) (the 'xdim filler-cell))
+				filler-left-stretch))
+  (setq fill-above (> (+ start size) (+ field-start field-size))
+	fill-below (< start field-start))
+  (if fill-below
+      (build-field 'dummy-associate () start (- field-start start) index
+		   mirrored? () `((left-stretch ,filler-left-stretch)
+				  (right-stretch ,filler-right-stretch)
+				  ,@param-list)
+		   t nil))
+  (build-field type map-type field-start field-size index mirrored? nil param-list
+	       fill-above fill-below)
+  (if fill-above
+      (build-field 'dummy-associate ()
+		   (+ field-start field-size) (- size (+ field-start field-size -1))
+		   index mirrored? ()
+		   `((left-stretch ,filler-left-stretch)
+		     (right-stretch ,filler-right-stretch)
+		     ,@param-list)
+		   t nil)))
+
+(defun build-subfield (subfield params field-type
+		       &aux index start size map param-list type mirrored? shadowed?)
+    (setq param-list `(,@(canonical-field-options subfield) ,@params)
+	  type (canonical-field-type subfield)
+	  start (canonical-field-start subfield)
+	  size (canonical-field-size subfield)
+	  index (canonical-field-index subfield)
+	  shadowed? (canonical-subfield-shadowed? subfield)
+	  mirrored? (canonical-field-mirrored? subfield)
+	  map (get type (if (eq field-type 'register) 'register-mapping 'associate-mapping)))
+    (if map (setq param-list `(,@(cdr map) ,@param-list) ))
+    (build-field type (car map) start size index mirrored? shadowed? param-list))
+
+
+
+;;;; building individual fields
+
+(local-declare ((special *object-array* *v-gaps* *h-gaps*
+			 *continue?-map*))
+(defun build-field (register-type map-type start size i
+		    &optional mirrored? shadowed? other-params
+		    connected-top connected-bottom
+		    &aux true-type my-v-gap-size my-h-gap-size
+		    ungapped? bottom-bitting? top-bitting?
+		    bottom-params top-params
+		    bit-patterned? position-programmed? normal-cell normal-cell-continued)
+  (setq bit-patterned? (or (get register-type 'bit-patterned?)
+			   (and map-type (get map-type 'bit-patterned?)))
+	position-programmed? (or (get register-type 'position-programming?)
+				 (and map-type (get map-type 'position-programming?))))  
+  (cond
+    (bit-patterned?
+     (build-bit-patterned-field register-type map-type start size i
+				mirrored? shadowed? other-params
+				connected-top connected-bottom))
+    (position-programmed?
+     (build-pos-programmed-field register-type map-type start size i
+				 mirrored? shadowed? other-params
+				 connected-top connected-bottom))
+    (t (setq true-type (or map-type register-type)
+	     bottom-bitting? (or (get register-type 'bottom-bitting?)
+				 (and map-type (get map-type 'bottom-bitting?)))
+	     bottom-params (and (not (atom bottom-bitting?)) bottom-bitting?)
+	     top-bitting? (or (get register-type 'top-bitting?)
+			      (and map-type (get map-type 'top-bitting?)))
+	     top-params (and (not (atom top-bitting?)) top-bitting?)
+	     my-h-gap-size (or (cadr (assoc i *h-gaps*)) 0))
+     (do ((j start (1+ j))
+	  (continue?)
+	  (k 0 (1+ k))
+	  (this-cell))
+	 ((= k size))
+       (setq my-v-gap-size (cond ((and (= k (1- size)) (not connected-top)) 0)
+				 (t (or (cadr (assoc (1+ j) *v-gaps*)) 0)))
+	     ungapped? (= my-v-gap-size 0)
+	     continue? (= 1 (aref *continue?-map* i j)))
+       (setq this-cell
+	     (cond ((and (= j start) bottom-bitting?)
+		    (get-cell true-type my-h-gap-size
+			      my-v-gap-size
+			      mirrored? shadowed? continue?
+			      `((bottom-bit? t) ,@bottom-params
+				(top-bit? nil) ,@other-params)))
+		   ((and (= k (1- size)) top-bitting?)
+		    (get-cell true-type my-h-gap-size my-v-gap-size
+			      mirrored? shadowed? continue?
+			      `((top-bit? t) ,@top-params
+				(bottom-bit? nil) ,@other-params)))
+		   ((and ungapped? (not continue?))
+		    (or normal-cell
+			(setq normal-cell
+			      (get-cell true-type my-h-gap-size my-v-gap-size
+					mirrored? shadowed? continue?
+					`((bottom-bit? nil) (top-bit? nil)
+					  ,@other-params)))))
+		   ((and ungapped? continue?)
+		    (or normal-cell-continued
+			(setq normal-cell-continued
+			      (get-cell true-type my-h-gap-size my-v-gap-size
+					mirrored? shadowed? continue?
+					`((bottom-bit? nil) (top-bit? nil)
+					  ,@other-params)))))
+		   (t (get-cell true-type my-h-gap-size my-v-gap-size
+				mirrored? shadowed? continue?
+				`((bottom-bit? nil) (top-bit? nil)
+				  ,@other-params)))))
+       (aset this-cell *object-array* i j))))))
+
+
+
+;;;; builder of bit patterned column
+
+(local-declare ((special *object-array* *v-gaps* *h-gaps* *continue?-map*))
+(defun build-bit-patterned-field (register-type map-type start size i mirrored? shadowed?
+				  params &optional connected-top connected-bottom
+				  &aux true-type my-h-gap-size my-v-gap-size
+				  bottom-bitting? top-bitting?
+				  bottom-params top-params
+				  bit-pattern bit-pattern-cell
+				  normal-one-cell normal-zero-cell
+				  continued-one-cell continued-zero-cell)
+  (progn connected-bottom)
+  (setq true-type (or map-type register-type)
+	bottom-bitting? (or (get register-type 'bottom-bitting?)
+			    (and map-type (get map-type 'bottom-bitting?)))
+	bottom-params (and (not (atom bottom-bitting?)) bottom-bitting?)
+	top-bitting? (or (get register-type 'top-bitting?)
+			 (and map-type (get map-type 'top-bitting?)))
+	top-params (and (not (atom top-bitting?)) top-bitting?)
+	my-h-gap-size (or (cadr (assoc i *h-gaps*)) 0)
+	bit-pattern-cell (assq 'bit-pattern params)
+	bit-pattern (cadr bit-pattern-cell)
+	params (remove bit-pattern-cell params))
+  (do ((j start (1+ j))
+       (bits bit-pattern (ash bits -1))
+       (k 0 (1+ k))
+       (ungapped?)
+       (continue?)
+       (one?)
+       (this-cell))
+      ((= k size))
+    (setq my-v-gap-size (cond ((and (= k (1- size)) (not connected-top)) 0)
+			      (t (or (cadr (assoc (1+ j) *v-gaps*)) 0)))
+	  ungapped? (= my-v-gap-size 0)
+	  continue? (= 1 (aref *continue?-map* i j))
+	  one? (bit-test #o01 bits))
+    (setq this-cell
+	  (cond  ((and (= j start) bottom-bitting?)
+		  (get-cell true-type my-h-gap-size
+			    my-v-gap-size
+			    mirrored? shadowed? continue?
+			    `((bottom-bit? t) ,@bottom-params
+			      (top-bit? nil) (zero-or-one ,(if one? 'one 'zero)) ,@params)))
+		 ((and (= k (1- size)) top-bitting?)
+		  (get-cell true-type my-h-gap-size my-v-gap-size
+			    mirrored? shadowed? continue?
+			    `((top-bit? t) ,@top-params
+			      (bottom-bit? nil)
+			      (zero-or-one ,(if one? 'one 'zero)) ,@params)))
+		 ((and ungapped? one? (not continue?))
+		    (or normal-one-cell
+			(setq normal-one-cell
+			      (get-cell true-type my-h-gap-size my-v-gap-size
+					mirrored? shadowed? continue?
+					`((zero-or-one one) (bottom-bit? nil) (top-bit? nil)
+					  ,@params)))))
+		((and ungapped? one? continue?)
+		 (or continued-one-cell
+		     (setq continued-one-cell
+			   (get-cell true-type my-h-gap-size my-v-gap-size
+				  mirrored? shadowed? continue?
+				  `((zero-or-one one) (bottom-bit? nil) (top-bit? nil)
+				    ,@params)))))
+		((and ungapped? (not one?) (not continue?))
+		 (or normal-zero-cell
+		     (setq normal-zero-cell
+			   (get-cell true-type my-h-gap-size 0
+				   mirrored? shadowed? continue?
+				   `((zero-or-one zero) (bottom-bit? nil) (top-bit? nil)
+				     ,@params)))))
+		((and ungapped? (not one?) continue?)
+		 (or continued-zero-cell
+		     (setq continued-zero-cell
+			   (get-cell true-type my-h-gap-size 0
+				   mirrored? shadowed? continue?
+				   `((zero-or-one zero) (bottom-bit? nil) (top-bit? nil)
+				     ,@params)))))
+		(t
+		 (get-cell true-type my-h-gap-size my-v-gap-size
+			   mirrored? shadowed? continue?
+			   `((zero-or-one ,(if one? 'one 'zero))
+			     (bottom-bit? nil) (top-bit? nil)
+			     ,@params)))))
+    (aset this-cell *object-array* i j))))
+
+
+
+;;;; building position programmed field
+
+;;; presumbaly each cell will be different so all these sharing hacks
+;;; are irrelevant here.
+(local-declare ((special *object-array* *v-gaps* *h-gaps* *continue?-map*))
+(defun build-pos-programmed-field (register-type map-type start size i mirrored? shadowed?
+				   params &optional connected-top connected-bottom
+				   &aux true-type my-h-gap-size my-v-gap-size
+				   bottom-bitting? top-bitting?
+				   bottom-params top-params)
+  (progn connected-bottom)
+  (setq true-type (or map-type register-type)
+	bottom-bitting? (or (get register-type 'bottom-bitting?)
+			    (and map-type (get map-type 'bottom-bitting?)))
+	bottom-params (and (not (atom bottom-bitting?)) bottom-bitting?)
+	top-bitting? (or (get register-type 'top-bitting?)
+			 (and map-type (get map-type 'top-bitting?)))
+	top-params (and (not (atom top-bitting?)) top-bitting?)
+	my-h-gap-size (or (cadr (assoc i *h-gaps*)) 0))
+  (do ((j start (1+ j))
+       (k 0 (1+ k))
+       (ungapped?)
+       (continue?)
+       (this-cell))
+      ((= k size))
+    (setq my-v-gap-size (cond ((and (= k (1- size)) (not connected-top)) 0)
+			      (t (or (cadr (assoc (1+ j) *v-gaps*)) 0)))
+	  ungapped? (= my-v-gap-size 0)
+	  continue? (= 1 (aref *continue?-map* i j)))
+    (setq this-cell
+	  (cond  ((and (= j start) bottom-bitting?)
+		  (get-cell true-type my-h-gap-size my-v-gap-size
+			    mirrored? shadowed? continue?
+			    `((bottom-bit? t) ,@bottom-params
+			      (top-bit? nil) (position ,j) ,@params)))
+		 ((and (= k (1- size)) top-bitting?)
+		  (get-cell true-type my-h-gap-size my-v-gap-size
+			    mirrored? shadowed? continue?
+			    `((top-bit? t) ,@top-params
+			      (bottom-bit? nil) (position ,j) ,@params)))
+		 (t
+		  (get-cell true-type my-h-gap-size my-v-gap-size
+			    mirrored? shadowed? continue?
+			    `((position ,j) (bottom-bit? nil) (top-bit? nil) ,@params)))))
+    (aset this-cell *object-array* i j))))
+
+
+
+(defvar shadowed-options `((left-output-connect t) (left-local-connect t)))
+(defun get-cell (register-type my-h-gap-size my-v-gap-size
+		 mirrored? shadowed? continue? other-parameters
+		 &aux (composed-xfrm 'negy) extra-xfrm left-stretch right-stretch)
+  (setq left-stretch (assq 'left-stretch other-parameters))
+  (cond (left-stretch (setq other-parameters (delq left-stretch other-parameters)
+			    left-stretch (cadr left-stretch)))
+	(t (setq left-stretch 0)))
+  (setq right-stretch (assq 'right-stretch other-parameters))
+  (cond (right-stretch (setq other-parameters (delq right-stretch other-parameters)
+			    right-stretch (cadr right-stretch)))
+	(t (setq right-stretch 0)))
+  (setq extra-xfrm (assq 'xfrm other-parameters))
+  (cond
+    (extra-xfrm (setq composed-xfrm (compose-unitary-transforms (cadr extra-xfrm)
+								composed-xfrm))
+		(setq other-parameters (remove extra-xfrm other-parameters))))
+  (if mirrored?
+      (setq composed-xfrm (compose-unitary-transforms 'negx composed-xfrm)))
+   (if shadowed? (setq other-parameters (append shadowed-options other-parameters)))
+   (if continue?
+       (setq other-parameters `((continue-value? t) ,@other-parameters))
+       (setq other-parameters `((continue-value? nil) ,@other-parameters)))
+   (setq other-parameters
+	 (if mirrored?
+	     `((apparent-bottom-left ,(pt 0 0))
+	       (vdd-stretch ,(>> cell-power-bus-stretch))
+	       (gnd-stretch ,(>> cell-power-bus-stretch))
+	       (xfrm ,composed-xfrm)
+	       (left-stretch ,(+ left-stretch my-h-gap-size))
+	       (right-stretch ,right-stretch)
+	       (bottom-stretch ,my-v-gap-size)
+	       ,@other-parameters)
+	     `((apparent-bottom-left ,(pt 0 0))
+	       (vdd-stretch ,(>> cell-power-bus-stretch))
+	       (gnd-stretch ,(>> cell-power-bus-stretch))
+	       (xfrm ,composed-xfrm)
+	       (right-stretch ,(+ right-stretch my-h-gap-size))
+	       (left-stretch ,left-stretch)
+	       (bottom-stretch ,my-v-gap-size)
+	       ,@other-parameters)))
+   (get-cell-1 register-type other-parameters 'parts))
+
+(local-declare ((special *instance-list* *my-types*))
+(defunp get-cell-1 (type-name parameters parent-list
+		   &aux (type (get type-name 'type)) prototype instance
+		   primary-cells type-network unknowns post-func pre-func
+		   instance-xfrm desired-xfrm)
+  (cond
+    ((not (type? type)) (error '|Not a defined type -- make-a| type-name))
+    (t (if (not (memq type-name *my-types*)) (push type-name *my-types*))
+       (setq type-network (put-params-in-cell-list parameters (type-total-cell-list type))
+	     pre-func (type-pre-processor type)
+	     primary-cells (type-primary-cell-list type)
+	     post-func (type-post-processor type))
+       (and pre-func (funcall pre-func type-network))
+       (apply-defaults type-network (type-defaults type))
+       (setq unknowns (front-section-copy type-network primary-cells))
+       (setq prototype (get-prototype type primary-cells nil))
+       (cond
+	 ((setq instance (cadr (assq prototype (get type-name 'cell-descriptor))))
+	  (setq instance-xfrm (unitary-part (transform instance))
+		desired-xfrm (or (cadr (assq 'xfrm unknowns)) 'identity))
+	  (and (eq instance-xfrm desired-xfrm) (return instance))))
+        (setq instance (make-new-instance (make-new-vc nil nil)))
+	(finalize-instance instance prototype parent-list)
+	(and post-func (funcall post-func instance unknowns parent-list))
+	(push (list prototype instance) (get type-name 'cell-descriptor))
+	(push instance *instance-list*)
+	instance))))
+
+
+(defvar *reference-cell* nil)
+(defun get-matrix-cell (width continue-value?)
+  (or *reference-cell*
+      (setq *reference-cell* (invoke () normal-register
+				     (apparent-bottom-left (pt 0 0))
+				     (xfrm 'negy))))
+  (get-cell-1 'matrix `((width ,width)
+			(vdd-stretch ,(>> cell-power-bus-stretch))
+			(gnd-stretch ,(>> cell-power-bus-stretch))
+			(xfrm negy)
+			(continue-value? ,continue-value?)
+			((>> top-left vdd) ,(the 'top-left (the 'vdd *reference-cell*))))
+	      'parts))
+
+
+
+;;;; finishing off the replicator
+
+(local-declare ((special *continue?-map* *object-array*
+			 *h-pitch-array* *v-pitch-array* *rep-partition*)) 
+(defun build-pitch-arrays (xdim ydim
+				&aux (h-size-array (make-array (list xdim)))
+				(v-size-array (make-array (list ydim)))
+				this-guy xsize ysize normal-cell continue-cell
+				continue? size this-cell
+				xmax-array ymax-array)
+  (setq *rep-partition* (make-replicator-partition
+			 xmin *h-pitch-array*
+			 xmax (make-array  (list xdim) ':type ':art-q)
+			 ymin *v-pitch-array*
+			 ymax (make-array (list ydim) ':type ':art-q))
+	xmax-array (replicator-partition-xmax *rep-partition*)
+	ymax-array (replicator-partition-ymax *rep-partition*))
+  (dotimes (i xdim)
+    (dotimes (j ydim)
+      (setq this-guy (aref *object-array* i j))
+      (cond (this-guy (setq xsize (the 'apparent-xdim this-guy)
+			    ysize (the 'apparent-ydim this-guy))
+		      (if (> xsize (or (aref h-size-array i) 0))
+			  (aset xsize h-size-array i))
+		      (if (> ysize (or (aref v-size-array j) 0))
+			  (aset ysize v-size-array j))))))
+  (setq *reference-cell* nil)
+  (dotimes (i xdim)
+    (setq normal-cell nil continue-cell nil size (aref h-size-array i))
+    (dotimes (j ydim)
+      (setq continue? (= 1 (aref *continue?-map* i j)))
+      (cond ((null (aref *object-array* i j))
+	     (setq this-cell
+		   (cond (continue?
+			  (or continue-cell
+			      (setq continue-cell
+				    (get-matrix-cell size continue?))))
+			 (t (or normal-cell
+				(setq normal-cell
+				      (get-matrix-cell size continue?))))))
+	     (aset this-cell *object-array* i j)))))
+  (dotimes (i xdim)
+    (cond ((= i 0)
+	   (aset 0 *h-pitch-array* i)
+	   (aset (aref h-size-array i) xmax-array i))
+	  (t
+	   (aset (aref xmax-array (1- i)) *h-pitch-array* i)
+	   (aset (+ (aref h-size-array i) (aref *h-pitch-array* i))
+		 xmax-array i))))
+  (dotimes (j ydim)
+    (cond ((= j 0)
+	   (aset 0 *v-pitch-array* j)
+	   (aset (aref v-size-array j) ymax-array j))
+	  (t
+	   (aset (aref ymax-array (1- j)) *v-pitch-array* j)
+	   (aset (+ (aref v-size-array j) (aref *v-pitch-array* j))
+		 ymax-array j))))))
+
+
+
+;;;; wiring control and sense lines to subfields
+
+(defun wire-the-gaps (file rep h-gaps
+		      &aux type map control-names repeated-controls
+		      sense-names repeated-senses
+		      start size end subfields associates shadowed? index)
+  (do ((remaining-registers (cdr file) (cdr remaining-registers))
+       (register (car file) (car remaining-registers)))
+      ((null register))
+    (setq subfields (canonical-object-subfields register)
+	  type (canonical-field-type register)
+	  map (get type 'register-mapping)
+	  control-names (or (get type 'control-line-names)
+			    (get (car map) 'control-line-names))
+	  repeated-controls (or (get type 'repeated-control-line-names)
+				(get (car map) 'repeated-control-line-names))
+	  sense-names (or (get type 'sense-line-names)
+			  (get (car map) 'sense-line-names))
+	  repeated-senses (or (get type 'repeated-sense-line-names)
+			      (get (car map) 'repeated-sense-line-names))
+	  start (canonical-field-start register)
+	  size (canonical-field-size register)
+	  end (+ start size)
+	  associates (canonical-reg-associates register)
+	  shadowed? (canonical-reg-shadowed? register)
+	  index (canonical-field-index register))
+    (if (null subfields)
+	(if (not (= start 0))
+	    (wire-directly-to-field rep index start control-names repeated-controls)
+	    (add-top-connection-points rep index start control-names repeated-controls)))
+    (if (null subfields)
+	(wire-sense-lines-directly rep index end sense-names repeated-senses register))
+    (if subfields
+	(wire-subfields subfields rep index start h-gaps 'register))
+    (wire-associates associates rep h-gaps)
+    (cond
+      (shadowed?
+	(setq type (canonical-field-type shadowed?)
+	      map (get type 'associate-mapping)
+	      control-names (or (get type 'control-line-names)
+				(get (car map) 'control-line-names))
+	      index (canonical-field-index shadowed?)
+	      start (canonical-field-start shadowed?))
+	(if (not (= start 0))
+	    (wire-directly-to-field rep index start control-names repeated-controls)
+	    (add-top-connection-points rep index start control-names repeated-controls))))))
+
+(defun wire-associates (associates rep h-gaps
+			&aux type map control-names repeated-controls
+			sense-names repeated-senses
+			start size end subfields index)
+  (do ((remaining-associates (cdr associates) (cdr remaining-associates))
+       (associate (car associates) (car remaining-associates)))
+      ((null associate))
+    (setq subfields (canonical-object-subfields associate)
+	  type (canonical-field-type associate)
+	  map (get type 'associate-mapping)
+	  control-names (or (get type 'control-line-names)
+			    (get (car map) 'control-line-names))
+	  repeated-controls (or (get type 'repeated-control-line-names)
+				(get (car map) 'repeated-control-line-names))
+	  sense-names (or (get type 'sense-line-names)
+			  (get (car map) 'sense-line-names))
+	  repeated-senses (or (get type 'repeated-sense-line-names)
+			      (get (car map) 'repeated-sense-line-names))
+	  start (canonical-field-start associate)
+	  size (canonical-field-size associate)
+	  end (+ start size)
+	  index (canonical-field-index associate))
+    (if (null subfields)
+	(if (not (= 0  start))
+	    (wire-directly-to-field rep index start control-names repeated-controls)
+	    (add-top-connection-points rep index start control-names repeated-controls)))
+    (if (null subfields)
+	(wire-sense-lines-directly rep index end sense-names repeated-senses associate))
+    (if subfields
+	(wire-subfields subfields rep index start h-gaps 'associate))))	
+
+(defun wire-subfields (subfields rep index start h-gaps parent-type
+		       &aux size end first-subfield last-subfield
+		       type control-names repeated-controls
+		       sense-names repeated-senses
+		       h-offset map)
+  (setq first-subfield (car subfields) last-subfield (car (last subfields)))
+  (setq h-offset (+ (1- *poly-to-poly*) (// *min-poly-size* 2) 
+		    (- (x-of-pt (the 'apparent-top-right
+				     (the (*rep index start) rep)))
+		       (or (cadr (assoc index h-gaps)) 0))))
+  (dolist (subfield subfields)
+    (setq type (canonical-field-type subfield)
+	  map (get type (if (eq parent-type 'register) 'register-mapping 'associate-mapping))
+	  control-names (or (get type 'control-line-names)
+			    (get (car map) 'control-line-names))
+	  repeated-controls (or (get type 'repeated-control-line-names)
+				(get (car map) 'repeated-control-line-names))
+	  index (canonical-field-index subfield)
+	  start (canonical-field-start subfield))
+    (cond ((eq subfield first-subfield)
+	   (if (not (= start 0))
+	       (wire-directly-to-field rep index start control-names repeated-controls)
+	       (add-top-connection-points rep index start control-names repeated-controls)))
+	  (t (setq h-offset
+		   (wire-a-gap rep index start h-offset control-names repeated-controls)))))
+  (setq h-offset (- (x-of-pt (the 'apparent-bottom-left (the (*rep index start) rep)))
+		    (// *min-poly-size* 2)
+		    (1- *poly-to-poly*)))		    
+  (dolist (subfield (reverse subfields))
+    (setq type (canonical-field-type subfield)
+	  map (get type (if (eq parent-type 'register) 'register-mapping 'associate-mapping))
+	  sense-names (or (get type 'sense-line-names)
+			  (get (car map) 'sense-line-names))
+	  repeated-senses (or (get type 'repeated-sense-line-names)
+			      (get (car map) 'repeated-sense-line-names))
+	  index (canonical-field-index subfield)
+	  start (canonical-field-start subfield)
+	  size (canonical-field-size subfield)
+	  end (+ start size))
+    (cond ((eq subfield last-subfield)
+	   (wire-sense-lines-directly rep index end sense-names repeated-senses subfield))
+	  (t
+	   (setq h-offset
+		 (wire-sense-lines-in-gap rep index (1- end) h-offset
+					  sense-names repeated-senses subfield))))))
+
+(defun wire-sense-lines-in-gap (rep i j h-offset sense-names repeated-senses parent
+		   &aux target-points top-start bottom-start (v-offset 0))
+  (if repeated-senses
+      (ferror 'fail-act "~%I cant yet gap wire repeated sense lines"))
+  (setq target-points (bottom-sense-connection-points
+			(the (*rep i j) rep) sense-names))
+  (setq top-start (- (y-of-pt (the 'apparent-bottom-left (the (*rep i j) rep)))
+		     (+ *poly-to-poly* (// *min-poly-size* 2)))
+	bottom-start (the 'y (the 'apparent-bottom-left rep)))
+  (dolist (target target-points)
+    (push (list (car target)
+		(wire ()
+		      (from (cadr target)) (run-layer 'poly)
+		      (jog-y (pt h-offset (- top-start v-offset)))
+		      (to-y bottom-start)))
+	  (canonical-field-output-wires parent))
+    (setq h-offset (- h-offset *poly-to-poly* *min-poly-size*)
+	  v-offset (- v-offset *poly-to-poly* *min-poly-size*)))
+  h-offset)
+
+(local-declare ((special *control-connections*))
+(defun wire-a-gap (rep i j h-offset control-names repeated-controls
+		   &aux target-points top-start bottom-start (v-offset 0) start-point)
+  (setq target-points (top-control-connection-points
+			(the (*rep i j) rep) control-names repeated-controls))
+  (setq bottom-start (- (y-of-pt (the 'apparent-bottom-right
+				      (the (*rep i (1- j)) rep)))
+			(+ *poly-to-poly* (// *min-poly-size* 2)))
+	top-start (the 'y (the 'apparent-top-left rep)))
+  (dolist (target target-points)
+    (setq start-point (pt h-offset top-start))
+    (push (x-of-pt start-point) *control-connections*)
+    (wire ()
+	  (from start-point) (run-layer 'poly)
+	  (jog-y (pt (x-of-pt target) (- bottom-start v-offset)))
+	  (to-y target))
+    (setq h-offset (+ h-offset *poly-to-poly* *min-poly-size*)
+	  v-offset (+ v-offset *poly-to-poly* *min-poly-size*)))
+  h-offset))
+
+
+(local-declare ((special *control-connections*))
+(defun wire-directly-to-field (rep index start control-names repeated-controls
+			       &aux target-points start-y
+			       (half-poly-size (// *min-poly-size* 2.)))
+  (setq target-points (top-control-connection-points
+			(the (*rep index start) rep) control-names repeated-controls)
+	start-y (the 'y (the 'apparent-top-left rep)))
+  (dolist (point target-points)
+    (push (x-of-pt point) *control-connections*)
+    (part () rectangle (layer 'poly)
+	  (top-left (pt (- (x-of-pt point) half-poly-size) start-y))
+	  (bottom-right (pt-to-right point half-poly-size))))))
+
+(local-declare ((special *control-connections*))
+(defun add-top-connection-points (rep index start control-names repeated-controls
+				  &aux target-points)
+  (setq target-points (top-control-connection-points
+			(the (*rep index start) rep) control-names repeated-controls))
+  (dolist (point target-points)
+    (push (x-of-pt point) *control-connections*))))
+
+
+(defun wire-sense-lines-directly (rep index end sense-names repeated-senses parent
+				  &aux target-points start-y cell
+				  (half-poly-size (// *min-poly-size* 2.)))
+  (setq cell (the (*rep index (1- end)) rep)
+	target-points (bottom-sense-connection-points cell sense-names)
+	start-y (the 'y (the 'apparent-bottom-left rep)))
+  (dolist (point target-points)
+    (push (list (car point)
+		(part () rectangle (layer 'poly)
+		      (bottom-left (pt (- (x-of-pt (cadr point)) half-poly-size) start-y))
+		      (top-right (pt-to-right (cadr point) half-poly-size))))
+	  (canonical-field-output-wires parent)))
+  (dolist (repeater repeated-senses)
+    (let ((point (bottom-repeated-sense-connection-point cell (cadr repeater))))
+      (push
+	(list (car point)
+	      (replicate () row (list (the (car repeater) cell))
+			 (list
+			   (part nil rectangle (layer 'poly)
+				 (bottom-left (pt (- (x-of-pt (cadr point)) half-poly-size)
+						  start-y))
+				 (top-right (pt-to-right (cadr point) half-poly-size))))
+			 (h-pitch (the 'h-pitch (the (cadr repeater) cell)))))
+	(canonical-field-output-wires parent)))))
+
+(defun top-control-connection-points (cell control-names repeated-controls
+				      &aux rc-points)
+  (dolist (repeated-control repeated-controls)
+    (dotimes (i (the (car repeated-control) cell))
+      (push (the 'apparent-top-center
+		 (the (*rep i)
+		      (the (cadr repeated-control) cell)))
+	    rc-points)))
+  (sort
+    (nconc rc-points
+	   (mapcar #'(lambda (name &aux part start end)
+		       (setq part (the name cell))
+		       (cond ((not (wire? part)) (the 'apparent-top-center part))
+			     (t (setq start (pt-cp (the 'start part))
+				      end (pt-cp (the 'end part)))
+				(if (> (y-of-pt start) (y-of-pt end)) start end))))
+		   control-names))
+    #'(lambda (p q) (< (x-of-pt p) (x-of-pt q)))))
+
+
+(defun bottom-sense-connection-points (cell sense-names)
+  (sort
+    (mapcar #'(lambda (name) (bottom-sense-connection-point cell name)) sense-names)
+    #'(lambda (p q) (> (x-of-pt (cadr p)) (cadr (x-of-pt q))))))
+
+(defun bottom-sense-connection-point (cell sense-name)
+  (list sense-name (bottom-connection-point (the sense-name cell))))
+
+(defun bottom-connection-point (part &aux start end)
+  (cond ((not (wire? part)) (the 'apparent-bottom-center part))
+	(t (setq start (pt-cp (the 'start part))
+		 end (pt-cp (the 'end part)))
+	   (if (< (y-of-pt start) (y-of-pt end)) start end))))
+
+(defun bottom-repeated-sense-connection-point (cell sense-name &aux part start end name)
+  (setq part (the (*rep 0) (the sense-name cell)))
+  (cond ((not (wire? part)) (list sense-name (the 'apparent-bottom-center part)))
+	(t (setq start (pt-cp (the 'start part))
+		 end (pt-cp (the 'end part)))
+	   (list name (if (< (y-of-pt start) (y-of-pt end)) start end)))))
+
+
+
+;;;; putting down the drivers
+
+(defstruct (canonical-driver :list :conc-name)
+  (name 'driver)
+  (type)
+  (index)
+  (mirrored?)
+  (source)
+  (other-parameters))
+
+;;; this returns a list of all required drivers ordered by increasing
+;;; column and sub-ordered by rows (this is the order they should be placed)
+(defun find-drivers (file &aux type map driver-specs drivers
+		     subfields associates shadowed? mirrored?)
+  (do ((remaining-registers (cdr file) (cdr remaining-registers))
+       (register (car file) (car remaining-registers))
+       (this-block nil nil))
+      ((null register))
+    (setq subfields (canonical-object-subfields register)
+	  type (canonical-field-type register)
+	  map (get type 'register-mapping)
+	  driver-specs (or (get type 'driver) (get (car map) 'driver))
+	  associates (canonical-reg-associates register)
+	  shadowed? (canonical-reg-shadowed? register)
+	  mirrored? (canonical-field-mirrored? register))
+    (cond (subfields
+	   (setq drivers (nconc drivers (find-drivers-subfields subfields 'register))))
+	  ((null driver-specs))
+	  ((atom driver-specs)
+	   (push (make-canonical-driver source register
+					type driver-specs
+					mirrored? mirrored?
+					other-parameters (driver-params nil register))
+		 drivers))
+	  (t (setq drivers
+		   (nconc drivers
+			  (mapcar
+			    #'(lambda (specs)
+				(make-canonical-driver
+				  source register
+				  name (car specs)
+				  type (cadr specs)
+				  mirrored? mirrored?
+				  other-parameters  (driver-params (cddr specs)
+								   register)))
+			    driver-specs)))))
+    (setq drivers (nconc drivers (find-drivers-associates associates)))
+    (if shadowed? (nconc drivers (find-drivers-shadow shadowed?))))
+  (setq drivers
+	(sort drivers
+	      #'(lambda (a b &aux (asource (canonical-driver-source a))
+			 (bsource (canonical-driver-source b)))
+		  (or (< (canonical-field-index asource) (canonical-field-index bsource))
+		      (and (= (canonical-field-index asource) (canonical-field-index bsource))
+			   (< (canonical-field-start asource)
+			      (canonical-field-start bsource)))))))
+  (do ((drivers (cdr drivers) (cdr drivers))
+       (driver (car drivers) (car drivers))
+       (index 0 (1+ index)))
+      ((null driver))
+    (push driver (canonical-field-drivers (canonical-driver-source driver))))
+  drivers)
+
+(defun driver-params (driver-spec reg-spec)
+  (let ((*me* reg-spec))
+    (mapcar #'(lambda (pair) (list (car pair) `,(eval (cadr pair))))
+	    driver-spec)))
+
+
+
+(defun find-drivers-subfields (subfields map-type
+			       &aux mirrored? type map driver-specs drivers)
+  (dolist (subfield subfields)
+    (setq type (canonical-field-type subfield)
+	  map (get type (if (eq map-type 'register) 'register-mapping 'associate-mapping))
+	  driver-specs (or (get type 'driver) (get (car map) 'driver))
+	  mirrored? (canonical-field-mirrored? subfield))
+    (cond ((null driver-specs))
+	  ((atom driver-specs)
+	   (push (make-canonical-driver type driver-specs source subfield
+					other-parameters (driver-params nil subfield)
+					mirrored? mirrored?)
+		 drivers))
+	  (t (setq drivers
+		   (nconc drivers
+			  (mapcar
+			    #'(lambda (driver-specs)
+				(make-canonical-driver
+				  type (cadr driver-specs)
+				  name (car driver-specs)
+				  source subfield
+				  mirrored? mirrored?
+				  other-parameters (driver-params (cddr driver-specs)
+								  subfield)))
+			    driver-specs))))))
+  drivers)
+
+(defun find-drivers-associates (associates &aux type map-type driver-specs
+				drivers subfields mirrored?)
+  (dolist (associate associates)
+    (setq subfields (canonical-object-subfields associate)
+	  type (canonical-field-type associate)
+	  map-type (get type 'associate-mapping)
+	  driver-specs (or (get type 'driver) (get (car map-type) 'driver))
+	  mirrored? (canonical-field-mirrored? associate))
+    (cond (subfields
+	   (setq drivers (nconc drivers (find-drivers-subfields subfields 'associate))))
+	  ((null driver-specs))
+	  ((atom driver-specs)
+	   (push (make-canonical-driver source associate
+					type driver-specs
+					other-parameters (driver-params nil associate)
+					mirrored? mirrored?)
+		 drivers))
+	  (t (setq drivers
+		   (nconc drivers
+			  (mapcar
+			    #'(lambda (driver-specs)
+				(make-canonical-driver
+				  type (cadr driver-specs)
+				  name (car driver-specs)
+				  source associate
+				  mirrored? mirrored?
+				  other-parameters (driver-params (cddr driver-specs)
+								  associate)))
+			    driver-specs))))))
+  drivers)
+
+(defun find-drivers-shadow (shadow &aux type map driver-specs mirrored?  drivers)
+  (setq mirrored? (canonical-field-mirrored? shadow)
+	type (canonical-field-type shadow)
+	map (get type 'associate-mapping)
+	driver-specs (or (get type 'driver) (get (car map) 'driver)))
+  (cond ((null driver-specs))
+	((atom driver-specs)
+	 (push (make-canonical-driver source shadow
+				      type driver-specs
+				      other-parameters (driver-params nil shadow)
+				      mirrored? mirrored?)
+	       drivers))
+	(t (setq drivers
+		 (nconc drivers
+			(mapcar
+			  #'(lambda (driver-specs)
+			      (make-canonical-driver
+				type (cadr driver-specs)
+				name (car driver-specs)
+				source shadow
+				mirrored? mirrored?
+				other-parameters (driver-params (cddr driver-specs)
+								shadow)))
+			  driver-specs)))))
+  drivers)
+
+
+
+
+(defstruct (driver-entry :list :conc-name)
+  type
+  (left-stretch 0)
+  (right-stretch 0)
+  mirrored?
+  (other-params nil))
+
+(local-declare ((special *drivers* *driver-types*))
+(defun get-driver (type right-stretch
+		   &optional mirrored? (left-residual 0) other-params
+		   &aux description cell (composed-xfrm 'negy) extra-xfrm)
+
+  (setq extra-xfrm (assq 'xfrm other-params))
+  (cond
+    (extra-xfrm (setq composed-xfrm (compose-unitary-transforms (cadr extra-xfrm)
+								composed-xfrm))
+		(setq other-params (remove extra-xfrm other-params))))
+  (cond (mirrored? (setq composed-xfrm (compose-unitary-transforms 'negx composed-xfrm))
+		   (setq right-stretch (+ right-stretch left-residual)
+			 left-residual 0)))
+  (setq description
+	(make-driver-entry type type right-stretch right-stretch
+			   left-stretch left-residual
+			   mirrored? mirrored?
+			   other-params other-params))
+  (cond ((setq cell (cadr (assoc description (get type 'driver-descriptor)))))
+	(t (setq cell
+		 (make-named type *me* () ()
+			     `((right-stretch ,right-stretch)
+			       (left-stretch ,left-residual)
+			       (xfrm ,composed-xfrm)
+			       (power-bus-size ,(>> driver-power-bus-size))
+			       (lower-power-bus-size ,(>> driver-lower-power-bus-size))
+			       (driver-scaling ,(>> driver-scaling))
+			       (apparent-bottom-left ,(pt 0 0))
+			       ,@other-params)
+			     () ()))
+	   (push cell *drivers*)
+	   (push (list description cell) (get type 'driver-descriptor))
+	   (if (not (memq type *driver-types*)) (push type *driver-types*))))
+  cell))
+
+
+
+;;;; seeing if default sizes fit
+
+(local-declare ((special *drivers* *driver-types*))
+(defun try-a-placement (register-file rep connection-points
+			&aux num-drivers
+			driver-widths driver-placements
+			drivers driver-rep *drivers* *driver-types*
+			driver-array h-pitch-array)
+  (unwind-protect
+    (progn
+      (setq drivers (find-drivers register-file))
+      (multiple-value (num-drivers driver-widths driver-placements)
+	(get-default-driver-sizes drivers rep connection-points))
+      (multiple-value (driver-array h-pitch-array)
+	(get-actual-placements num-drivers driver-widths driver-placements drivers)))
+    (mapc #'(lambda (type) (remprop type 'driver-descriptor)) *driver-types*))
+  (setq driver-rep
+	(replicate 'drivers uneven-row (list num-drivers)
+		   *drivers*
+		   (apparent-bottom-left (the 'apparent-top-left rep))
+		   (h-pitch-array h-pitch-array)
+		   (object-array driver-array)))
+  (place-and-route driver-rep rep connection-points num-drivers)  
+  (power-net (>> power-bus-size))))
+
+(defun get-default-driver-sizes (drivers rep connection-points
+				 &aux (number-of-drivers (1+ (length drivers))) this-width
+				 (total-width (the 'apparent-xdim rep))
+				 (total-driver-width 0)
+				 (driver-placement
+				   (make-array (list number-of-drivers) ':type ':art-q))
+				 (driver-size
+				   (make-array (list number-of-drivers) ':type ':art-q)))
+  (do ((drivers drivers (cdr drivers))
+       (index 0 (1+ index))
+       (driver-connections)
+       (tentative-placement)
+       (this-driver))
+      ((null drivers))
+    (setq this-driver (get-driver (canonical-driver-type (car drivers)) 0 nil 0
+				  (canonical-driver-other-parameters (car drivers)))
+	  this-width  (the 'apparent-xdim this-driver)
+	  driver-connections (driver-connections this-driver)
+	  tentative-placement (- (car connection-points) (car driver-connections)))
+    (setq total-driver-width (+ total-driver-width this-width))
+    (aset this-width driver-size index)
+    (aset (if (plusp tentative-placement) tentative-placement 0) driver-placement index)
+    (dolist (temp driver-connections) (pop connection-points)))
+  (cond
+    ((> total-driver-width total-width)
+     (format t "~%Total driver size = ~d Total size = ~d " total-driver-width total-width)))
+  (values number-of-drivers driver-size driver-placement)) 
+
+
+
+
+;;;; getting the actual placements
+
+(local-declare ((special available-space driver-widths))
+(defun steal-room (slot-num amount)
+  (aset (- (aref available-space slot-num) amount) available-space slot-num)))
+
+(local-declare ((special available-space))
+(defun gobble-space-if-possible (needed-room slot-num &aux space-in-slot)
+  (cond ((> (setq space-in-slot (aref available-space slot-num)) 0)
+	 (cond
+	   (( space-in-slot needed-room)
+	    (steal-room slot-num needed-room)
+	    0)
+	   ((< space-in-slot needed-room)
+	    (steal-room slot-num space-in-slot)
+	    (- needed-room space-in-slot))))
+	(t needed-room))))
+
+(local-declare ((special available-space driver-widths))
+(defun get-actual-placements (num-drivers driver-widths driver-placements drivers
+			      &aux driver-array (index 0) h-pitch-array
+			      available-space this-available
+			      needs-room clock-driver clock-index (max-available-room 0))
+  (setq available-space (make-array (list num-drivers) ':type ':art-q))
+  (dotimes (i (1- num-drivers))
+    (setq this-available
+	  (- (if (< i (- num-drivers 2))
+		 (aref driver-placements (1+ i))
+		 (>> x top-right cells))
+	     (+ (aref driver-placements i) (aref driver-widths i))))
+    (cond ((minusp this-available)
+	   (push (list i (- 0 this-available)) needs-room)
+	   (aset 0 available-space i))
+	  (t (aset this-available available-space i))))
+  (setq clock-driver (get-driver 'clock-freeze-driver 0))
+  (do ((my-drivers drivers (cdr my-drivers))
+       (index 0 (1+ index)))
+      ((null my-drivers))
+    (cond (( (aref available-space index) max-available-room)
+	   (setq max-available-room (aref available-space index))
+	   (setq clock-index index))))
+  (do ((i (1- num-drivers) (1- i)))
+      ((= i clock-index))
+    (aset (aref available-space (1- i)) available-space i)
+    (aset (aref driver-widths (1- i)) driver-widths i))
+  (aset 0 available-space clock-index)
+  (aset (the 'xdim clock-driver) driver-widths clock-index)
+  (push (list clock-index (the 'xdim clock-driver)) needs-room)
+  (setq-my clock-index clock-index)
+  (cond ((= clock-index 0) (push (make-canonical-driver type 'clock-freeze-driver) drivers))
+	(t (do ((d drivers (cdr d))
+		(i 0 (1+ i)))
+	       ((= i (1- clock-index))
+		(rplacd d
+			(cons (make-canonical-driver type 'clock-freeze-driver) (cdr d)))))))
+  (setq needs-room (sortcar needs-room #'<))
+  (do ((entry needs-room (cdr entry))
+       (needed-room)
+       (index))
+      ((null entry))
+    (setq index (caar entry) needed-room (cadar entry))
+    (do ((j 1 (1+ j)))
+	(( j num-drivers))
+      (if (< (+ index j) num-drivers)
+	  (if (= 0 (setq needed-room
+			 (gobble-space-if-possible needed-room (+ index j))))
+	      (return t)))
+      (if ( (- index j) 0)
+	  (if (= 0 (setq needed-room
+			 (gobble-space-if-possible needed-room (- index j))))
+	      (return t)))
+      (if (= needed-room 0) (return t))))
+  (setq driver-array (make-array (list  num-drivers) ':type ':art-q)
+	h-pitch-array (make-array (list num-drivers) ':type ':art-q))
+  (setq index 0)
+  (do ((my-drivers drivers (cdr my-drivers))
+       (placement 0) (spacing 0)
+       (this-driver)
+       (mirrored?)
+       (index 0 (1+ index)))
+      ((null my-drivers))
+    (setq this-driver (car my-drivers)
+	  mirrored? (canonical-driver-mirrored? this-driver)
+	  spacing (aref available-space index))
+    (setf (canonical-driver-index this-driver) index)
+    (setq this-driver
+	  (get-driver (canonical-driver-type this-driver) spacing mirrored? 0
+		      (canonical-driver-other-parameters this-driver)))
+    (aset this-driver driver-array index)
+    (aset placement h-pitch-array index)
+    (setq placement (+ placement (the 'apparent-xdim this-driver))))
+  (values driver-array h-pitch-array)))
+
+
+
+(defun place-and-route (driver-rep cells-rep connection-points number-of-drivers
+			&aux driver-connection-points channel-size nets)
+  (do ((i 0 (1+ i))
+       (driver))
+      ((= i number-of-drivers))
+    (setq driver (the (*rep i 0) driver-rep))
+    (setq driver-connection-points
+	  (append (driver-connections driver) driver-connection-points)))
+  (setq driver-connection-points (sort driver-connection-points #'<))
+  (setq-my driver-connections driver-connection-points)
+  (multiple-value (channel-size nets)
+    (determine-channel-size driver-connection-points connection-points))
+  (move-instance driver-rep (pt 0 0) (pt 0 channel-size))
+  (route-nets nets driver-rep cells-rep))
+
+
+(defun driver-connections (driver &aux type-name connection-names repeated-connections
+			   answers)
+  (setq type-name (type-name (the 'type driver))
+	connection-names (get type-name 'contacts)
+	repeated-connections (get type-name 'repeated-contacts))
+  (dolist (repeater repeated-connections)
+    (do ((index 0 (1+ index))
+	 (num-contacts (the (car repeater) driver))
+	 (locals nil)
+	 (count 0)
+	 (this-driver))
+	(( count num-contacts))
+      (setq this-driver (the (*rep index) (the (cadr repeater) driver)))
+      (dolist (name (cddr repeater))
+	(push (x-of-pt
+		(the 'apparent-bottom-center
+		     (if (atom name)
+			 (the name this-driver)
+			 (let ((*me* this-driver)) (eval name)))))
+	      locals)
+	(setq count (1+ count))
+	(cond
+	  (( count num-contacts)
+	   (setq locals (sort locals #'>))
+	   (setq answers (nconc answers locals))
+	   (return answers))))))
+  (nconc answers
+	 (mapcar #'(lambda (name)
+		     (x-of-pt
+		       (the 'apparent-bottom-center
+			    (if (atom name)
+				(the name driver)
+				(let ((*me* driver)) (eval name))))))
+		 connection-names)))
+
+(defun determine-channel-size (tops bottoms &aux this-block parity this-parity
+			       blocks furthest nearest (biggest 0) this-count)
+  (do ((s1 (cdr tops) (cdr s1))
+       (p1 (car tops) (car s1))
+       (s2 (cdr bottoms) (cdr s2))
+       (p2 (car bottoms) (car s2)))
+      ((null p1)
+       (if (eq parity 'right) (setq this-block (nreverse this-block)))
+       (push (cons parity (nreverse this-block)) blocks)
+       (setq blocks (nreverse blocks)))
+    (if (> p1 p2)
+	(setq this-parity 'right)
+	(setq this-parity 'left))
+    (setq nearest (min p1 p2))
+    (cond ((null parity)
+	   (setq parity this-parity)
+	   (setq furthest (max p2 p1))
+	   (setq this-block (list (list p1 p2))))
+	  ((neq this-parity parity)
+	   (if (eq parity 'right) (setq this-block (nreverse this-block)))
+	   (push (cons parity (nreverse this-block)) blocks)
+	   (setq parity this-parity)
+	   (setq this-block (list (list p1 p2)) furthest (max p2 p1)))
+	  ((> nearest (+ *poly-to-poly* (// *min-poly-size* 2.0) furthest))
+	   (if (eq parity 'right) (setq this-block (nreverse this-block)))
+	   (push (cons parity (nreverse this-block)) blocks)
+	   (setq this-block (list (list p1 p2))
+		 furthest (max p2 p1)))
+	  (t (push (list p1 p2) this-block)
+	     (setq furthest (max p1 p2)))))
+  (dolist (block blocks)
+    (setq this-count (greedy-route block))
+    (if (> this-count biggest)
+	(setq biggest this-count)))
+  (values biggest (nreverse blocks)))
+
+
+(defun greedy-route (block &optional (do-it nil) (top 0) (bottom 0)
+		     &aux (direction (car block)) (pairs (cdr block)))
+  (selectq direction
+    (left (greedy-route-left pairs do-it top bottom))
+    (right (greedy-route-right pairs do-it top bottom))))
+
+(defun greedy-route-left (pairs &optional (do-it nil) (top 0) (bottom 0)
+			  &aux  height last-route source target this-route)
+  (setq source (pt (caar pairs) top)
+	target (pt (cadar pairs) (+ bottom (half *min-poly-size*) *poly-to-poly*)))
+  (setq height (y-of-pt target))
+  (setq last-route (list source target))
+  (if do-it
+      (wire () (run-layer 'poly) (from source)
+	    (jog-y target)
+	    (to-y (pt-below target (+ (half *min-poly-size*) *poly-to-poly*)))))
+  (dolist (pair (cdr pairs))
+    (setq source (pt (car pair) top)
+	  target (pt (cadr pair) (+ bottom (half *min-poly-size*) *poly-to-poly*)))
+    (setq this-route nil)
+    (setq last-route
+	  (do ((l last-route (cdr l)))
+	      ((null l) )
+	    (if (> (+ (x-of-pt (car l)) *min-poly-size* *poly-to-poly*) (x-of-pt source))
+		(return l))))
+    (if (not do-it)
+	(dolist (next-jog last-route)
+	    (setq height
+		  (max (+ (y-of-pt next-jog) *min-poly-size* *poly-to-poly*) height))
+	    (push (pt (+ (x-of-pt next-jog) *min-poly-size* *poly-to-poly*)
+		      (+ (y-of-pt next-jog) *min-poly-size* *poly-to-poly*))
+		  this-route)))
+    (if do-it
+	(wire nil (run-layer 'poly)
+	      (from source)
+	      (dolist (next-jog last-route)
+		(push (pt (+ (x-of-pt next-jog) *min-poly-size* *poly-to-poly*)
+			  (+ (y-of-pt next-jog) *min-poly-size* *poly-to-poly*))
+		      this-route)
+		(jog-y (pt (+ (x-of-pt next-jog) *min-poly-size* *poly-to-poly*)
+			   (+ (y-of-pt next-jog) *min-poly-size* *poly-to-poly*))))
+	      (jog-y target)
+	      (to-y (pt-below target (+ (half *min-poly-size*) *poly-to-poly*)))))
+    (push target this-route)
+    (setq last-route (nreverse this-route)))
+  (+ height (half *min-poly-size*) *poly-to-poly*))
+
+(defun greedy-route-right (pairs &optional (do-it nil) (top 0) (bottom 0)
+			  &aux  height last-route source target this-route)
+  (setq source (pt (caar pairs) top)
+	target (pt (cadar pairs) (+ bottom (half *min-poly-size*) *poly-to-poly*)))
+  (setq height (y-of-pt target))
+  (setq last-route (list source target))
+  (if do-it
+      (wire () (run-layer 'poly) (from source)
+	    (jog-y target)
+	    (to-y (pt-below target (+ (half *min-poly-size*) *poly-to-poly*)))))
+  (dolist (pair (cdr pairs))
+    (setq source (pt (car pair) top)
+	  target (pt (cadr pair) (+ bottom (half *min-poly-size*) *poly-to-poly*)))
+    (setq this-route nil)
+    (setq last-route
+	  (do ((l last-route (cdr l)))
+	      ((null l) )
+	    (if (< (- (x-of-pt (car l)) *min-poly-size* *poly-to-poly*) (x-of-pt source))
+		(return l))))
+    (if (not do-it)
+	(dolist (next-jog last-route)
+	    (setq height
+		  (max (+ (y-of-pt next-jog) *min-poly-size* *poly-to-poly*) height))
+	    (push (pt (- (x-of-pt next-jog) *min-poly-size* *poly-to-poly*)
+		      (+ (y-of-pt next-jog) *min-poly-size* *poly-to-poly*))
+		  this-route)))
+    (if do-it
+	(wire nil (run-layer 'poly)
+	      (from source)
+	      (dolist (next-jog last-route)
+		(push (pt (- (x-of-pt next-jog) *min-poly-size* *poly-to-poly*)
+			  (+ (y-of-pt next-jog) *min-poly-size* *poly-to-poly*))
+		      this-route)
+		(jog-y (pt (- (x-of-pt next-jog) *min-poly-size* *poly-to-poly*)
+			   (+ (y-of-pt next-jog) *min-poly-size* *poly-to-poly*))))
+	      (jog-y target)
+	      (to-y (pt-below target (+ (half *min-poly-size*) *poly-to-poly*)))))
+    (push target this-route)
+    (setq last-route (nreverse this-route)))
+  (+ height (half *min-poly-size*) *poly-to-poly*)) 
+
+(defun route-nets (nets driver-rep cells-rep &aux driver-height cells-height)
+  (setq driver-height (y-of-pt (the 'apparent-bottom-left driver-rep))
+	cells-height (y-of-pt (the 'apparent-top-left cells-rep)))
+  (mapc #'(lambda (net) (greedy-route net t driver-height cells-height)) nets))
+
+
+
+
+
+
+;;;; putting down power and ground network and bus jumpers
+
+(defun power-net (power-line-size &aux (left-power? (>> left-power?))
+		  right-extreme array-height right-gap-size left-gap-size
+		  right-power-x right-power-extra-stretch
+		  left-jumper-array right-jumper-array
+		  (first-hit-left 0) (first-hit-right 0))
+  (setq array-height (- (>> y apparent-top-right drivers) (>> y apparent-bottom-right cells)))
+  (setq right-extreme (1- (>> number-of-columns)))
+  (setq right-power-x (max (>> x apparent-top-right drivers) (>> x apparent-top-right cells))
+ 	right-power-extra-stretch (- right-power-x (>> x apparent-top-right cells) 6))
+  (cond ((symbolp (>> left-jumpers?)) (setq left-jumper-array t))
+ 	(t (setq left-jumper-array (make-array (list (>> number-of-rows)) ':type ':art-1b))
+	   (setq first-hit-left (car (>> left-jumpers?)))
+	   (dolist (bit (>> left-jumpers?))
+	     (aset 1 left-jumper-array bit))))
+  (cond ((symbolp (>> right-jumpers?)) (setq right-jumper-array t))
+ 	(t (setq right-jumper-array (make-array (list (>> number-of-rows)) ':type ':art-1b))
+	   (setq first-hit-right (car (>> right-jumpers?)))
+	   (dolist (bit (>> right-jumpers?))
+	     (aset 1 right-jumper-array bit))))
+  (conditional-replicate (>> left-jumpers?)
+     'left-bus-jumper uneven-bit-patterned-single-instance-column
+     (list (>> number-of-rows))
+     (list (make-named 'power-jumper *me* () ()
+             `((bus-space ,power-line-size)
+	       (layer ,(>> left-power-jumper-layer))
+	       (right-cut? ,(>> left-power-jumper-cut))
+	       (bridge? ,(>> left-power-jumper-bridge))
+	       (xfrm ,(compose-unitary-transforms 'negx 'negy)))
+	     nil nil))
+     (bit-pattern-array left-jumper-array)
+     (v-pitch-array (>> v-pitch-array cells))
+     (xfrm 'negy))
+  (align (>> left-bus-jumper)
+	 (>> bus-connection (*rep first-hit-left) left-bus-jumper)
+	 (>> apparent-center-left bus (*rep 0 0) cells))
+  (conditional-replicate (>> right-jumpers?)
+     'right-bus-jumper uneven-bit-patterned-single-instance-column (list (>> number-of-rows))
+     (list (make-named 'power-jumper *me* () ()
+	     `((bus-space ,(+ power-line-size (if (plusp right-power-extra-stretch)
+						  right-power-extra-stretch
+						0)))
+	       (layer ,(>> right-power-jumper-layer))
+	       (right-cut? ,(>> right-power-jumper-cut))
+	       (bridge? ,(>> right-power-jumper-bridge))
+	       (xfrm negy))
+	     nil nil))
+     (bit-pattern-array right-jumper-array)
+     (v-pitch-array (>> v-pitch-array cells))
+     (xfrm 'negy))
+  (align (>> right-bus-jumper)
+	 (>> bus-connection (*rep first-hit-right) right-bus-jumper)
+	 (>> apparent-center-right bus (*rep right-extreme 0) cells))
+  (part 'left-power-bus rectangle (layer 'metal)
+	(width power-line-size) (length array-height)
+	(top-left (pt (x-of-pt (>> bus-space-right (*rep first-hit-left) left-bus-jumper))
+		      (y-of-pt (>> apparent-top-right drivers)))))
+  (part 'right-power-bus rectangle (layer 'metal)
+	(width power-line-size) (length array-height)
+	(top-right (pt (>> x bus-space-right (*rep first-hit-right) right-bus-jumper)
+		      (>> y apparent-top-right drivers))))
+  (cond (left-power? (setq-my vdd (>> left-power-bus))
+		     (setq-my gnd (>> right-power-bus)))
+	(t (setq-my gnd (>> left-power-bus))
+	   (setq-my vdd (>> right-power-bus))))
+  (replicate 'left-power-connection uneven-single-instance-column (list (>> number-of-rows))
+	     (list (make-named 'rectangle *me* () ()
+			       `((layer metal)
+				 (length ,(+ 3 (>> cell-power-bus-stretch)))
+				 (width ,(- (>> x top-left cells)
+					    (>> x top-right left-power-bus))))
+			       nil nil))
+	     (v-pitch-array (>> v-pitch-array cells))
+	     (xfrm 'negy)
+	     ((>> center-right (*rep 0 0))
+	      (>> apparent-center-left (if left-power? 'vdd 'gnd) (*rep 0 0) cells)))
+  (replicate 'right-power-connection uneven-single-instance-column (list (>> number-of-rows))
+	     (list (make-named 'rectangle *me* () ()
+			       `((layer metal)
+				 (length ,(+ 3 (>> cell-power-bus-stretch)))
+				 (width ,(- (>> x top-left right-power-bus)
+					    (>> x top-right cells))))
+			       nil nil))
+	     (v-pitch-array (>> v-pitch-array cells))
+	     (xfrm 'negy)
+	     ((>> center-left (*rep 0 0))
+	      (>> apparent-center-right (if left-power? 'gnd 'vdd)
+		  (*rep right-extreme 0) cells)))
+  (setq right-gap-size (- (>> x top-left right-power-bus) (>> x top-right drivers))
+	left-gap-size (- (>> x top-left drivers) (>> x top-right left-power-bus)))
+  (dolist (name '(vdd-1 vdd-2 vdd-3 vdd-4 vdd-5))
+    (let ((typical-part  (the name (>> (*rep 0 0) drivers))))
+      (let ((height (the 'apparent-ydim typical-part))
+	    (y-of-bottom (the 'y (the 'apparent-bottom-right typical-part))))
+	(cond
+	  (left-power?
+	   (part () rectangle (layer 'metal) (length height) (width left-gap-size)
+		 (bottom-right (pt (>> x top-left drivers) y-of-bottom))))
+	  (t (part () rectangle (layer 'metal) (length height) (width right-gap-size)
+		   (bottom-left (pt (>> x top-right drivers) y-of-bottom))))))))
+  (dolist (name '(gnd-1 gnd-2 gnd-3 gnd-4 gnd-5))
+    (let ((typical-part  (the name (>> (*rep 0 0) drivers))))
+      (let ((height (the 'apparent-ydim typical-part))
+	    (y-of-bottom (the 'y (the 'apparent-bottom-right typical-part))))
+	(cond
+	  ((not left-power?)
+	   (part () rectangle (layer 'metal) (length height) (width left-gap-size)
+		 (bottom-right (pt (>> x top-left drivers) y-of-bottom))))
+	  (t (part () rectangle (layer 'metal) (length height) (width right-gap-size)
+		   (bottom-left (pt (>> x top-right drivers) y-of-bottom)))))))))
+
+
+;;;; an accessor to fetch drivers by name
+
+(defun field-has-name (name field) (equal (canonical-field-name field) name))
+
+(defun (*reg-driver the-extractor) (ident thing
+				    &aux (driver-name (cadr ident))
+				    (full-path (caddr ident)) driver-entry)
+  (cond ((neq (type-name (the 'type thing)) 'register-file)
+	 (error "Attempting to find driver connection of non register-file"
+		thing 'fail-act))
+	(t (do ((path (cddr full-path) (cdr path))
+		(current (cadr full-path) (car path))
+		(object (car (mem #'field-has-name
+				  (car full-path)
+				  (the 'canonical-description thing)))))
+	       ((null path)
+		(cond
+		  ((setq driver-entry (assq driver-name
+					    (canonical-field-drivers object)))
+		   (the (*rep (canonical-driver-index driver-entry))
+			(the 'drivers thing)))
+		  (t (ferror 'fail-act "~%No driver named ~a for object ~a of ~a"
+			     driver-name (reverse full-path) thing))))
+	     (setq object
+		   (or (car (mem #'field-has-name
+				  current (canonical-object-subfields object)))
+		       (car (mem #'field-has-name
+				 current (canonical-reg-associates object)))))))))
+
+(defun *reg-driver (&quote &rest foo)
+  `(*reg-driver ,(car foo) ,(reverse (cdr foo))))
+
+;;; accessor to get a particular cell of the array
+(defun (*reg-cell the-extractor) (ident thing &aux (path (cdr ident)))
+  (cond ((neq (type-name (the 'type thing)) 'register-file)
+	 (error "Attempting to find driver connection of non register-file" thing
+		'fail-act))
+	(t (do ((path (cddr path) (cdr path))
+		(current (cadr path) (car path))
+		(object (car (mem #'field-has-name
+				  (car path) (the 'canonical-description thing)))))
+	       ((null path)
+		(the (*rep (canonical-field-index object) current)
+		     (the 'cells thing)))
+	     (setq object
+		   (or (car (mem #'field-has-name current
+			    (canonical-object-subfields object)))
+		       (car (mem #'field-has-name current
+			    (canonical-reg-associates object)))))))))
+
+(defun *reg-cell (first &quote &rest foo) `(*reg-cell ,@(reverse foo) ,first))
+
+
+
+
+
+;;;; adding node names for baker node extractor and terman simulator
+
+(defun smashify (frob &aux ans)
+  (cond ((atom frob) (setq ans frob))
+	(t (setq ans (smashify (car frob)))
+	   (dolist (thing (cdr frob))
+	     (setq ans
+		   (if (atom thing)
+		       (smash ans thing)
+		       (smash ans (smashify thing)))))))
+  ans)
+	
+(defvar connection-groups-to-bnode
+	'(left-external-bus right-external-bus right-bus internal-control))
+
+(defun add-the-bnodes (&aux (connection-points (>> connection-points)) type)
+  (dolist (group connection-points)
+    (cond
+      ((not (memq (car group) connection-groups-to-bnode)))
+      (t (setq type (if (memq (car group) '(power clock input)) 'input 'normal))
+	 (dolist (entry (cdr group))
+	   (bnode (smashify (car entry)) (cadr entry) (caddr entry) type))))))
+
+
+
+(defun add-the-connection-points (register-file
+		       &aux drivers name subfields associates outputs register-type map-type
+		       shadow)
+  (setq-my connection-points *unassigned*)
+  (dolist (register register-file shadow)
+    (setq name (list (canonical-field-name register))
+	  register-type (canonical-field-type register)
+	  map-type (get register-type 'register-mapping)
+	  associates (canonical-reg-associates register)
+	  shadow (canonical-reg-shadowed? register)
+	  subfields (canonical-object-subfields register)
+	  outputs (canonical-field-output-wires register)
+	  drivers (canonical-field-drivers register))
+    (connection-point-outputs outputs name)
+    (connection-point-drivers drivers  name (or (get map-type 'external-control-names)
+				     (get register-type 'external-control-names)))
+    (dolist (subfield subfields) (connection-point-subfield subfield name 'register))
+    (if shadow (connection-point-shadow shadow name))
+    (dolist (associate associates) (connection-point-associate associate name)))
+  (let ((maxx (1- (car (>> max-dims cells))))
+	(number-of-y (cadr (>> max-dims cells)))
+	(right-bus-jumper (>> right-bus-jumper))
+	(left-bus-jumper (>> left-bus-jumper))
+	temp)
+    (dotimes (j number-of-y)
+      (connection-point (list 'left-bus j)
+			(>> apparent-center-left bus (*rep 0 j) cells)
+			'metal
+			'left-bus))
+    (dotimes (j number-of-y)
+      (connection-point (list 'right-bus j)
+			(>> apparent-center-right bus (*rep maxx j) cells)
+			'metal
+			'right-bus))
+    (if (>> left-jumpers?)
+	(dotimes (i number-of-y)
+	  (if (setq temp (the (*rep i) left-bus-jumper))
+	      (connection-point (list 'left-external-bus i)
+				(the 'apparent-center-left temp)
+				'metal
+				'left-external-bus))))
+    (if (>> right-jumpers?)
+	(dotimes (i number-of-y)
+	  (if (setq temp (the (*rep i) right-bus-jumper))
+	      (connection-point (list 'right-external-bus i)
+				(the 'apparent-center-right temp)
+				'metal
+				'right-external-bus)))))
+  (let ((clock-driver (>> (*rep (>> clock-index)) drivers)))
+    (connection-point 'phi1 (the 'center (the 'phi-1-in clock-driver)) 'poly 'clock)
+    (connection-point 'phi2 (the 'center (the 'phi-2-in clock-driver)) 'poly 'clock)
+    (connection-point 'freeze (the 'center (the 'freeze-in clock-driver)) 'poly 'clock))
+  (connection-point 'vdd-node (>> center vdd) 'metal 'power)
+  (connection-point 'gnd-node (>> center gnd) 'metal 'power)
+  ;;; this is a hack to allow easier initialization of chris terman's simulator
+  (let ((y (>> y apparent-bottom-center drivers)))
+    (remprop 'internal-control-line 'symbol-number)
+    (dolist (conn (>> driver-connections))
+      (connection-point (make-new-symbol 'internal-control-line)
+			(pt conn y) 'poly 'internal-control))))
+
+(defun connection-point-subfield (subfield parent-name register?
+		       &aux drivers name outputs register-type map-type
+		       composed-name)
+  (setq name (canonical-field-name subfield)
+	composed-name (cons name parent-name)
+	register-type (canonical-field-type subfield)
+	map-type (get register-type (if register? 'register-mapping 'associate-mapping))
+	outputs (canonical-field-output-wires subfield)
+	drivers (canonical-field-drivers subfield))
+  (connection-point-outputs outputs composed-name)
+  (connection-point-drivers drivers composed-name (or (get map-type 'external-control-names)
+					   (get register-type 'external-control-names))))
+
+(defun connection-point-associate (associate parent-name
+		       &aux drivers name outputs register-type map-type
+		       composed-name subfields)
+  (setq name (canonical-field-name associate)
+	composed-name (cons name parent-name)
+	register-type (canonical-field-type associate)
+	map-type (get register-type 'associate-mapping)
+	subfields (canonical-object-subfields associate)
+	outputs (canonical-field-output-wires associate)
+	drivers (canonical-field-drivers associate))
+  (connection-point-outputs outputs composed-name)
+  (connection-point-drivers drivers composed-name (or (get map-type 'external-control-names)
+					   (get register-type 'external-control-names)))
+  (dolist (subfield subfields) (connection-point-subfield subfield composed-name 'associate)))
+
+(defun connection-point-shadow (shadow parent-name &aux drivers name register-type
+				composed-name)
+  (setq name 'shadow
+	composed-name (cons name parent-name)
+	register-type 'shadow-register
+	drivers (canonical-field-drivers shadow))
+  (connection-point-drivers drivers composed-name nil))
+ 
+(defun connection-point-outputs (outputs name)
+  (dolist (output outputs)
+    (cond ((replication? (cadr output))
+	   (dotimes (i (car (the 'max-dims (cadr output))))
+	     (connection-point (cons (list (car output) i) name)
+		    (the 'center (the (*rep i) (cadr output)))
+		    'poly
+		    'output)))
+	  (t
+	   (connection-point (cons (car output) name)
+			     (bottom-connection-point (cadr output))
+			     'poly
+			     'output)))))
+
+
+(defun connection-point-drivers (drivers parent-name external-control-names
+				 &aux already-done the-driver driver-type driver-name
+				 control-path driver-input-names driver-repeated-input-names
+				 this-point repeater driver-contact-name points)
+  (if drivers
+      (dolist (external-name external-control-names)
+	(setq control-path (cadr external-name)
+	      driver-name (caddr control-path)
+	      driver-contact-name (cadr control-path)
+	      the-driver (the (*rep (canonical-driver-index (assq driver-name drivers)))
+			      (>> drivers)))
+	(push (setq this-point (the 'center (the driver-contact-name the-driver)))
+	      already-done)
+	(connection-point (cons (car external-name) parent-name) this-point 'poly 'input)))
+  (dolist (driver drivers)
+    (setq the-driver (the (*rep (canonical-driver-index driver)) (>> drivers))
+	  driver-type (type-name (the 'type the-driver))
+	  driver-input-names (get driver-type 'input-names)
+	  driver-repeated-input-names (get driver-type 'repeated-input-names))
+    (dolist (input-name driver-input-names)
+      (setq this-point (the 'center (the input-name the-driver)))
+      (if (not (member this-point already-done))
+	  (connection-point (cons input-name parent-name) this-point 'poly 'input)))
+    (dolist (repeated-input-name driver-repeated-input-names)
+      (setq repeater (cadr repeated-input-name) points nil)
+      (do ((index 0 (1+ index))
+	   (num-contacts (the (car repeater) the-driver))
+	   (count 0)
+	   (this-driver))
+	  (( count num-contacts))
+	(setq this-driver (the (*rep index) (the (cadr repeater) the-driver)))
+	(dolist (name (cddr repeater))
+	  (if ( count num-contacts) (return nil))
+	  (push (the 'apparent-top-center
+		     (if (atom name)
+			 (the name this-driver)
+			 (let ((*me* this-driver)) (eval name)))) points)
+	  (setq count (1+ count))))
+      (setq points (sort points #'(lambda (p1 p2) (< (x-of-pt p1) (x-of-pt p2)))))
+      (do ((i 0 (1+ i))
+	   (pts points (cdr pts)))
+	  ((null pts))
+	(connection-point (cons (list (car repeated-input-name) i) parent-name)
+			  (car pts)
+			  'poly 'input)))))
+
+
+(defun connection-point (name point layer type &aux cell sub-list)
+  (setq cell (find-local-bind 'connection-points *me*))
+  (if (not (assigned? cell)) (assign cell nil))
+  (cond ((setq sub-list (assq type (contents cell))))
+	(t (setq sub-list (list type))
+	   (assign cell (cons sub-list (contents cell)))))
+  (push (list name point layer) (cdr sub-list)))
+
+
+;;; REGISTER-FILE-*PATH-PROCESSOR
+;;; Format of arg:
+;;; (layer grp path)
+;;; layer is optional
+;;; grp gives the subgroup of the connection list
+;;; and path is assoc'd into that list.
+;;; eg: (>> (*path '(input (read type-source))) main-regs)
+
+(defun register-file-*path-processor (*me* arg)
+  (let ((layer? nil) grp-name path grp sbgrp)
+    (if (eq (car arg) 'layer)
+	(setq layer? t grp-name (cadr arg) path (caddr arg))
+	(setq grp-name (car arg) path (cadr arg)))
+    (if (null (setq grp (assq grp-name (cdr (the 'connection-points *me*)))))
+	(error "Unknown group" grp-name))
+    (if (null (setq sbgrp (assoc path (cdr grp))))
+	(error "Unknown subgroup" (list grp-name path)))
+    (if layer?
+	(caddr sbgrp)
+	(cadr sbgrp))))
+p-n
