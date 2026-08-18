@@ -1,0 +1,19 @@
+
+Main regs current = 75.88500094 milli-amps
+Main regs power = 0.3794250046 watts
+Main regs minimum power bus size = 37.94250047 lambda
+Main regs actual power bus size = 50 lambda
+
+Next state current = 4.724999998 milli-amps
+Next state power = 0.023625 watts
+Next state minimum power bus size = 2.362499997 lambda
+Next state actual power bus size = 16 lambda
+
+Uargs current = 7.32 milli-amps
+Uargs power = 0.0366 watts
+Uargs minimum power bus size = 3.66 lambda
+Uargs actual power bus size = 16 lambda
+
+Total current  = 87.93000096 milli-amps
+Total power  = 0.4396500045 watts
+Total power bus size = 43.96500045

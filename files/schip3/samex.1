@@ -1,0 +1,52 @@
+;;; -*- mode: LISP -*-
+
+(defun equal-except (state1 state2)
+  (let ((op1 (get state1 'control-operations))
+	(op2 (get state2 'control-operations)))
+    (and
+      (subset-except op1 op2)
+      (subset-except op2 op1))))
+
+(defun subset-except (l1 l2)
+  (not
+    (dolist (l l1)
+      (if (not (member-except l l2))
+	  (return t)))))
+
+(defconst *interesting-fields*
+	'(
+	  true-explicit-ns false-explicit-ns pc-explicit-ns
+	  arg1-data arg2-data target-data
+	  predicate-select op-decoder constant-source))
+
+(defun member-except (mem list)
+  (or (memq (cadr mem) *interesting-fields*)
+      (member mem list)))
+
+(defvar *same-except*)
+
+(defun merge-same-except ()
+  (setq *same-except* nil)
+  (let ((memlist))
+    (dolist (state *code-states*)
+      (setq memlist (mem #'(lambda (item list)
+			     (mem #'equal-except item list))
+			 state
+			 *same-except*))
+      (if (null memlist)
+	  (push (list state) *same-except*)
+	  (push state (car memlist))))))
+
+(defun print-except (list-of-states &optional (stream standard-output))
+  (print list-of-states stream)
+  (dolist (op (get (car list-of-states) 'control-operations))
+    (if (not (memq (cadr op) *interesting-fields*))
+	(:sprinter op stream))))
+
+(defun print-all-same-except ()
+  (let ((stream (zwei:make-output-buffer 'same-except)))
+    (unwind-protect
+      (dolist (ll *same-except*)
+	(print-except ll stream)
+	(terpri stream) (terpri stream))
+      (close stream))))

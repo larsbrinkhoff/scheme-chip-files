@@ -1,0 +1,268 @@
+;;; -*- package: DPL; mode: LISP -*-
+
+;;; code for generating simulation documentation
+
+;;;; Control PLA documentation
+
+(defun find-tail (tail state &optional (error t))
+  (or (find-op (get state 'control-operations) tail)
+      (if error (error "Unfound tail" (list tail state)))))
+
+(defun print-tail (stream tail state coder title)
+  (let ((tt (find-tail tail state nil)))
+    (if tt (progn
+	     (format stream "~&")
+	     (format stream title)
+	     (format stream "~20T~3O" (funcall coder tt))))))
+
+(defun print-state-code-info (state &optional (stream t))
+  (let ((base 8.))
+    (format stream "~&~3O~20T~A" (state-code-number state) state)
+    (if (get state 'entry-point)
+	(format stream "~30T~A" (get state 'entry-point)))
+    (print-tail stream 'predicate-select state 'pred-code "Predicate")
+    (let ((ts (find-tail 'true-explicit-ns state nil))
+	  (fs (find-tail 'false-explicit-ns state nil))
+	  (ps (find-tail 'pc-explicit-ns state nil)))
+      (if ts (format stream "~&True-NS: ~20T~3O ~30T~A" 
+		     (state-code-number (state-code-code ts))
+		     (state-code-code ts)))
+      (if fs (format stream "~&False-NS: ~20T~3O ~30T~A" 
+		     (state-code-number (state-code-code fs))
+		     (state-code-code fs)))
+      (if ps (format stream "~&PC-NS: ~20T~3O ~30T~A" 
+		     (state-code-number (state-code-code ps))
+		     (state-code-code ps))))
+      (print-tail stream 'op-decoder state 'op-decoder-code "Op-code")
+      (print-tail stream 'non-uarg-register-operations state 'non-uarg-code
+		  "Non-uarg-op")
+      (print-tail stream 'constant-source state 'constant-code "Constant")
+      (print-tail stream 'arg1-data state 'uarg-code "Arg1-data")
+      (print-tail stream 'arg2-data state 'uarg-code "Arg2-data")
+      (print-tail stream 'target-data state 'uarg-code "Target-data")
+      (format stream "~&Read-source: ~20T~A" (find-tail 'read-source state))
+      (print-tail stream 'explicit-read-uarg state 'uarg-code "Explicit read")
+      (format stream "~&Load-source: ~20T~A" (find-tail 'load-source state))
+      (print-tail stream 'explicit-load-uarg state 'uarg-code "Explicit load")
+    (dolist (f (get state 'control-operations))
+      (dolist (p '(random-signals gc-flags memory-wait))
+	(if (eq (car (last f)) p)
+	    (print f stream))))))
+
+(defun sort-code-states-by-number ()
+  (setq *code-states*
+	(sort *code-states*
+	      #'(lambda (x y)
+		  (< (state-code-number x) (state-code-number y))))))
+
+(defun print-all-state-code-info ()
+  (let ((stream (make-counting-stream (zwei:make-output-buffer 'code-state-info))))
+    (unwind-protect
+      (progn
+	(format stream ";;;; Control PLA programming")
+	(dolist (state *code-states*)
+	  (if (> (funcall stream ':get-count) 50.)
+	      (format stream "~%~|"))
+	  (terpri stream) (terpri stream) (terpri stream)
+	  (print-state-code-info state stream)))
+      (close stream))))
+
+
+
+;;;; State code cref
+
+(defvar *all-code-list*)
+
+(defun make-all-code-list ()
+  (let ((ll ()))
+    (dolist (m *merged-states*)
+      (dolist (l m) (push l ll)))
+    (setq *all-code-list* (sort ll #'alphalessp))))
+
+(defun find-entry-points (state)
+  (let ((ml (car (mem #'memq state *merged-states*)))
+	(el ()))
+    (dolist (l ml)
+      (if (not (null (get l 'entry-point)))
+	  (setq el (cons-new (get l  'entry-point) el))))
+    el))
+
+(defun print-state-cref (state &optional (stream t))
+  (format stream "~&~A  ~3O;" state (state-code-number state))
+  (if (null (get state 'state-code))
+      (format stream " Merged with: ~A;" (state-code-code state)))
+  (let ((ll (find-entry-points state)))
+    (cond ((null ll))
+	  ((= (length ll) 1)
+	   (format stream " Entry-point: ~A" (car ll)))
+	  (t
+	   (format stream " Entry-points:")
+	   (dolist (l ll) (format stream " ~A" l))))))
+
+(defun print-all-states-cref ()
+  (let ((stream (make-counting-stream
+		  (zwei:make-output-buffer 'state-cref))))
+    (unwind-protect
+      (progn
+	(format stream ";;;; State cref")
+	(terpri stream) (terpri stream)
+	(dolist (state *all-code-list*)
+	  (if (> (funcall stream ':get-count) 60.)
+	      (format stream "~%~|~%"))
+	  (print-state-cref state stream)))
+      (close stream))))
+
+
+;;;; counting stream
+
+(defflavor counting-stream
+	(stream (count 0) (fresh-line? t) (cursorpos 0))
+	()
+  :initable-instance-variables)
+
+(defun make-counting-stream (stream)
+  (:make-instance 'counting-stream ':stream stream))
+		
+(defmethod (counting-stream :set-count) (val) (setq count val))
+(defmethod (counting-stream :get-count) () count)
+
+(defmethod (counting-stream :read-cursorpos) (op)
+  (if (eq op ':character)
+      cursorpos
+    (error "I don't handle that kind of cursorpos." op)))
+
+(defmethod (counting-stream :set-cursorpos)
+	   (x y &optional (units ':character))
+  (if (null y) (setq y count))
+  (if (eq units ':character)
+      (progn
+	(funcall stream ':set-cursorpos x y ':character)
+	(setq count y cursorpos x))
+    (error "I don't handle that kind of cursorpos." units)))
+
+(defmethod (counting-stream :tyo) (char)
+  (selectq char
+    (#\return (incf count)
+     (setq fresh-line? t)
+     (setq cursorpos 0))
+    (#\page (setq count 0))
+    (#\line (incf count))
+    (t (incf cursorpos)
+       (setq fresh-line? nil)))
+  (funcall stream ':tyo char))
+
+(defmethod (counting-stream :fresh-line) ()
+  (if (not fresh-line?) (funcall-self ':tyo #\return)))
+
+(defmethod (counting-stream :string-out)
+       (string &optional (start 0) end)
+  (if (null end) (setq end (string-length string)))
+  (let ((index 0))
+    (:forever
+      (setq index (string-search-set '(#\return #\page #\line) string start end))
+      (cond ((null index)
+	     (funcall stream ':string-out string start end)
+	     (setq cursorpos (+ cursorpos (- end start)))
+	     (setq fresh-line? nil)
+	     (return t))
+	    (t
+	     (funcall stream ':string-out string start index)
+	     (setq cursorpos (+ cursorpos (- index start)))
+	     (funcall-self ':tyo (aref string index))))
+      (setq start (1+ index)))))
+
+(defmethod (counting-stream :close) (&rest ignore) (close stream))
+
+
+
+;;;; printing code tables
+
+(defun print-code-table (table title)
+  (let ((stream (make-counting-stream
+		  (zwei:make-output-buffer title)))
+	(base 8.) (ibase 8))
+    (unwind-protect
+      (progn
+	(format stream ";;;; ")
+	(format stream title)
+	(loop for l in table
+	      and i from 0
+	      do
+	      (progn
+		(if (> (funcall stream ':get-count) 50.)
+		    (format stream "~%~|~%"))
+		(format stream "~2%~3O" i)
+		(:sprinter l stream))))
+      (close stream))))
+
+
+
+;;;; printing the op-table
+
+(defun print-op-table ()
+  (let ((stream (make-counting-stream
+		  (zwei:make-output-buffer 'op-table))))
+    (unwind-protect
+      (progn
+	(format stream ";;;; Op-table")
+	(loop for op in *op-table*
+	      and i from 0
+	      do
+	      (progn
+		(if (> (funcall stream ':get-count) 50.)
+		    (format stream "~%~|~%"))
+		(format stream "~2%~3O" i)
+		(format stream "~&ns-true:")
+		(:sprinter (op-ns-true op) stream)
+		(format stream "~&ns-false:")
+		(:sprinter (op-ns-false op) stream)
+		(format stream "~&uarg-true:")
+		(:sprinter (op-uarg-true op) stream)
+		(format stream "~&uarg-false:")
+		(:sprinter (op-uarg-false op) stream))))
+      (close stream))))
+
+
+
+;;;; the dispatch program
+
+(defun print-dispatch-program ()
+  (let ((stream (zwei:make-output-buffer 'dispatch-program)))
+    (unwind-protect
+      (progn
+	(format stream ";;;; Dispatch program")
+	(format stream "~2%Type ~7TUser-type ~15TExtra-type-cont~2%")
+	(dolist (ds *disp-program*)
+	  (format stream "~&~3O" (dt-code ds))
+	  (if (dt-user-state ds)
+	      (format stream "~10T~3O" (state-code-number (dt-user-state ds))))
+	  (if (dt-extra-state ds)
+	      (format stream "~20T~3O" (state-code-number (dt-extra-state ds))))))
+      (close stream))))
+
+
+
+;;;; Makine the state-info list for simulation
+
+(defun info-for-state (state)
+  (let ((ml (car (mem #'memq state *merged-states*))))
+    (list* (state-code-number state)
+	   ml
+	   (loop for element in ml
+		 for mm = (get element 'entry-point)
+		 if mm collect mm))))
+
+(defun write-info-for-states ()
+  (let ((stream (zwei:make-output-buffer 'info-for-state)))
+    (unwind-protect
+      (progn
+	(format stream ";;; -*- mode: LISP -*-~2%")
+	(format stream ";;; State Code Simulation Info~%;;; ")
+	(time:print-current-date stream)
+	(terpri stream) (terpri stream)
+	(format stream "(SETQ *STATE-INFO-LIST*~% '(")
+	(dolist (s *code-states*)
+	  (format stream "~%   ~A" (info-for-state s)))
+	(format stream "))")
+	'done)
+      (close stream))))

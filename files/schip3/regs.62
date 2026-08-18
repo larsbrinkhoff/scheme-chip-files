@@ -1,0 +1,2352 @@
+;;; -*- Mode: Lisp; Base: 10.; Package: dpl; -*-
+
+;;;; basic cells
+
+(deflayout transistor-replacer
+  '((primary-parameters ((options 'normal) (channel-length 2) (channel-width 2))))
+  (part 'drain rectangle (layer 'diff) (length 2) (width (>> channel-width)))
+  (part 'source rectangle (layer 'diff) (length 2) (width (>> channel-width))
+	(top-left (pt-below (>> bottom-left drain) (>> channel-length))))
+  (conditional-part
+    (eq (>> options) 'short)
+    'connect rectangle (width (>> channel-width)) (length (>> channel-length))
+    (layer 'diff) (top-center (>> bottom-center drain)))
+  (conditional-part
+    (eq (>> options) 'normal)
+    'channel rectangle (layer 'diff) (top-center (>> bottom-center drain))
+    (width (>> channel-width)) (length (>> channel-length)))
+  (conditional-part
+    (eq (>> options) 'normal)
+    'gate rectangle (layer 'poly) (length (>> channel-length))
+    (width (+ (>> channel-width) 4)) (top-center (>> bottom-center drain))))
+
+(deflayout matrix
+   `((primary-parameters
+       ((vdd-stretch 0.) (gnd-stretch 0.) (width 58.) (continue-value? nil)))
+     (auxiliary-parameters
+       ((xfrm 'identity) vdd-stretch-top vdd-stretch-bottom
+	gnd-stretch-top gnd-stretch-bottom))
+     (constraints 
+       ((vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+	(vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm))))
+   (part 'bus rectangle (bottom-left (pt -9. 36.)) (length 3.) (width (>> width))
+	 (layer 'metal))
+   (part 'vdd rectangle (bottom-left (pt -9. 23.)) (length 3.) (width (>> width))
+	 (layer 'metal))
+   (part 'gnd rectangle (bottom-left (pt -9. 2.)) (length 3.) (width (>> width))
+	 (layer 'metal))
+   (conditional-part (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt -9 16.)) (length 4.) (width (>> width))
+     (layer 'metal))
+   (conditional-part (>> continue-value?)
+      'local-bus rectangle (bottom-left (pt -9 -5.)) (length 3.) (width (>> width))
+      (layer 'metal))
+   (fracture gnd-stretch horizontal (pt 8. 4.))
+   (fracture vdd-stretch horizontal (pt 42. 25.)))
+
+
+;;; a cell for jumping a bus over a power line.  The jumper is on poly.
+;;; bus-space should be set to the width of the power line being jumped.
+;;; bus-connection is where the bus is touched
+;;; output-connection is where to route a connecting signal to
+
+(deflayout bus-jumper
+   `((primary-parameters 
+       ((bus-space 0.)))
+     (auxiliary-parameters 
+       ((xfrm 'identity) bus-space-right bus-space-left bus-connection output-connection))
+     (constraints 
+       ((horizontal-stretch bus-space-left bus-space-right bus-space xfrm))))
+    (part nil rectangle (bottom-left (pt 0. 0.)) (top-right (pt 2. 3.)) (layer 'metal))
+    (part nil square-contact (layer 'poly) (bottom-left (pt 2. -1.)))
+    (part nil rectangle (bottom-left (pt 6. 1.)) (top-right (pt 12. 3.)) (layer 'poly))
+    (part nil square-contact (layer 'poly) (bottom-left (pt 12. -1.)))
+    (setq-my bus-connection (pt 0. 1.5))
+    (setq-my output-connection (pt 16. 1.))
+    (fracture bus-space vertical (pt 9. 2.)))
+
+
+
+;;;; basic normal register
+
+;;; if neither continue-value? nor left-local-connect are present then there is
+;;; no need for the load-local control line and it is omitted and the width compressed.
+;;; driver for this cell should also know about this.
+
+(deflayout normal-register
+  `((primary-parameters 
+      ((left-output-connect nil) (left-local-connect nil)
+       (continue-value? nil) (local-bus? t)
+       (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+       (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+    (constraints 
+      ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part nil rectangle (bottom-left (pt 10. 30.)) (length 2.) (width 12.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 45. 35.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 0. 35.)))
+  (part 'bus rectangle (length 3.) (top-right (pt 49. 39.)) 
+    (width (if (>> local-bus?) 58. 49.)) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt 49. 26.)) (length 3.) 
+    (width (if (>> local-bus?) 58. 49.)) (layer 'metal))
+  (part 'restore rectangle (bottom-left (pt 19. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part 'gnd rectangle (top-right (pt 49. 5.)) (length 3.) 
+    (width (if (>> local-bus?) 58. 49.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 11. 1.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 13. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 36. 2.)))
+  (part nil butting-contact (bottom-left (pt 30. 13.)) (xfrm 'rot270))
+  (part nil rectangle (bottom-left (pt 7. 7.)) (length 7.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 36. 9.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 30. 17.)) (length 6.) (width 2.) (layer 'diff))
+  (part 'value-bar rectangle (bottom-left (pt 16. 9.)) (length 3.) (width 6.) 
+    (layer 'metal))
+  (part nil butting-contact (bottom-left (pt 9. 20.)) (xfrm 'rot180))
+  (part nil rectangle (bottom-left (pt 7. 6.)) (length 2.) (width 10.) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt 11. 9.)))
+  (part nil rectangle (bottom-left (pt 11. 1.)) (length 8.) (width 4.) (layer 'diff))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt 45. 15.)) 
+    (xfrm 'rot90))
+  (part nil rectangle (top-right (pt 45. 16.)) (bottom-left (pt 43. 12.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 43. 14.)) (length 2.) (width 6.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 37. 6.)) (length 6.) (width 4.) (layer 'diff))
+  (part nil rectangle (top-right (pt 45. 24.)) (bottom-left (pt 43. 20.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 43. 24.)) (bottom-left (pt 38. 22.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 38. 24.)) (length 12.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 9.)))
+  (part 'phi-2 rectangle (bottom-left (pt 27. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 29.)))
+  (part nil rectangle (top-right (pt 40. 32.)) (bottom-left (pt 34. 30.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 26. 10.)) (length 2.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 38. 36.)) (length 2.) (width 7.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 8. 22.)) (length 14.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 7. 20.)) (top-right (pt 10. 22.)) (layer 'diff))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt 45. 16.)) (top-right (pt 49. 20.)) (layer 'metal))
+  (conditional-part
+    (>> local-bus?) 
+     'local-bus rectangle (bottom-left (pt 2. -5.)) (top-right (pt 49. -2.)) (layer 'metal))
+  (conditional-part
+    (>> local-bus?) 
+     nil square-contact (layer 'diff) (bottom-left (pt -2. -5.)))
+  (conditional-part
+    (>> local-bus?) 
+     'load-local rectangle (bottom-left (pt -8. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (conditional-part
+   (>> local-bus?)
+     nil rectangle (bottom-left (pt -6. 12.)) (top-right (pt -1. 14.)) (layer 'poly))
+  (conditional-part
+    (>> local-bus?) 
+     nil rectangle (top-right (pt -3. 15.)) (length 14.) (width 2.) (layer 'diff))
+  (conditional-part
+    (>> local-bus?) 
+     nil square-contact (layer 'diff) (bottom-left (pt -5. 15.)))
+  (conditional-part
+    (>> local-bus?) 
+     nil rectangle (bottom-left (pt -1. 15.)) (top-right (pt 5. 19.)) (layer 'metal))
+  (conditional-part
+    (>> local-bus?) 
+     nil rectangle (bottom-left (pt -5. -1.)) (length 2.) (width 7.) (layer 'diff))
+  (wire 'load-global (from (pt 6. 40.)) (run-layer 'poly) (jog-y (pt 2. 27.)) 
+      (jog-y (pt 6. 3.)) (to-y (pt -7. -7.)))
+  (wire 'read (from (pt 42. 40.)) (run-layer 'poly) (jog-y (pt 47. 26.)) (jog-y (pt 42. 3.)) 
+      (to-y (pt 29. -7.)))
+  (conditional-part
+    (>> left-output-connect) 
+     'value-out-left rectangle (bottom-left (pt -9. 29.)) (top-right (pt 22. 32.)) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 26. 29.)) (length 3.) (width 4.) (layer 'metal))
+  (conditional-part
+    (>> left-local-connect) 
+     'left-local-bus-connect rectangle (bottom-left (pt -9. -5.)) (top-right (pt -2. -2.)) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 37. 2.)) (top-right (pt 40. 6.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 0. 36.)) (top-right (pt 10. 38.)) (layer 'diff))
+  (fracture left-stretch vertical (if (>> local-bus?) (pt -8 32.) (pt 1. 32.)))
+  (fracture right-stretch vertical (pt 48. 20.))
+  (fracture bottom-stretch horizontal (pt 43. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 4.))
+  (fracture vdd-stretch horizontal (pt 42. 25.))
+  (fracture top-stretch horizontal (pt 34. 39.)))
+
+
+
+;;;; backup register 
+
+(deflayout shadow-register
+  `((primary-parameters 
+      ((top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+       (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left))
+    (constraints 
+      ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'bus rectangle (bottom-left (pt -4. 36.)) (length 3.) (width 53.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -4. 23.)) (length 3.) (width 53.) (layer 'metal))
+  (part 'restore rectangle (bottom-left (pt 19. -7.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (part 'gnd rectangle (bottom-left (pt -4. 2.)) (length 3.) (width 53.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 11. 2.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 13. 23.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 26. 2.)))
+  (part nil butting-contact (bottom-left (pt 35. 14.)) (xfrm 'rot180))
+  (part nil rectangle (bottom-left (pt 30. 17.)) (length 6.) (width 2.) (layer 'diff))
+  (part 'value-bar rectangle (bottom-left (pt 16. 10.)) (length 3.) (width 6.) 
+    (layer 'metal))
+  (part nil rectangle (top-right (pt 17. 9.)) (length 2.) (width 8.) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt 11. 10.)))
+  (part nil rectangle (top-right (pt 15. 10.)) (length 8.) (width 4.) (layer 'diff))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt 45. 15.)) 
+    (xfrm 'rot90))
+  (part nil rectangle (top-right (pt 45. 16.)) (bottom-left (pt 43. 12.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 43. 14.)) (length 2.) (width 5.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 38. -1.)) (length 13.) (width 2.) (layer 'diff))
+  (part nil rectangle (top-right (pt 45. 24.)) (bottom-left (pt 43. 20.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 43. 24.)) (bottom-left (pt 38. 22.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 40. 30.)) (bottom-left (pt 38. 24.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 10.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 29.)))
+  (part nil rectangle (top-right (pt 30. 33.)) (bottom-left (pt 26. 30.)) (layer 'metal))
+  (part nil rectangle (top-right (pt 40. 32.)) (bottom-left (pt 34. 30.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 26. 12.)) (length 2.) (width 5.) (layer 'diff))
+  (wire 'read (from (pt 42. 40.)) (run-layer 'poly) (jog-y (pt 47. 26.)) (jog-y (pt 42. 4.)) 
+      (to-y (pt 42. -7.)))
+  (part nil pass-transistor (center (pt 20. 32.)) (xfrm 'rot90))
+  (part nil rectangle (bottom-left (pt 17. 33.)) (top-right (pt 17. 33.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 8. 31.)) (top-right (pt 17. 33.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 13. 26.)) (top-right (pt 13. 26.)) (layer 'metal))
+  (part nil butting-contact (bottom-left (pt 9. 18.)) (xfrm 'rot180))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -4. 29.)))
+  (part nil rectangle (bottom-left (pt 7. 18.)) (top-right (pt 9. 33.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -4. 29.)) (length 2.) (width 11.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 7. 7.)) (top-right (pt 9. 12.)) (layer 'poly))
+  (wire 'load (from (pt 6. 40.)) (run-layer 'poly) (jog-y (pt 2. 37.)) (jog-y (pt 6. 4.)) 
+      (to-y (pt 21. -7.)))
+  (part 'local-bus rectangle (bottom-left (pt -4. -5.)) (length 3.) (width 40.) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 31. 1.)) (top-right (pt 33. 9.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 30. 3.)) (top-right (pt 38. 7.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 36. 0.)) (top-right (pt 41. 2.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 36. -5.)))
+  (wire 'phi-2 (from (pt 28. 40.)) (run-layer 'poly) (jog-y (pt 24. 8.)) (jog-y (pt 28. 0.)) 
+	(to-y (pt 27. -7.)))
+  (part nil rectangle (bottom-left (pt 28. 2.)) (top-right (pt 30. 6.)) (layer 'diff))
+  (fracture left-stretch vertical (pt -3. 28.))
+  (fracture right-stretch vertical (pt 48. 26.))
+  (fracture bottom-stretch horizontal (pt 40. -6.))
+  (fracture gnd-stretch horizontal (pt 34. 3.))
+  (fracture vdd-stretch horizontal (pt 39. 25.))
+  (fracture top-stretch horizontal (pt 40. 39.)))
+
+
+
+
+;;;; incrementer or decrementer
+
+(deflayout incrementer-decrementer
+  `((primary-parameters 
+    ( (increment-or-decrement 'increment) (bottom-bit? nil) (top-stretch 0.) (vdd-stretch 0.)
+       (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ( (xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+      gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+      right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+  (constraints 
+    ( (vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'bus rectangle (top-right (pt 156. 43.)) (length 3.) (width 55.) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt 156. 30.)) (length 3.) (width 55.) (layer 'metal))
+  (part 'gnd rectangle (top-right (pt 156. 9.)) (length 3.) (width 55.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 118. 6.)))
+  (part nil rectangle (bottom-left (pt 110. 13.)) (length 7.) (width 2.) (layer 'poly))
+  (part 'read-to-local-bus rectangle (bottom-left (pt 102. -3.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt 105. 41.)) (length 2.) (width 22.) (layer 'diff))
+  (part 'value-in rectangle (bottom-left (pt 101. 21.)) (length 3.) (width 55.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 108. 20.)))
+  (part nil rectangle (top-right (pt 118. 17.)) (bottom-left (pt 115. 15.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 118. 8.)) (bottom-left (pt 113. 6.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 115. 32.)) (length 26.) (width 2.) (layer 'diff))
+  (part nil rectangle (top-right (pt 117. 13.)) (bottom-left (pt 110. 11.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 135. 1.)) (length 15.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 137. 27.)))
+  (part nil rectangle (bottom-left (pt 152. 19.)) (length 2.) (width 1.) (layer 'poly))
+  (part nil standard-pullup (bottom-left (pt 144. 13.)) (xfrm 'negx))
+  (part nil standard-pullup (channel-length 8.) (bottom-left (pt 154. 13.)) (xfrm 'negx))
+  (part nil rectangle (top-right (pt 150. 27.)) (bottom-left (pt 148. 24.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 138. 16.)) (bottom-left (pt 137. 13.)) (layer 'diff))
+  (part 'carry-out-bar rectangle (top-right (pt 147. 13.)) (length 16.) (width 2.) 
+    (layer 'poly))
+  (part nil rectangle (top-right (pt 147. 15.)) (bottom-left (pt 144. 13.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 144. 6.)) (length 2.) (width 6.) (layer 'diff))
+  (part nil rectangle (top-right (pt 150. 13.)) (length 7.) (width 2.) (layer 'diff))
+  (part 'carry-out rectangle (top-right (pt 154. 13.)) (length 16.) (width 2.) 
+    (layer 'poly))
+  (part nil standard-pullup (channel-length 8.) (bottom-left (pt 124. 13.)) (xfrm 'negx))
+  (part nil rectangle (top-right (pt 120. 27.)) (bottom-left (pt 118. 24.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 118. 27.)))
+  (part nil rectangle (bottom-left (pt 141. 27.)) (length 2.) (width 7.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 140. 6.)))
+  (conditional-part
+    (or (not (>> bottom-bit?)) (eq (>> increment-or-decrement) (quote increment))) 
+     nil butting-contact (bottom-left (pt 124. 24.)) (xfrm 'rot270))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 152. 37.)) (bottom-left (pt 148. 35.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 145. 42.)) (bottom-left (pt 128. 40.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 130. 40.)) (bottom-left (pt 128. 37.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 144. 35.)) (bottom-left (pt 132. 33.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 144. 37.)) (bottom-left (pt 112. 34.)) (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 108. 33.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 144. 33.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'carry-in rectangle (bottom-left (pt 152. 35.)) (length 9.) (width 2.) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'carry-in-bar rectangle (bottom-left (pt 145. 40.)) (length 4.) (width 2.) 
+    (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 127. 35.)) (bottom-left (pt 125. 24.)) (layer 'diff))
+  (part 'carry-bar-pass transistor-replacer 
+    (options (if (>> bottom-bit?) (quote short) (quote normal))) (center (pt 126. 38.)))
+  (part 'carry-pass transistor-replacer 
+    (options (if (>> bottom-bit?) (quote short) (quote normal))) (center (pt 114. 35.)))
+  (part nil rectangle (top-right (pt 115. 41.)) (bottom-left (pt 113. 38.)) (layer 'diff))
+  (part 'local-bus rectangle (bottom-left (pt 101. -1.)) (top-right (pt 156. 2.)) 
+    (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'carry-flash rectangle (bottom-left (pt 132. 7.)) (length 26.) (width 2.) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> increment-or-decrement) (quote decrement)) 
+     'value-bar-flash rectangle (top-right (pt 126. 17.)) (length 10.) (width 2.) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> increment-or-decrement) (quote increment)) 
+     'value-flash rectangle (top-right (pt 130. 20.)) (length 13.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 105. 0.)) (top-right (pt 107. 41.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 107. -1.)))
+  (part nil rectangle (bottom-left (pt 104. 6.)) (top-right (pt 109. 8.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 120. 1.)) (top-right (pt 122. 6.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 148. 27.)) (top-right (pt 150. 29.)) (layer 'diff))
+  (part nil transistor-replacer (channel-width (if (>> bottom-bit?) 2. 4.)) 
+    (options (if (eq (>> increment-or-decrement) 'increment) 'normal 'short))
+    (center (pt 129. 4.)) (xfrm 'rot90))
+  (part nil transistor-replacer (channel-width (if (>> bottom-bit?) 2. 4.)) 
+    (options (if (eq (>> increment-or-decrement) 'decrement) 'normal 'short))
+    (center (pt 125. 4.)) (xfrm 'rot90))
+  (part nil transistor-replacer (channel-width (if (>> bottom-bit?) 2. 4.)) 
+    (options (if (>> bottom-bit?) 'short 'normal)) (center (pt 133. 4.)) (xfrm 'rot90))
+  (fracture left-stretch vertical (pt 102. 31.))
+  (fracture right-stretch vertical (pt 155. 32.))
+  (fracture bottom-stretch horizontal (pt 147. -2.))
+  (fracture gnd-stretch horizontal (pt 109. 8.))
+  (fracture vdd-stretch horizontal (pt 145. 29.))
+  (fracture top-stretch horizontal (pt 118. 43.)))
+
+(deflayout counter-cell nil
+  (part 'reg rw-reg-cell )
+  (part 'inc incrementer (value-in-contact (>> value-contact reg))))
+
+(deflayout counter `((primary-parameters ((size 5))))
+  (replicate 'bits column (list (>> size) 1) (list (part () counter-cell))))
+
+
+
+(defdefault eq-test-hack (right-source continue-value?)
+  (continue-value? (right-source) (not (eq right-source 'neighbor)))
+  (right-source (continue-value?) (if (eq continue-value? t) 'global 'bail-out)))
+
+
+(deflayout eq-test
+  `((primary-parameters 
+    ( (right-source 'neighbor) (continue-value? t) (bottom-bit? t) (top-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.)
+       (left-stretch 0.)))
+  (auxiliary-parameters 
+    ( (xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+      gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+      right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+  (constraints 
+    ((eq-test-hack right-source continue-value?)
+     (vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part nil rectangle (bottom-left (pt 106. 40.)) (top-right (pt 129. 42.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 114. 5.)))
+  (part nil rectangle (width 4.) (length 17.) (bottom-left (pt 123. 9.)) (layer 'diff))
+  (part nil rectangle (width 2.) (length 10.) (bottom-left (pt 110. 10.)) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 108. 20.)))
+  (part nil rectangle (width 19.) (length 2.) (bottom-left (pt 110. 10.)) (layer 'poly))
+  (part nil standard-pullup (channel-length 8.) (bottom-left (pt 122. 14.)) (xfrm 'negx))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 114. 28.)))
+  (part nil rectangle (width 2.) (length 12.) (bottom-left (pt 116. 2.)) (layer 'diff))
+  (part nil standard-pullup (channel-length 8.) (bottom-left (pt 143. 12.)) (xfrm 'negx))
+  (part nil rectangle (width 28.) (length 2.) (bottom-left (pt 116. 0.)) (layer 'diff))
+  (conditional-part
+    (eq (>> right-source) (quote global)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 144. 39.)))
+  (part nil rectangle (width 20.) (length 2.) (bottom-left (pt 125. 3.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 137. 27.)))
+  (part nil rectangle (width 4.) (length 20.) (bottom-left (pt 130. 6.)) (layer 'diff))
+  (part nil rectangle (width 3.) (length 2.) (bottom-left (pt 127. 14.)) (layer 'diff))
+  (part nil rectangle (width 9.) (length 2.) (bottom-left (pt 120. 21.)) (layer 'poly))
+  (part nil rectangle (width 8.) (length 2.) (bottom-left (pt 128. 17.)) (layer 'poly))
+  (part nil rectangle (width 7.) (length 2.) (bottom-left (pt 123. 24.)) (layer 'diff))
+  (part 'signal rectangle (bottom-left (pt 104.0 -3.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (part 'value-in rectangle (top-right (pt 108. 24.)) (bottom-left (pt 102. 21.)) 
+    (layer 'metal))
+  (part 'bus rectangle (width 47.) (length 3.) (bottom-left (pt 102. 40.)) (layer 'metal))
+  (part 'vdd rectangle (width 47.) (length 3.) (bottom-left (pt 102. 27.)) (layer 'metal))
+  (part 'gnd rectangle (width 47.) (length 3.) (bottom-left (pt 102. 6.)) (layer 'metal))
+  (conditional-part
+    (and (>> continue-value?) (not (eq (>> right-source) (quote neighbor)))) 
+     'value-out rectangle (width 37.) (length 3.) (bottom-left (pt 112. 21.)) (layer 'metal))
+  (conditional-part
+    (>> bottom-bit?) 
+     'pullup inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt 123. 32.))
+     (xfrm 'int-pos))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (width 2.) (length 9.) (bottom-left (pt 137. 27.)) (layer 'diff))
+  (conditional-part
+    (>> continue-value?) 
+     'local-bus rectangle (top-right (pt 149. 2.)) (bottom-left (pt 102. -1.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 121. 24.)) (length 13.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 138.0 9.0)) (length 3.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 145. 3.)) (length 22.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (top-right (pt 118. 32.)) (bottom-left (pt 116. 27.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 140. 2.)) (length 9.0) (width 4.0) (layer 'diff))
+  (part nil rectangle (top-right (pt 125. 9.)) (bottom-left (pt 118. 7.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 136. 6.)) (bottom-left (pt 128. 2.)) (layer 'diff))
+  (conditional-part
+    (eq (>> right-source) (quote neighbor)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 145. 21.)))
+  (conditional-part
+    (eq (>> right-source) (quote neighbor)) 
+     'neighbor-connect rectangle (bottom-left (pt 145. 21.)) (top-right (pt 149. 24.)) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 127. 33.)) (top-right (pt 129. 40.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil butting-contact (bottom-left (pt 123. 33.)) (xfrm 'int-pos))
+  (conditional-part
+    (eq (>> right-source) (quote global)) 
+     nil rectangle (bottom-left (pt 145. 25.)) (top-right (pt 147. 39.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 104. 5.))
+  (fracture right-stretch vertical (pt 148. 12.))
+  (fracture bottom-stretch horizontal (pt 103. -2.))
+  (fracture gnd-stretch horizontal (pt 113. 7.))
+  (fracture vdd-stretch horizontal (pt 118. 28.))
+  (fracture top-stretch horizontal (pt 120. 43.)))
+
+
+
+
+
+;;;; zero tester
+
+(deflayout rw-reg-zerop
+  `((primary-parameters 
+      ((continue-value? t) (bottom-bit? t) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+    (constraints 
+      ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part nil rectangle (bottom-left (pt 108. 15.)) (length 5.) (width 4.) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 108. 20.)))
+  (part 'signal rectangle (bottom-left (pt 105. -3.)) (length 47.) (width 2.) 
+    (layer 'diff))
+  (part 'value-in rectangle (bottom-left (pt 102. 21.)) (top-right (pt 108. 24.)) 
+    (layer 'metal))
+  (part 'bus rectangle (bottom-left (pt 102. 40.)) (length 3.) (width 17.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 102. 27.)) (length 3.) (width 17.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 102. 6.)) (length 3.) (width 17.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 107. 17.)) (length 2.) (width 6.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 113. 6.)) (length 13.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 111. 6.)))
+  (conditional-part
+    (>> continue-value?) 
+     nil rectangle (bottom-left (pt 112. 21.)) (length 3.) (width 7.) (layer 'metal))
+  (part 'local-bus rectangle (bottom-left (pt 102. -1.)) (length 3.) (width 17.) 
+    (layer 'metal))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil inline-pullup (channel-length 4.) (bottom-left (pt 105. 38.)) (xfrm 'rot270))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil square-contact (layer 'diff) (bottom-left (pt 114. 27.)))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (top-right (pt 117. 36.)) (length 9.) (width 2.) (layer 'diff))
+  (fracture left-stretch vertical (pt 103. 24.))
+  (fracture right-stretch vertical (pt 118. 26.))
+  (fracture bottom-stretch horizontal (pt 108. -2.))
+  (fracture gnd-stretch horizontal (pt 113. 8.))
+  (fracture vdd-stretch horizontal (pt 113. 29.))
+  (fracture top-stretch horizontal (pt 112. 43.)))
+
+
+
+;;;; arbitary bit pattern tester
+
+(defdefault global-continue-hack (local-or-global continue-value?)
+  (continue-value? (local-or-global) (if (eq local-or-global 'global) () 'bail-out))
+  (local-or-global (continue-value?) (if (null continue-value?) 'local 'bail-out)))
+
+(deflayout bit-tester
+  `((primary-parameters 
+    ((zero-or-one 'one) (continue-value? nil) (bottom-bit? t) (local-or-global 'local)
+     (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+     (right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ((xfrm 'identity) top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+     gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+     right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+  (constraints 
+    ((global-continue-hack local-or-global continue-value?)
+     (vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+     (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+     (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+     (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+     (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+     (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (top-right (pt 115. 15.)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (bottom-left (pt 119. 26.)) (length 5.) (width 2.) (layer 'diff))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil standard-pullup (channel-length 8.) (bottom-left (pt 115. 13.)))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (bottom-left (pt 125. 11.)) (top-right (pt 127. 20.)) (layer 'poly))
+  (conditional-part
+    (and (eq (>> local-or-global) (quote local)) (eq (>> zero-or-one) (quote one))) 
+     nil square-contact (layer 'poly) (bottom-left (pt 125. 20.)))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (bottom-left (pt 120. 6.)) (length 11.) (width 2.) (layer 'diff))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (bottom-left (pt 118. 9.)) (top-right (pt 127. 11.)) (layer 'poly))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     'foo rectangle (bottom-left (pt 114. 6.)) (top-right (pt 121. 8.)) (layer 'diff))
+  (conditional-part
+    (not (eq (>> zero-or-one) (quote one))) 
+     'one-flash rectangle (bottom-left (pt 110.0 15.0)) (length 5.0) (width 2.0) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> zero-or-one) (quote zero)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 108. 20.)))
+  (part 'signal rectangle (bottom-left (pt 103.0 -3.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     'value-in rectangle (bottom-left (pt 102. 20.)) (length 4.0) (width 10.0) (layer 'metal))
+  (part 'bus rectangle (bottom-left (pt 102. 40.)) (length 3.) (width 28.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 102. 27.)) (length 3.) (width 28.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 102. 6.)) (length 3.) (width 28.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 107.0 6.0)) (length 2.0) (width 8.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 107.0 6.0)) (length 11.0) (width 2.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 113. 5.)))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (top-right (pt 130. 24.)) (length 4.0) (width 5.0) (layer 'metal))
+  (conditional-part
+    (or (>> bottom-bit?) (eq (>> zero-or-one) (quote one))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 117. 27.)))
+  (conditional-part
+    (>> bottom-bit?) 
+     'bottom-bit-pullup inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt 107. 38.)) (xfrm 'rot270))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (bottom-left (pt 121. 27.)) (top-right (pt 123. 36.)) (layer 'diff))
+  (conditional-part
+    (>> continue-value?) 
+     'local-bus rectangle (bottom-left (pt 102. -1.)) (top-right (pt 130. 2.)) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 125. 39.)))
+  (conditional-part
+    
+    (or (>> continue-value?) (and (eq (>> local-or-global) (quote local)) (eq (>> zero-or-one) (quote one)))) 
+     nil rectangle (bottom-left (pt 112. 20.)) (top-right (pt 125. 24.)) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 125. 20.)) (top-right (pt 127. 39.)) (layer 'poly))
+  (conditional-part
+    (and (eq (>> zero-or-one) (quote zero)) (eq (>> local-or-global) (quote global))) 
+     nil rectangle (bottom-left (pt 108. 20.)) (top-right (pt 125. 22.)) (layer 'poly))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (bottom-left (pt 105. 30.)) (top-right (pt 113. 32.)) (layer 'poly))
+  (part nil butting-contact (bottom-left (pt 109. 13.)) (xfrm 'rot90))
+  (part nil rectangle (bottom-left (pt 110. 4.)) (top-right (pt 112. 15.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 103. 34.))
+  (fracture right-stretch vertical (pt 129. 22.))
+  (fracture bottom-stretch horizontal (pt 109. -2.))
+  (fracture gnd-stretch horizontal (pt 117. 8.))
+  (fracture vdd-stretch horizontal (pt 116. 28.))
+  (fracture top-stretch horizontal (pt 109. 43.)))
+
+(defreplicator bit-tester-reg (i)
+  '((primary-parameters ((test-number) (v-pitch) (v-spacing)))
+    (constraints ((v-pitch instance-list v-pitch v-spacing)
+		  (v-spacing instance-list v-spacing))))
+  (replicator-transform 'identity 0 (* i (>> v-pitch)))
+  (if (bit-test (lsh 1 i) (>> test-number))
+      (replicator-instance (>> (*rep-instance 0)))
+      (replicator-instance (>> (*rep-instance 1)))))
+
+
+
+;;;; constant sources
+
+
+(deflayout constant-source
+  `((primary-parameters 
+      ((zero-or-one 'one) (local-or-global 'local) (continue-value? t) (top-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.)
+       (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+    (constraints 
+      ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'bus rectangle (bottom-left (pt 131. 39.)) (top-right (pt 141. 42.)) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 131. 26.)) (top-right (pt 141. 29.)) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 131. 5.)) (top-right (pt 141. 8.)) (layer 'metal))
+  (part 'read rectangle (bottom-left (pt 132. -4.)) (length 47.) (width 2.) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. 38.)))
+  (conditional-part (or (>> continue-value?) (eq (>> local-or-global) 'local))
+    'local-bus rectangle (bottom-left (pt 131. -2.)) (top-right (pt 141. 1.)) 
+    (layer 'metal))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     'one-contact square-contact (layer 'diff) (bottom-left (pt 135. 26.)))
+  (conditional-part
+    (eq (>> zero-or-one) (quote zero)) 
+     'zero-contact square-contact (layer 'diff) (bottom-left (pt 135. 8.)))
+  (conditional-part
+    (>> continue-value?) 
+     'value rectangle (bottom-left (pt 131. 19.)) (top-right (pt 141. 23.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 136. -2.)) (length 40.) (width 2.) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. -2.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 134. 3.)) (top-right (pt 140. 5.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 134. 35.)) (top-right (pt 140. 37.)) (layer 'poly))
+  (conditional-part
+    (and (eq (>> zero-or-one) (quote one)) (eq (>> local-or-global) (quote value-bus))) 
+     nil rectangle (bottom-left (pt 134. 23.)) (top-right (pt 140. 25.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote value-bus)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. 18.)))
+  (conditional-part
+    (and (eq (>> zero-or-one) (quote zero)) (eq (>> local-or-global) (quote value-bus))) 
+     nil rectangle (bottom-left (pt 134. 15.)) (top-right (pt 140. 17.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 132. 31.))
+  (fracture right-stretch vertical (pt 140. 31.))
+  (fracture bottom-stretch horizontal (pt 140. -3.))
+  (fracture gnd-stretch horizontal (pt 140. 6.))
+  (fracture vdd-stretch horizontal (pt 140. 27.))
+  (fracture top-stretch horizontal (pt 137. 42.)))
+
+(deflayout constant-source-reg
+   '((primary-parameters (constant size)))
+  (replicate 'bits bit-tester-reg (list (>> size))
+	     (list (part () rw-reg-constant-source (zero-or-one 'zero))
+		   (part () rw-reg-constant-source (zero-or-one 'one)))
+	     (test-number (>> constant))))
+
+
+
+;;;; a source of left addresses and right addresses
+
+;;; local or global can be either local, global or value-bus
+;;; the first two refer two the two standard buses the third refers
+;;; to the bus attached to the output of a reg.  This is intended for the
+;;; row which is the low bit of address which is not in any actual word.
+
+(deflayout left-right-address-source
+  `((primary-parameters 
+      ((local-or-global 'value-bus) (continue-value? t) (top-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.)
+       (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+    (constraints 
+      ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'bus rectangle (bottom-left (pt 126. 39.)) (length 3.) (width 22.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 126. 26.)) (length 3.) (width 22.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 126. 5.)) (length 3.) (width 22.) (layer 'metal))
+  (part 'right-address rectangle (bottom-left (pt 132. -4.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. 38.)))
+  (part 'local-bus rectangle (bottom-left (pt 126. -2.)) (length 3.) (width 22.) 
+    (layer 'metal))
+  (part 'one-contact square-contact (layer 'diff) (bottom-left (pt 127. 26.)))
+  (part 'zero-contact square-contact (layer 'diff) (bottom-left (pt 143. 6.)))
+  (conditional-part
+    (>> continue-value?) 
+     'value rectangle (bottom-left (pt 126. 19.)) (length 4.) (width 22.) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. -2.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote value-bus)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. 18.)))
+  (part 'left-address rectangle (bottom-left (pt 140. -4.)) (top-right (pt 142. 43.)) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt 135. -2.)) (top-right (pt 137. 38.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 131. 26.)) (top-right (pt 137. 28.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 137. 6.)) (top-right (pt 143. 8.)) (layer 'diff))
+  (fracture left-stretch vertical (pt 127. 27.))
+  (fracture right-stretch vertical (pt 147. 11.))
+  (fracture bottom-stretch horizontal (pt 140. -3.))
+  (fracture gnd-stretch horizontal (pt 140. 6.))
+  (fracture vdd-stretch horizontal (pt 140. 27.))
+  (fracture top-stretch horizontal (pt 137. 42.)))
+
+
+
+;;;; shifters
+
+;;; both have options for local or global bus operation and options for
+;;; shift in value at the extreme.
+
+(deflayout shift-right
+  `((primary-parameters 
+      ((continue-value? t) (top-bit? nil) (shift-in-value 'zero) (bottom-bit? nil)
+       (local-or-global 'local) (top-stretch 0.) (left-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+    (constraints 
+      ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'bus rectangle (bottom-left (pt 1. 36.)) (length 3.) (width 13.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 1. 23.)) (length 3.) (width 13.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 1. 2.)) (length 3.) (width 13.) (layer 'metal))
+  (part 'shift rectangle (bottom-left (pt 2. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part 'value-in rectangle (bottom-left (pt 1. 16.)) (length 4.) (width 8.) 
+    (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (top-right (pt 7. 39.)) (length 30.) (width 2.) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 9. 16.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 11. 20.)) (length 20.) (width 2.) (layer 'poly))
+  (conditional-part
+    (not (>> top-bit?)) 
+     nil rectangle (bottom-left (pt 11. -7.)) (length 20.) (width 2.) (layer 'poly))
+  (conditional-part
+    (not (>> top-bit?)) 
+     nil butting-contact (bottom-left (pt 7. 13.)) (xfrm 'rot270))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt 9. 16.)) (length 4.) (width 5.) (layer 'metal))
+  (part 'local-bus rectangle (bottom-left (pt 1. -5.)) (length 3.) (width 13.) 
+    (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 5. 35.)))
+  (conditional-part
+    (and (>> top-bit?) (eq (>> shift-in-value) (quote one))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 5. 23.)))
+  (conditional-part
+    (and (>> top-bit?) (eq (>> shift-in-value) (quote zero))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 5. 3.)))
+  (conditional-part
+    (and (>> top-bit?) (eq (>> shift-in-value) (quote zero))) 
+     nil rectangle (bottom-left (pt 5. 2.)) (top-right (pt 7. 13.)) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 5. -5.)) (top-right (pt 7. 27.)) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 5. -5.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 4. 32.)) (top-right (pt 9. 34.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 4. 0.)) (top-right (pt 9. 2.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 2. 19.))
+  (fracture right-stretch vertical (pt 13. 19.))
+  (fracture bottom-stretch horizontal (pt 1. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 3.))
+  (fracture vdd-stretch horizontal (pt 7. 24.))
+  (fracture top-stretch horizontal (pt 13. 39.)))
+
+
+
+;;; the low order bit can be forced to shift in zero, one, or can be supplied
+;;; by a control line (this option indicated by shift-in-value being 'supplied)
+
+(deflayout shift-left
+  `((primary-parameters 
+    ((top-output-desired? nil) (top-bit? nil) (shift-in-value 'zero)
+       (local-or-global 'local) (continue-value? t) (bottom-bit? nil) (top-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.)
+       (left-stretch 0.)))
+  (auxiliary-parameters 
+    ((xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+      gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+      right-stretch-right right-stretch-left left-stretch-right left-stretch-left 
+      left-shift-left right-shift-left ))
+  (constraints 
+    ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'bus rectangle (bottom-left (pt -5. 36.)) (length 3.) (width 14.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -5. 23.)) (length 3.) (width 14.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt -5. 2.)) (length 3.) (width 14.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 4. 16.)))
+  (part 'shift rectangle (bottom-left (pt 1. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (conditional-part
+    (or (eq (>> local-or-global) (quote local))
+	(and (>> bottom-bit?) (not (eq (>> shift-in-value) (quote supplied))))) 
+     nil rectangle (bottom-left (pt -2. -1.)) (length 40.) (width 2.) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -4. -5.)))
+  (part 'local-bus rectangle (bottom-left (pt -5. -5.)) (length 3.) (width 14.) 
+    (layer 'metal))
+  (part 'value-in rectangle (top-right (pt 4. 20.)) (length 4.) (width 9.) (layer 'metal))
+  (conditional-part
+    (or (not (>> bottom-bit?)) (eq (>> shift-in-value) (quote supplied))) 
+     nil rectangle (bottom-left (pt -2. 37.)) (top-right (pt 6. 39.)) (layer 'diff))
+  (conditional-part
+    (or (not (>> top-bit?)) (>> top-output-desired?)) 
+     nil rectangle (top-right (pt 6. 16.)) (length 23.) (width 2.) (layer 'diff))
+  (conditional-part
+    (and (>> bottom-bit?) (eq (>> shift-in-value) (quote zero))) 
+     nil square-contact (layer 'diff) (bottom-left (pt -4. 4.)))
+  (conditional-part
+    (and (eq (>> bottom-bit?) t) (eq (>> shift-in-value) (quote one))) 
+     nil square-contact (layer 'diff) (bottom-left (pt -4. 23.)))
+  (conditional-part
+    (or (not (>> bottom-bit?)) (eq (>> shift-in-value) (quote supplied))) 
+     nil rectangle (bottom-left (pt 4. 37.)) (length 3.) (width 2.) (layer 'diff))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt 4. 16.)) (length 4.) (width 5.) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -4. 35.)))
+  (conditional-part
+    (and (eq (>> local-or-global) (quote local)) (>> bottom-bit?)
+	 (not (eq (>> shift-in-value) (quote supplied)))) 
+     nil rectangle (bottom-left (pt -4. 0.)) (top-right (pt 1. 2.)) (layer 'poly))
+  (conditional-part
+    (and (eq (>> local-or-global) (quote global)) (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -4. 32.)) (top-right (pt 1. 34.)) (layer 'poly))
+  (setq-my left-shift-left (pt -6. 27.))
+  (setq-my right-shift-left (pt 14. 27.))
+  (fracture left-stretch vertical (pt -4. 29.))
+  (fracture right-stretch vertical (pt 8. 15.))
+  (fracture bottom-stretch horizontal (pt -1. -6.))
+  (fracture gnd-stretch horizontal (pt 4. 4.))
+  (fracture vdd-stretch horizontal (pt 7. 24.))
+  (fracture top-stretch horizontal (pt 7. 39.)))
+
+
+
+;;;; flip flops
+
+(deflayout sr-flip-flop nil
+  (part 'iv-1 inline-inverter (z 8.) (bottom-left (pt 0. 0.)))
+  (part 'iv-2 inline-inverter (bottom-left (pt 14. 0.)))
+  (part nil rectangle (bottom-left (pt 7. 8.)) (top-right (pt 12. 10.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 10. 2.)) (top-right (pt 12. 8.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 12. 2.)) (top-right (pt 14. 4.)) (layer 'poly))
+  (part 'vdd rectangle (bottom-left (pt -16. 18.)) (top-right (pt 23. 22.)) 
+        (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt -16. -3.)) (top-right (pt 23. 1.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 2. -3.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 14. -3.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 14. 18.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 2. 18.)))
+  (part nil rectangle (bottom-left (pt 19. 5.)) (top-right (pt 21. 7.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -1. 25.)) (top-right (pt 23. 27.)) (layer 'diff))
+  (part 'phi-2 rectangle (bottom-left (pt 8. 23.)) (top-right (pt 10. 28.)) (layer 'poly))
+  (part nil butting-contact (bottom-left (pt -5. 10.)) (xfrm 'negy))
+  (part nil rectangle (bottom-left (pt -5. 2.)) (top-right (pt 0. 4.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -3. 10.)) (top-right (pt -1. 27.)) (layer 'diff))
+  (part 'unset rectangle (bottom-left (pt -15. 2.)) (top-right (pt -13. 28.)) 
+        (layer 'poly))
+  (part 'set rectangle (bottom-left (pt -6. 17.)) (top-right (pt -4. 28.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -12. -3.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -11. 18.)))
+  (part nil rectangle (bottom-left (pt -11. 15.)) (top-right (pt -4. 17.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -9. 10.)) (top-right (pt -7. 18.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -13. 2.)) (top-right (pt -8. 4.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -12. 1.)) (top-right (pt -10. 10.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -10. 8.)) (top-right (pt -5. 10.)) (layer 'diff))
+  (part 'value rectangle (bottom-left (pt 21. -3.)) (top-right (pt 23. 25.)) 
+        (layer 'diff)))
+
+(deflayout flip-flops
+    '((primary-parameters (size)))
+    (replicate 'cells array (list (>> size) 1) (list (part () sr-flip-flop))))
+
+
+
+;;;; the adder
+
+(deflayout adder-cell
+  `((primary-parameters 
+    ( (top-bit? nil) (bottom-bit? nil) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ( (xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+      gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+      right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+  (constraints 
+    ( (vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'gnd rectangle (bottom-left (pt -55. 3.)) (length 3.) (width 159.) (layer 'metal))
+  (part 'bus rectangle (bottom-left (pt -53. 37.)) (length 3.) (width 157.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -53. 30.)) (length 3.) (width 155.) 
+    (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt -24. 8.)) (length 2.) (width 15.) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -37. 5.)) (top-right (pt -33. 10.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -30. 9.)) (length 31.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -55. 36.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil standard-pullup (channel-length 8.) (bottom-left (pt -40. 10.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil standard-pullup (channel-length 8.) (bottom-left (pt -4. 9.)) (xfrm 'negx))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -9. 5.)) (top-right (pt -5. 10.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -16. 6.)) (top-right (pt 0. 8.)) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -20. 9.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -24. 6.)) (length 17.) (width 2.) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -15. 11.)) (length 2.) (width 5.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. 10.)) (top-right (pt -20. 13.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -30. 9.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -32. 15.)) (top-right (pt -26. 17.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt -13. 20.)) (length 7.) (width 2.) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -30. 18.)) (top-right (pt -15. 20.)) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -37. 3.)) (top-right (pt 2. 5.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 18. 22.)) (length 2.) (width 6.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 14. 14.)) (length 9.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 12. 18.)) (length 2.) (width 6.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 14. 10.)))
+  (part nil rectangle (bottom-left (pt 18. 10.)) (length 3.) (width 8.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 20. 16.)) (length 12.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 24. 9.)))
+  (part nil standard-pullup (channel-length 4.) (bottom-left (pt 37. 11.)) (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt 8. 6.)) (length 2.) (width 13.) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 1. 3.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt -4. 22.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -21. 23.)) (length 3.) (width 17.) (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -36. 21.)) (length 12.) (width 2.) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -38. 29.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -10. 21.)) (length 12.) (width 2.) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -11. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 5. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 31. 21.)))
+  (part nil rectangle (bottom-left (pt 31. 24.)) (length 9.) (width 4.) (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 6. -4.)))
+  (part nil rectangle (bottom-left (pt 6. -3.)) (length 11.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 22. 26.)) (length 2.) (width 17.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 14. 23.)) (length 12.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 2. 14.)) (top-right (pt 4. 35.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -2. 8.)) (top-right (pt 0. 14.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 0. 12.)) (top-right (pt 4. 14.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 0. 38.)) (length 12.) (width 2.) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'cin rectangle (bottom-left (pt -2. 38.)) (length 2.) (width 70.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 11. 3.)) (length 2.) (width 14.) (layer 'diff))
+  (part nil butting-contact (bottom-left (pt 18. 21.)) (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt -18. 6.)) (length 3.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 24. -2.)) (length 11.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 62. 2.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 31. 29.)))
+  (part nil rectangle (bottom-left (pt -55. 24.)) (length 9.) (width 3.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 30. -4.)) (length 3.) (width 69.) (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 26. -4.)))
+  (part nil rectangle (top-right (pt 10. -1.)) (length 3.) (width 58.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 18. 1.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -54. 17.)))
+  (part nil rectangle (bottom-left (pt -52. 0.)) (length 17.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -52. -4.)))
+  (part nil rectangle (bottom-left (pt -55. 17.)) (length 4.) (width 5.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -53. 38.)) (length 2.) (width 23.) (layer 'diff))
+  (part 'result-to-bus rectangle (bottom-left (pt -46. -6.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt 9. 3.)) (top-right (pt 11. 13.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 22. 3.)) (top-right (pt 28. 8.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 29. 6.)) (top-right (pt 31. 13.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 27. 4.)) (top-right (pt 31. 6.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 19. 14.)) (top-right (pt 22. 16.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 19. 8.)) (top-right (pt 21. 14.)) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt 6. 13.)))
+  (part nil rectangle (bottom-left (pt 8. 27.)) (top-right (pt 10. 33.)) (layer 'diff))
+  (part nil butting-contact (bottom-left (pt 24. 24.)) (xfrm 'negy))
+  (part nil rectangle (bottom-left (pt 28. 18.)) (top-right (pt 29. 20.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt -25. 23.)))
+  (conditional-part
+    (>> top-bit?) 
+     'high-bit-out rectangle (bottom-left (pt -43. -6.)) (top-right (pt -41. 38.)) 
+    (layer 'diff))
+  (part nil rectangle (bottom-left (pt 33. 29.)) (top-right (pt 35. 33.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 2. 34.)) (top-right (pt 16. 36.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 50. 9.)) (top-right (pt 67. 13.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 49. 19.)) (top-right (pt 68. 21.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 62. 2.)) (top-right (pt 66. 22.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 52. 2.)) (length 20.) (layer 'diff)
+	(width (if (>> bottom-bit?) 2. 4.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 67. 9.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 50. 10.)) (top-right (pt 58. 12.)) (layer 'poly))
+  (part nil rectangle (length 20.) (width (if (>> bottom-bit?) 2. 4.)) 
+    (bottom-left (pt 72. 2.)) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 60. 15.)) (top-right (pt 81. 17.)) (layer 'poly))
+  (part nil standard-pullup (channel-length 4.) (bottom-left (pt 51. 16.)) (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt 70. 10.)) (top-right (pt 78. 12.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 57. 9.)))
+  (part nil rectangle (bottom-left (pt 45. 6.)) (top-right (pt 47. 16.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 39. 1.)) (top-right (pt 41. 28.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 34. 2.)))
+  (part nil rectangle (bottom-left (pt 38. 3.)) (top-right (pt 47. 7.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 34. 9.)) (top-right (pt 50. 13.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 44. 29.)))
+  (part nil rectangle (bottom-left (pt 45. 27.)) (top-right (pt 47. 29.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 52. 2.)) (top-right (pt 62. 4.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 66. 2.)) (top-right (pt 76. 4.)) (layer 'diff))
+  (part nil standard-pullup (channel-length 4.) (bottom-left (pt 93. 16.)) (xfrm 'negx))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 66. 29.)))
+  (part nil rectangle (bottom-left (pt 87. 5.)) (top-right (pt 91. 16.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 87. 3.)))
+  (part nil standard-pullup (channel-length 8.) (bottom-left (pt 79. 20.)) (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt 52. 22.)) (top-right (pt 73. 24.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 84. 10.)) (top-right (pt 93. 12.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 70. 34.)) (top-right (pt 75. 36.)) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 81. 15.)) (top-right (pt 83. 41.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 68. 29.)) (top-right (pt 70. 36.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 77. 9.)) (top-right (pt 80. 24.)) (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 80. 9.)))
+  (part nil rectangle (bottom-left (pt 80. 8.)) (top-right (pt 82. 9.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 66. -1.)) (top-right (pt 77. 1.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 86. 29.)))
+  (part nil rectangle (bottom-left (pt 87. 27.)) (top-right (pt 89. 29.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 93. 16.)) (top-right (pt 97. 18.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 95. 8.)) (top-right (pt 97. 16.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 77. -1.)) (top-right (pt 79. 8.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 79. 6.)) (top-right (pt 82. 8.)) (layer 'poly))
+  (part nil rectangle (top-right (pt 83. 0.)) (length 6.) (width 2.) (layer 'poly))
+  (part nil rectangle (top-right (pt 68. -1.)) (length 5.) (width 2.) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 66. 38.)) (top-right (pt 68. 41.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 101. 24.)) (top-right (pt 104. 33.)) 
+    (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 99. 17.)))
+  (part nil rectangle (bottom-left (pt 99. -4.)) (top-right (pt 101. 17.)) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 96. -4.)))
+  (part nil rectangle (bottom-left (pt 99. 17.)) (top-right (pt 104. 21.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 92. 6.)) (top-right (pt 97. 8.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 92. 2.)) (top-right (pt 94. 6.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 81. 0.)) (top-right (pt 94. 2.)) (layer 'poly))
+  (fracture left-stretch vertical (pt -54. 19.))
+  (fracture right-stretch vertical (pt 103. 19.))
+  (fracture bottom-stretch horizontal (pt -40. -5.))
+  (fracture gnd-stretch horizontal (pt -28. 4.))
+  (fracture vdd-stretch horizontal (pt -42. 31.))
+  (fracture top-stretch horizontal (pt -42. 40.)))
+
+
+
+;;;; shifter negater for hacking adder into comparator etc.
+
+
+(deflayout shift-negate
+  `((primary-parameters 
+      ((top-bit? nil) (bottom-bit? nil) (top-value-out? t)
+       (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+       (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity)top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+    (constraints 
+      ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'bus rectangle (bottom-left (pt -24. 24.)) (length 3.) (width 48.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -24. 11.)) (length 3.) (width 48.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt -24. -10.)) (length 3.) (width 48.) 
+    (layer 'metal))
+  (part 'dont-shift rectangle (bottom-left (pt 16. -19.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (part 'shift rectangle (bottom-left (pt 7. -19.)) (length 47.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 4. 8.)) (length 13.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -7. 10.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. -3.)))
+  (part nil rectangle (bottom-left (pt 3. -3.)) (length 3.) (width 7.) (layer 'metal))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt -8. -3.)))
+  (part nil butting-contact (bottom-left (pt 6. 8.)) (xfrm 'int-neg))
+  (part nil rectangle (bottom-left (pt -7. -7.)) (top-right (pt -3. -3.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -9. -6.)) (top-right (pt 2. -4.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -7. -11.)))
+  (part 'dont-negate rectangle (bottom-left (pt -13. -19.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (part 'negate rectangle (bottom-left (pt -22. -19.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (part nil rectangle (top-right (pt 5. 21.)) (length 2.) (width 20.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -15. -3.)) (length 3.) (width 8.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -19. -4.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -19. 17.)))
+  (part nil rectangle (bottom-left (pt -18. 5.)) (length 12.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -19. 4.)))
+  (part nil rectangle (bottom-left (pt -24. 4.)) (length 3.) (width 5.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 0. -4.)) (top-right (pt 2. 4.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 14. -1.)) (length 2.) (width 5.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -20. 1.)) (top-right (pt -15. 3.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -19. 0.)) (top-right (pt -17. 4.)) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 10. 8.)) (top-right (pt 12. 28.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 10. -10.)) (length 11.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 9. -6.)) (length 2.) (width 5.) (layer 'poly))
+  (conditional-part
+    (>> top-bit?) 
+     nil square-contact (layer 'diff) (bottom-left (pt 10. -11.)))
+  (conditional-part
+    (not (>> top-bit?)) 
+     nil rectangle (bottom-left (pt 10. -19.)) (top-right (pt 12. -6.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 20. 4.)))
+  (part nil rectangle (bottom-left (pt 3. 0.)) (top-right (pt 6. 4.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 19. -1.)) (length 9.) (width 2.) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 10. 5.)) (top-right (pt 24. 8.)) (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 10. 4.)))
+  (conditional-part
+    (and (>> top-bit?) (>> top-value-out?)) 
+     nil rectangle (bottom-left (pt 19. -19.)) (top-right (pt 21. -1.)) (layer 'diff))
+  (fracture left-stretch vertical (pt -23. 23.))
+  (fracture right-stretch vertical (pt 23. 22.))
+  (fracture bottom-stretch horizontal (pt 3. -17.))
+  (fracture gnd-stretch horizontal (pt 3. -8.))
+  (fracture vdd-stretch horizontal (pt 3. 13.))
+  (fracture top-stretch horizontal (pt -4. 27.)))
+
+
+
+(defreplicator column-with-special (i)
+  '((primary-parameters ((v-pitch) (v-spacing) (special-rate)))
+    (dont-menu-select t)
+    (constraints ((v-pitch instance-list v-pitch v-spacing)
+		  (v-spacing instance-list v-spacing))))
+  (replicator-transform 'identity 0 (* i (>> v-pitch)))
+  (if ( 0 (\ i (>> special-rate)))
+      (replicator-instance (>> (*rep-instance 0)))
+      (replicator-instance (>> (*rep-instance 1)))))
+
+(deflayout adder
+    '((primary-parameters (size))
+      (dont-menu-select t))
+    (replicate 'bits column (list (>> size))
+	       (list (part () adder-cell))))
+
+
+
+;;;; stack register
+
+(defdefault stack-continuity (rightmost? continue-value?)
+  (continue-value? (rightmost?) (not rightmost?))
+  (rightmost? (continue-value?) (not continue-value?)))
+
+(deflayout stack-cell
+  `((primary-parameters 
+      ((rightmost? nil) (continue-value? t) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity) top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+    (constraints 
+      ((stack-continuity rightmost? continue-value?)
+       (vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'bus rectangle (bottom-left (pt -14. 36.)) (length 3.) (width 60.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -14. 23.)) (length 3.) (width 60.) (layer 'metal))
+  (part 'restore rectangle (bottom-left (pt 19. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part 'gnd rectangle (bottom-left (pt -14. 2.)) (length 3.) (width 60.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 11. 1.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 13. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 36. 2.)))
+  (part nil butting-contact (bottom-left (pt 30. 13.)) (xfrm 'rot270))
+  (part nil rectangle (bottom-left (pt 7. 7.)) (length 7.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 36. 9.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 30. 17.)) (length 6.) (width 2.) (layer 'diff))
+  (part 'value-bar rectangle (bottom-left (pt 16. 9.)) (length 3.) (width 6.) (layer 'metal))
+  (part nil butting-contact (bottom-left (pt 9. 19.)) (xfrm 'rot180))
+  (part nil rectangle (bottom-left (pt 7. 6.)) (length 2.) (width 10.) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt 11. 9.)))
+  (part nil rectangle (bottom-left (pt 11. 1.)) (length 8.) (width 4.) (layer 'diff))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt 45. 15.)) 
+    (xfrm 'rot90))
+  (part nil rectangle (top-right (pt 45. 16.)) (bottom-left (pt 43. 12.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 43. 14.)) (length 2.) (width 6.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 37. 6.)) (length 6.) (width 4.) (layer 'diff))
+  (part nil rectangle (top-right (pt 45. 24.)) (bottom-left (pt 43. 20.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 43. 24.)) (bottom-left (pt 38. 22.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 38. 24.)) (length 8.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 9.)))
+  (part 'phi-2 rectangle (bottom-left (pt 27. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 29.)))
+  (part nil rectangle (top-right (pt 40. 32.)) (bottom-left (pt 34. 30.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 26. 10.)) (length 2.) (width 4.) (layer 'diff))
+  (conditional-part
+    (not (>> rightmost?)) 
+     'value-out rectangle (bottom-left (pt 45. 16.)) (length 4.) (width 1.) (layer 'metal))
+  (conditional-part
+    (not (>> rightmost?)) 
+     'local-bus rectangle (bottom-left (pt -1. -5.)) (length 3.) (width 47.) (layer 'metal))
+  (conditional-part
+    (not (>> rightmost?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -5. -5.)))
+  (part 'pop rectangle (bottom-left (pt -8. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -6. 6.)) (length 2.) (width 5.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -5. -1.)) (length 10.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -5. 9.)))
+  (part nil rectangle (bottom-left (pt -14. 16.)) (length 4.) (width 9.) (layer 'metal))
+  (part 'value-out-left rectangle (bottom-left (pt -9. 29.)) (top-right (pt 22. 32.)) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 26. 29.)) (length 3.) (width 4.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 37. 2.)) (top-right (pt 40. 6.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -13. 29.)))
+  (part nil rectangle (bottom-left (pt -11. -3.)) (top-right (pt -9. 29.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -13. -5.)))
+  (part nil rectangle (bottom-left (pt -14. -5.)) (top-right (pt -9. -2.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -5. 16.)))
+  (part nil rectangle (bottom-left (pt -1. 17.)) (top-right (pt 5. 19.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 6. 30.)) (top-right (pt 22. 32.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 5. 19.)) (top-right (pt 7. 32.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -1. 9.)) (top-right (pt 9. 13.)) (layer 'metal))
+  (part 'push rectangle (bottom-left (pt 1. -7.)) (top-right (pt 3. 40.)) (layer 'poly))
+  (conditional-part
+    (>> rightmost?) nil square-contact (layer 'diff) (bottom-left (pt -6. 1.)))
+  (fracture left-stretch vertical (pt -13. 30.))
+  (fracture right-stretch vertical (pt 45. 21.))
+  (fracture bottom-stretch horizontal (pt 43. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 4.))
+  (fracture vdd-stretch horizontal (pt 42. 25.))
+  (fracture top-stretch horizontal (pt 34. 39.)))
+
+
+;;;; interbus connector
+
+(deflayout bus-connector
+  `((primary-parameters 
+    ((local-or-global 'local) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+     (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)
+     (bus-size 4) (position 0)))
+  (auxiliary-parameters 
+    ((xfrm 'identity) top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+      gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+      right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+  (constraints 
+    ((vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (replicate 'cross-bus row (list (>> bus-size))
+	     (list (part nil rectangle (bottom-left (pt 65. 156.))
+			 (top-right (pt 67. 203.)) (layer 'diff)))
+	     (h-pitch 6))
+  (part 'bus rectangle (bottom-left (pt 54. 199.)) (layer 'metal)
+	(top-right (pt (+ 3 (>> x bottom-right cross-bus)) 202.)))
+  (part 'vdd rectangle (bottom-left (pt 54. 186.)) (layer 'metal)
+	(top-right (pt (+ 3 (>> x bottom-right cross-bus)) 189.)))
+  (part 'gnd rectangle (bottom-left (pt 54. 165.)) (layer 'metal)
+	(top-right (pt (+ 3 (>> x bottom-right cross-bus)) 168.)))
+  (part 'local-bus rectangle (bottom-left (pt 54. 158.)) (layer 'metal) 
+    (top-right (pt  (+ 3 (>> x bottom-right cross-bus)) 161.)))
+  (part 'connect rectangle (bottom-left (pt 61. 156.))
+	(top-right (pt 63. 203.)) (layer 'poly))
+  (part 'program-connect square-contact (layer 'diff)
+	(center (pt (>> x center (*rep (>> position)) 'cross-bus) 181.)))
+  (part 'by-pass-bus rectangle (bottom-left (pt 60. 180.))
+	(top-right (pt (>> x bottom-left program-connect) 183.))
+	(layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 56. 179.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 56. 198.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 58. 183.)) (top-right (pt 60. 198.)) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 56. 191.)) (top-right (pt 61. 193.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 58. 158.)) (top-right (pt 60. 179.)) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 56. 158.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 56. 171.)) (top-right (pt 61. 173.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 55. 187.))
+  (fracture right-stretch vertical (pt (1+ (>> x bottom-right cross-bus)) 185.))
+  (fracture bottom-stretch horizontal (pt 64. 158.))
+  (fracture gnd-stretch horizontal (pt 80. 167.))
+  (fracture vdd-stretch horizontal (pt 60. 187.))
+  (fracture top-stretch horizontal (pt 61. 202.)))
+
+
+
+;;;; field to field connector to shift type to datum for example
+
+;;; This can be used to shift one field of a register into another, filling the unused
+;;; part of the destination if its bigger than the source.
+;;; It uses only local busses.
+;;; there are three area of interest
+;;; the first is the source field it begins at souce-start and is bus-size long
+;;; the second is the target of the source bits, begins at target-start and is bus-size long
+;;; enclosing the target area is the desination area 
+;;;   beginning at destination start and is destination-size bits long
+;;; the part of destination which is not target had destination-fill supplied
+;;; as its value.  Destination-fill is either zero or one.
+;;; For example shift type to datum zero filling the extra bits.
+;;; This does not load anything into the bits in the source field (but allows
+;;; someone else to, in fact source and target can overlap)
+
+(defconstraint field-shift-source (position source-start source-size source-position source?)
+  (source-position (source-start source-size position)
+		   (if (and ( position source-start)
+			    (< position (+ source-start source-size)))
+		       (- position source-start)
+		       0))
+  (source? (source-start source-size position)
+	   (and ( position source-start) (< position (+ source-start source-size)))))
+
+(defconstraint field-shift-destination (destination-source destination-position position
+						   destination-start destination-size
+						   target-start bus-size destination-fill)
+  (destination-source (destination-start destination-size target-start bus-size position
+					 destination-fill)
+		      (cond ((or (< position destination-start)
+				 ( position (+ destination-start destination-size))) 'none)
+			    ((and ( position target-start)
+				  (< position (+ target-start bus-size)))
+			     'bus)
+			    (t destination-fill)))
+  (destination-position (target-start bus-size position)
+			(cond ((and ( position target-start)
+				    (< position (+ target-start bus-size)))
+			       (- position target-start))
+			      (t 0))))
+
+(deflayout field-shifter
+  `((primary-parameters 
+      ((source? t) (bus-size 4.) (source-position 0.) (destination-position 0.)
+       (destination-source 'bus) (continue-value? nil)
+       (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity) (source-start 0) (destination-start 0) (destination-size 0)
+       (target-start 0) (destination-fill 'zero) (position 0)
+       top-stretch-top top-stretch-bottom vdd-stretch-top vdd-stretch-bottom 
+       gnd-stretch-top gnd-stretch-bottom bottom-stretch-top bottom-stretch-bottom 
+       right-stretch-right right-stretch-left left-stretch-right left-stretch-left ))
+    (constraints 
+      ((field-shift-source position source-start bus-size source-position source?)
+       (field-shift-destination destination-source destination-position position
+				destination-start destination-size target-start bus-size
+				destination-fill)
+       (vertical-stretch top-stretch-bottom top-stretch-top top-stretch xfrm)
+       (vertical-stretch vdd-stretch-bottom vdd-stretch-top vdd-stretch xfrm)
+       (vertical-stretch gnd-stretch-bottom gnd-stretch-top gnd-stretch xfrm)
+       (vertical-stretch bottom-stretch-bottom bottom-stretch-top bottom-stretch xfrm)
+       (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (replicate 'cross-bus row (list (>> bus-size))
+    (list (part nil rectangle (bottom-left (pt 65. 156.)) (top-right (pt 67. 203.))
+		(layer 'diff)))
+    (h-pitch 6.) (bottom-left (pt 65. 156.)))
+  (part 'bus rectangle (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 202.))
+	(bottom-left (pt 54. 199.)) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 189.))
+	(bottom-left (pt 54. 186.)) (layer 'metal))
+  (part 'gnd rectangle (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 168.)) 
+    (bottom-left (pt 54. 165.)) (layer 'metal))
+  (part 'local-bus rectangle (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 161.)) 
+    (bottom-left (pt 54. 158.)) (layer 'metal))
+  (part 'load-local rectangle (bottom-left (pt 61. 156.)) (top-right (pt 63. 203.)) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> 'destination-source) (quote bus)) 
+     'program-connect square-contact (layer 'diff) 
+    (center (pt (>> x center (*rep (>> destination-position)) (quote cross-bus)) 173.)))
+  (conditional-part
+    (eq (>> 'destination-source) (quote bus)) 
+     'by-pass-bus rectangle (bottom-left (pt 60.0 172.0)) 
+    (top-right (pt (>> x bottom-left program-connect) 175.)) (layer 'metal))
+  (conditional-part
+    (eq (>> 'destination-source) (quote bus)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 56. 171.)))
+  (conditional-part
+    (eq (>> 'destination-source) (quote one)) 
+     nil rectangle (bottom-left (pt 58.0 170.0)) (length 16.0) (width 2.0) (layer 'diff))
+  (conditional-part (not (eq (>> destination-source) 'none))
+     nil rectangle (bottom-left (pt 58. 158.)) (length 13.0) (width 2.0) (layer 'diff))
+  (conditional-part (not (eq (>> destination-source) 'none))
+     nil square-contact (layer 'diff) (bottom-left (pt 56. 158.)))
+  (conditional-part (not (eq (>> destination-source) 'none))
+     nil rectangle (bottom-left (pt 56.0 163.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part
+    (eq (>> 'destination-source) (quote one)) 
+     'vdd-flash square-contact (layer 'diff) (bottom-left (pt 56. 186.)))
+  (conditional-part
+    (eq (>> 'destination-source) (quote zero)) 
+     'gnd-flash square-contact (layer 'diff) (bottom-left (pt 56. 167.)))
+  (conditional-part (>> source?)
+    'value-in-flash square-contact (layer 'diff) 
+    (center (pt (>> x center (*rep (>> source-position)) (quote cross-bus)) 181.)))
+  (conditional-part (or (>> source?) (>> continue-value?))
+    'value-in rectangle (top-right (pt (>> x bottom-right value-in-flash) 183.))
+    (bottom-left (pt 54. 179.)) (layer 'metal))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt (>> x bottom-right value-in-flash) 179.)) 
+    (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 183.)) (layer 'metal))
+  (fracture left-stretch vertical (pt 55. 176.))
+  (fracture right-stretch vertical (pt-to-right (>> bottom-right cross-bus) 1))
+  (fracture bottom-stretch horizontal (pt 64. 158.))
+  (fracture gnd-stretch horizontal (pt 80. 167.))
+  (fracture vdd-stretch horizontal (pt 60. 187.))
+  (fracture top-stretch horizontal (pt 61. 202.)))
+
+
+
+;;;; drivers
+
+(deflayout basic-inverting-sb nil
+  (part 'gnd rectangle (bottom-left (pt 0. 10.)) (length 6.) (width 15.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 0. 35.)) (length 6.) (width 15.) (layer 'metal))
+  (part 'dc1 square-contact (layer 'diff) (bottom-left (pt 11. 12.)))
+  (part 'bc2 butting-contact (bottom-left (pt 8. 20.)) (xfrm 'negx))
+  (part 'pu2 rectangle (bottom-left (pt 4. 25.)) (length 11.) (width 2.) (layer 'poly))
+  (part 'vdd-contact square-contact (layer 'diff) (bottom-left (pt 0. 37.)))
+  (part 'd3 rectangle (bottom-left (pt 8. 21.)) (length 8.) (width 6.) (layer 'diff))
+  (part 'd4 rectangle (bottom-left (pt 3. 32.)) (length 2.) (width 4.) (layer 'diff))
+  (part 'd5 rectangle (bottom-left (pt 7. 32.)) (length 8.) (width 8.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 13. 16.)) (length 16.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 8. 9.)) (length 10.) (width 2.) (layer 'poly))
+  (part nil rectangle (top-right (pt 12. 42.)) (length 25.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 1. 27.)) (length 2.) (width 7.) (layer 'diff))
+  (part nil rectangle (top-right (pt 3. 37.)) (length 8.) (width 2.) (layer 'diff))
+  (part nil rectangle (top-right (pt 8. 36.)) (length 11.) (width 6.) (layer 'ion))
+  (part nil rectangle (top-right (pt 9. 44.)) (length 4.) (width 2.) (layer 'diff)))
+
+(deflayout inv-sb-driver nil
+  (part 'gnd rectangle (bottom-left (pt 0. 10.)) (length 6.) (width 15.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 0. 35.)) (length 6.) (width 15.) (layer 'metal))
+  (part 'dc1 square-contact (layer 'diff) (bottom-left (pt 11. 12.)))
+  (part 'bc2 butting-contact (bottom-left (pt 8. 20.)) (xfrm 'negx))
+  (part 'pu2 rectangle (bottom-left (pt 4. 25.)) (length 11.) (width 2.) (layer 'poly))
+  (part 'vdd-contact square-contact (layer 'diff) (bottom-left (pt 0. 37.)))
+  (part 'd3 rectangle (bottom-left (pt 8. 21.)) (length 8.) (width 6.) (layer 'diff))
+  (part 'd4 rectangle (bottom-left (pt 3. 32.)) (length 2.) (width 4.) (layer 'diff))
+  (part 'd5 rectangle (bottom-left (pt 7. 32.)) (length 8.) (width 8.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 13. 16.)) (length 16.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 8. 9.)) (length 10.) (width 2.) (layer 'poly))
+  (part nil rectangle (top-right (pt 12. 42.)) (length 25.) (width 2.) (layer 'poly))
+  (part 'connection butting-contact (bottom-left (pt 7. 44.)))
+  (part nil rectangle (bottom-left (pt 1. 27.)) (length 2.) (width 7.) (layer 'diff))
+  (part nil rectangle (top-right (pt 3. 37.)) (length 8.) (width 2.) (layer 'diff))
+  (part nil rectangle (top-right (pt 8. 36.)) (length 11.) (width 6.) (layer 'ion))
+  (part nil rectangle (top-right (pt 9. 44.)) (length 4.) (width 2.) (layer 'diff)))
+
+
+(deflayout inv-sb-driver-pair nil
+  (part 'gnd rectangle (bottom-left (pt -9. 10.)) (length 6.) (width 23.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -9. 35.)) (length 6.) (width 23.) (layer 'metal))
+  (part 'dc1 square-contact (layer 'diff) (bottom-left (pt 10. 12.)))
+  (part 'bc2 butting-contact (bottom-left (pt 7. 20.)) (xfrm 'negx))
+  (part 'pu2 rectangle (bottom-left (pt 3. 25.)) (length 11.) (width 2.) (layer 'poly))
+  (part 'vdd-contact square-contact (layer 'diff) (bottom-left (pt -1. 37.)))
+  (part 'd3 rectangle (bottom-left (pt 7. 21.)) (length 8.) (width 6.) (layer 'diff))
+  (part 'd4 rectangle (bottom-left (pt 2. 32.)) (length 2.) (width 4.) (layer 'diff))
+  (part 'd5 rectangle (bottom-left (pt 6. 32.)) (length 8.) (width 8.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 12. 16.)) (length 16.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 7. 9.)) (length 10.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 9. 17.)) (length 25.) (width 2.) (layer 'poly))
+  (part 'connection-2 butting-contact (bottom-left (pt 7. 78.)))
+  (part nil rectangle (bottom-left (pt 0. 27.)) (length 2.) (width 7.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 0. 29.)) (length 8.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 1. 25.)) (length 11.) (width 6.) (layer 'ion))
+  (part nil rectangle (bottom-left (pt 6. 40.)) (length 5.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -9. 44.)) (length 6.) (width 23.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -9. 69.)) (length 6.) (width 23.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -1. 46.)))
+  (part nil butting-contact (bottom-left (pt -1. 54.)) (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt -5. 59.)) (length 11.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -8. 71.)))
+  (part nil rectangle (bottom-left (pt -1. 55.)) (length 8.) (width 6.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -6. 66.)) (length 2.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -2. 66.)) (length 8.) (width 8.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 4. 50.)) (length 16.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -4. 9.)) (length 44.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 1. 51.)) (length 25.) (width 2.) (layer 'poly))
+  (part 'connection-1 butting-contact (bottom-left (pt -2. 78.)))
+  (part nil rectangle (bottom-left (pt -8. 61.)) (length 2.) (width 7.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -8. 63.)) (length 8.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -8. 59.)) (length 11.) (width 7.) (layer 'ion))
+  (part nil rectangle (bottom-left (pt -2. 74.)) (length 4.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 9. 43.)) (length 35.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -2. 51.)) (length 2.) (width 3.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 8. 43.)) (top-right (pt 9. 45.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 3. 48.)) (top-right (pt 6. 50.)) (layer 'diff)))
+
+
+
+
+;;;; normal register driver
+;;; this driver takes load-local load-global and read inputs
+;;; it develops restore from not load-local and not load-global and not freeze
+;;; anded with phi-1
+;;; it also drivers phi-2 directly and read directly
+
+(deflayout normal-reg-driver
+  `((primary-parameters ((right-stretch 0.) (left-stretch -2.)))
+    (auxiliary-parameters 
+      ((xfrm (quote identity)) right-stretch-right right-stretch-left
+       left-stretch-right left-stretch-left))
+    (constraints 
+      ((horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'pair-1 inv-sb-driver-pair (bottom-right (pt -18. -21.)))
+  (part 'pair-2 inv-sb-driver-pair (bottom-left (pt 3. -21.)) (xfrm 'negx))
+  (part 'single-driver inv-sb-driver (bottom-left (pt -1. 13.)))
+  (part 'vdd-4 rectangle (bottom-left (pt 3. 5.)) (length 6.) (width 14.) (layer 'metal))
+  (part 'vdd-5 rectangle (bottom-left (pt 14. 39.)) (top-right (pt 17. 45.)) (layer 'metal))
+  (part 'gnd-5 rectangle (bottom-left (pt 14. 14.)) (top-right (pt 17. 20.)) (layer 'metal))
+  (part 'gnd-4 rectangle (bottom-left (pt 3. -20.)) (top-right (pt 17. -14.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 7. -21.)) (top-right (pt 9. 13.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -27.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -27.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -27.)))
+  (part 'vdd-3 rectangle (bottom-left (pt -43. -27.)) (length 4.) (width 60.) 
+	(layer 'metal))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -38. -40.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -27. -40.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -17. -40.)))
+  (part 'phi-1 rectangle (bottom-left (pt -43. -47.)) (length 4.) (width 60.) 
+	(layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -32. -47.)))
+  (part nil rectangle (bottom-left (pt -39. -45.)) (length 2.) (width 30.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -37. -52.)) (length 12.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -52.)) (length 12.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -16. -52.)) (length 12.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -38. -51.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -40. -105.)) (length 11.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -51.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -105.)) (length 11.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -18. -51.)) (length 2.) (width 7.) (layer 'poly))
+  (part 'vdd-2 rectangle (bottom-left (pt -43. -63.)) (length 4.) (width 60.) 
+	(layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -63.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -63.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -63.)))
+  (part 'gnd-1 rectangle (bottom-left (pt -43. -138.)) (length 4.) (width 60.) 
+	(layer 'metal))
+  (part 'freeze-bar rectangle (bottom-left (pt -43. -129.)) (length 4.) (width 60.) 
+	(layer 'metal))
+  (part 'vdd-1 rectangle (bottom-left (pt -43. -102.)) (length 4.) (width 60.) 
+	(layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -102.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -38. -115.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -27. -115.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -32. -129.)))
+  (part nil rectangle (bottom-left (pt -39. -127.)) (length 2.) (width 19.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -37. -134.)) (length 19.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -134.)) (length 19.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -38. -133.)) (length 2.) (width 7.) (layer 'poly))
+  (part 'ld-1 rectangle (bottom-left (pt -40. -140.)) (length 9.) (width 2.) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -133.)) (length 2.) (width 7.) (layer 'poly))
+  (part 'ld-2 rectangle (bottom-left (pt -29. -140.)) (length 9.) (width 2.) 
+	(layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -138.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -138.)))
+  (part 'phi-2 rectangle (bottom-left (pt -43. -122.)) (length 4.) (width 60.) 
+	(layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -1. -138.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -1. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -2. -115.)))
+  (part nil rectangle (bottom-left (pt -1. -134.)) (length 19.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -2. -120.)) (length 2.) (width 5.) (layer 'poly))
+  (part nil rectangle (top-right (pt -2. -21.)) (length 84.) (width 2.) (layer 'poly))
+  (part nil rectangle (top-right (pt 9. -21.)) (length 84.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -6. -122.)))
+  (part nil rectangle (bottom-left (pt 10. -134.)) (length 19.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt 9. -115.)))
+  (part 'read rectangle (bottom-left (pt 7. -140.)) (length 9.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 9. -133.)) (length 2.) (width 5.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. -138.)))
+  (part nil rectangle (bottom-left (pt -40. -30.)) (top-right (pt -38. -19.)) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -38. -21.)) (top-right (pt -36. -19.)) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -30.)) (top-right (pt -27. -19.)) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -21.)) (top-right (pt -25. -19.)) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -17. -21.)) (top-right (pt -15. -19.)) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -19. -30.)) (top-right (pt -17. -19.)) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -104.)) (length 17.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -40. -104.)) (length 17.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -94.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -94.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -94.)))
+  (part 'gnd-2 rectangle (bottom-left (pt -43. -95.)) (length 4.) (width 60.) 
+	(layer 'metal))
+  (part nil rectangle (bottom-left (pt -11. -67.)) (length 18.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -67.)) (length 18.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -40. -67.)) (length 18.) (width 2.) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -38. -77.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -27. -77.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+	(bottom-left (pt -17. -77.)))
+  (part nil rectangle (bottom-left (pt -37. -90.)) (top-right (pt -33. -77.)) 
+	(layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -90.)) (top-right (pt -22. -77.)) 
+	(layer 'diff))
+  (part nil rectangle (bottom-left (pt -18. -94.)) (top-right (pt -16. -75.)) 
+	(layer 'diff))
+  (part nil rectangle (bottom-left (pt -38. -89.)) (top-right (pt -31. -87.)) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -89.)) (top-right (pt -20. -87.)) 
+	(layer 'poly))
+  (part nil rectangle (bottom-left (pt -21. -80.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -21. -78.)) (length 6.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -15. -86.)) (length 2.) (width 9.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -33. -86.)) (length 3.) (width 18.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -37. -86.)) (length 9.) (width 4.) (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -15. -86.)))
+  (part nil rectangle (bottom-left (pt -10. -94.)) (top-right (pt -8. -75.)) 
+	(layer 'diff))
+  (part nil rectangle (bottom-left (pt -12. -94.)) (top-right (pt -10. -91.)) 
+	(layer 'diff))
+  (part nil rectangle (bottom-left (pt -12. -77.)) (top-right (pt -10. -75.)) 
+	(layer 'diff))
+  (part 'gnd-3 rectangle (top-right (pt 17. -52.)) (length 4.) (width 60.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -56.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -56.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -56.)))
+  (part nil rectangle (bottom-left (pt -43. -20.)) (top-right (pt -41. -14.)) 
+	(layer 'metal))
+  (part nil rectangle (bottom-left (pt -43. 5.)) (top-right (pt -41. 11.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -43. 14.)) (top-right (pt -41. 20.)) 
+	(layer 'metal))
+  (part nil rectangle (bottom-left (pt -43. 39.)) (top-right (pt -41. 45.)) 
+	(layer 'metal))
+  (fracture left-stretch vertical (pt -42. 43.))
+  (fracture right-stretch vertical (pt 16. -95.)))
+
+
+
+;;;; driver for shadow register
+
+;;; takes load and read as inputs develops restore from not load and not freeze
+;;; anded with phi-1
+;;; also drives read and phi-2 directly.
+
+
+(deflayout shadow-driver
+  `((primary-parameters 
+    ((right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ((xfrm 'identity)right-stretch-right right-stretch-left left-stretch-right 
+      left-stretch-left ))
+  (constraints 
+    ((horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'pair-1 inv-sb-driver-pair (bottom-left (pt -30. -21.)))
+  (part 'pair-2 inv-sb-driver-pair (bottom-left (pt 14. -21.)) (xfrm 'negx))
+  (part 'vdd-3 rectangle (bottom-left (pt -32. -27.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -25. -27.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -14. -27.)))
+  (part nil rectangle (bottom-left (pt -29. -21.)) (length 2.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -31.)) (top-right (pt -27. -19.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -18. -21.)) (length 2.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -18. -31.)) (length 12.) (width 2.) (layer 'poly))
+  (part 'gnd-3 rectangle (bottom-left (pt -32. -56.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -25. -56.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -14. -56.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -14. -63.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -25. -63.)))
+  (part 'vdd-2 rectangle (bottom-left (pt -32. -63.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -26. -76.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -15. -76.)))
+  (part 'phi-1 rectangle (bottom-left (pt -32. -47.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -19. -47.)))
+  (part nil rectangle (bottom-left (pt -27. -45.)) (length 2.) (width 19.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -25. -91.)) (length 15.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -13. -91.)) (length 15.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -90.)) (length 2.) (width 5.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -28. -105.)) (length 17.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -17. -90.)) (length 2.) (width 8.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -17. -105.)) (length 17.) (width 2.) (layer 'poly))
+  (part 'gnd-2 rectangle (bottom-left (pt -32. -95.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -25. -95.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -14. -95.)))
+  (part nil rectangle (bottom-left (pt -28. -66.)) (length 17.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -17. -66.)) (length 17.) (width 2.) (layer 'poly))
+  (part 'gnd-1 rectangle (bottom-left (pt -32. -138.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part 'freeze-bar rectangle (bottom-left (pt -32. -129.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part 'vdd-1 rectangle (bottom-left (pt -32. -102.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -14. -102.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -25. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -26. -115.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -15. -115.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -20. -129.)))
+  (part nil rectangle (bottom-left (pt -27. -127.)) (length 2.) (width 8.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -25. -134.)) (length 19.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -14. -134.)) (length 19.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -133.)) (length 2.) (width 7.) (layer 'poly))
+  (part 'load rectangle (bottom-left (pt -28. -140.)) (length 9.) (width 2.) 
+    (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -25. -138.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -14. -138.)))
+  (part 'phi-2 rectangle (bottom-left (pt -32. -122.)) (length 4.) (width 51.) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt -20. -116.)) (length 6.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -20. -118.)) (length 2.) (width 11.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -1. -138.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -1. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -2. -115.)))
+  (part nil rectangle (bottom-left (pt -1. -134.)) (length 19.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -2. -120.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (top-right (pt -2. -21.)) (length 84.) (width 2.) (layer 'poly))
+  (part nil rectangle (top-right (pt 9. -21.)) (length 84.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -6. -122.)))
+  (part nil rectangle (bottom-left (pt 10. -134.)) (length 19.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt 9. -115.)))
+  (part 'read rectangle (bottom-left (pt 7. -140.)) (length 9.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 9. -133.)) (length 2.) (width 5.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. -138.)))
+  (part nil rectangle (bottom-left (pt -27. -21.)) (top-right (pt -25. -19.)) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt -16. -21.)) (top-right (pt -14. -19.)) 
+    (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -26. -41.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -15. -41.)))
+  (part nil rectangle (bottom-left (pt -25. -52.)) (top-right (pt -21. -41.)) 
+    (layer 'diff))
+  (part nil rectangle (bottom-left (pt -14. -52.)) (top-right (pt -10. -41.)) 
+    (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -51.)) (top-right (pt -19. -49.)) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt -16. -51.)) (top-right (pt -8. -49.)) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -31.)) (top-right (pt -26. -29.)) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt -16. -31.)) (top-right (pt -15. -29.)) 
+    (layer 'poly))
+  (part 'gnd-4 rectangle (bottom-left (pt 14. -20.)) (length 6.) (width 5.) 
+    (layer 'metal))
+  (part 'vdd-4 rectangle (bottom-left (pt 14. 5.)) (length 6.) (width 5.) (layer 'metal))
+  (part 'gnd-5 rectangle (bottom-left (pt 14. 14.)) (length 6.) (width 5.) (layer 'metal))
+  (part 'vdd-5 rectangle (bottom-left (pt 14. 39.)) (length 6.) (width 5.) (layer 'metal))
+  (part nil rectangle (top-right (pt -30. -14.)) (length 6.) (width 2.) (layer 'metal))
+  (part nil rectangle (top-right (pt -30. 11.)) (length 6.) (width 2.) (layer 'metal))
+  (part nil rectangle (top-right (pt -30. 20.)) (length 6.) (width 2.) (layer 'metal))
+  (part nil rectangle (top-right (pt -30. 45.)) (length 6.) (width 2.) (layer 'metal))
+  (fracture left-stretch vertical (pt -31. 45.))
+  (fracture right-stretch vertical (pt 18. 45.)))
+
+
+
+;;;; a driver for a complementary pair -- unclocked
+
+;;; negated version is on left un-negated on right
+;;; takes one input produces both that single and its negation as outputs
+
+(deflayout complementary-pair-driver
+  `((primary-parameters 
+    ( (right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ( (xfrm 'identity)right-stretch-right right-stretch-left left-stretch-right 
+      left-stretch-left ))
+  (constraints 
+    ( (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'gnd-5 rectangle (bottom-left (pt -32. 14.)) (length 6.) (width 6.) 
+    (layer 'metal))
+  (part 'vdd-3 rectangle (bottom-left (pt -48. -27.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part 'phi-1 rectangle (bottom-left (pt -48. -47.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part 'vdd-2 rectangle (bottom-left (pt -48. -63.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part 'gnd-1 rectangle (bottom-left (pt -48. -138.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part 'freeze-bar rectangle (bottom-left (pt -48. -129.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part 'vdd-1 rectangle (bottom-left (pt -48. -102.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -33. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -35. -115.)))
+  (part nil rectangle (bottom-left (pt -33. -134.)) (length 19.) (width 2.) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -34. -138.)))
+  (part 'phi-2 rectangle (bottom-left (pt -48. -122.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt -36. -106.)) (length 85.) (width 2.) (layer 'poly))
+  (part 'gnd-2 rectangle (bottom-left (pt -48. -95.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part 'gnd-3 rectangle (bottom-left (pt -48. -56.)) (length 4.) (width 22.) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt -45. -120.)) (length 2.) (width 16.) (layer 'poly))
+  (part 'gnd-4 rectangle (bottom-left (pt -29. -20.)) (length 6.) (width 3.) 
+    (layer 'metal))
+  (part 'vdd-5 rectangle (bottom-left (pt -32. 39.)) (length 6.) (width 6.) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt -48. 39.)) (top-right (pt -45. 45.)) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt -48. 14.)) (top-right (pt -45. 20.)) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt -48. -20.)) (length 6.) (width 4.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -48. 5.)) (length 6.) (width 4.) (layer 'metal))
+  (part 'vdd-4 rectangle (bottom-left (pt -29. 5.)) (length 6.) (width 3.) (layer 'metal))
+  (part nil basic-inverting-sb (bottom-left (pt -32. 13.)) (xfrm 'negx))
+  (part nil basic-inverting-sb (bottom-left (pt -44. -21.)))
+  (part nil rectangle (bottom-left (pt -37. 14.)) (top-right (pt -29. 16.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -30. 14.)) (top-right (pt -28. 48.)) (layer 'diff))
+  (part 'unnegated-connection butting-contact (bottom-left (pt -32. 48.)))
+  (part 'negated-connection butting-contact (bottom-left (pt -42. 48.)))
+  (part nil rectangle (bottom-left (pt -47. 13.)) (top-right (pt -42. 15.)) (layer 'poly))
+  (part 'input rectangle (bottom-left (pt -47. -140.)) (top-right (pt -45. 13.)) 
+    (layer 'poly))
+  (fracture left-stretch vertical (pt -47. 40.))
+  (fracture right-stretch vertical (pt -27. 45.)))
+
+
+
+;;;; a two independent inputs, non-inverting driver
+
+(deflayout two-input-driver
+  `((primary-parameters 
+    ( (right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ( (xfrm 'identity)right-stretch-right right-stretch-left left-stretch-right 
+      left-stretch-left ))
+  (constraints 
+    ( (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'gnd-5 rectangle (bottom-left (pt -32. 14.)) (length 6.0) (width 7.0) (layer 'metal))
+  (part 'vdd-3 rectangle (bottom-left (pt -51.0 -27.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'phi-1 rectangle (bottom-left (pt -51.0 -47.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'vdd-2 rectangle (bottom-left (pt -51.0 -63.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'gnd-1 rectangle (bottom-left (pt -51.0 -138.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'freeze-bar rectangle (bottom-left (pt -51.0 -129.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'vdd-1 rectangle (bottom-left (pt -51.0 -102.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'phi-2 rectangle (bottom-left (pt -51.0 -122.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'gnd-2 rectangle (bottom-left (pt -51.0 -95.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'gnd-3 rectangle (bottom-left (pt -51.0 -56.0)) (length 4.0) (width 26.0) 
+    (layer 'metal))
+  (part 'gnd-4 rectangle (bottom-left (pt -29. -20.)) (length 6.0) (width 4.0) (layer 'metal))
+  (part 'vdd-5 rectangle (bottom-left (pt -32. 39.)) (length 6.0) (width 7.0) (layer 'metal))
+  (part nil rectangle (top-right (pt -45. 45.)) (length 6.0) (width 6.0) (layer 'metal))
+  (part nil rectangle (top-right (pt -45. 20.)) (length 6.0) (width 6.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -51.0 -20.0)) (length 6.0) (width 8.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -51.0 5.0)) (length 6.0) (width 7.0) (layer 'metal))
+  (part 'vdd-4 rectangle (bottom-left (pt -29. 5.)) (length 6.0) (width 4.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -47.0 -107.0)) (length 89.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -35.0 -107.0)) (length 89.0) (width 2.0) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -45.0 -116.0)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -44.0 -102.0)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -33.0 -116.0)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -32.0 -102.0)))
+  (part nil rectangle (bottom-left (pt -44. -135.)) (length 21.0) (width 4.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -44. -138.)))
+  (part nil rectangle (bottom-left (pt -33.0 -135.0)) (length 21.0) (width 4.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -33.0 -138.0)))
+  (part nil rectangle (bottom-left (pt -45. -133.)) (length 2.0) (width 7.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -34.0 -133.0)) (length 2.0) (width 7.0) (layer 'poly))
+  (part 'input-1 rectangle (bottom-left (pt -47. -140.)) (top-right (pt -45. -131.)) 
+    (layer 'poly))
+  (part 'input-2 rectangle (bottom-left (pt -36.0 -140.0)) (length 9.0) (width 2.0) 
+    (layer 'poly))
+  (part 'buffer inv-sb-driver-pair (bottom-left (pt -50.0 -21.0)))
+  (fracture left-stretch vertical (pt -50. 54.))
+  (fracture right-stretch vertical (pt -26. 9.)))
+
+
+
+
+;;;; a single input non-inverting driver
+
+(deflayout one-input-driver
+  `((primary-parameters 
+    ( (right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ( (xfrm 'identity)right-stretch-right right-stretch-left left-stretch-right 
+      left-stretch-left ))
+  (constraints 
+    ( (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'gnd-5 rectangle (width 2.) (length 6.) (bottom-left (pt -33. 14.)) (layer 'metal))
+  (part 'vdd-3 rectangle (width 17.) (length 4.) (bottom-left (pt -48. -27.)) (layer 'metal))
+  (part 'phi-1 rectangle (width 17.) (length 4.) (bottom-left (pt -48. -47.)) (layer 'metal))
+  (part 'vdd-2 rectangle (width 17.) (length 4.) (bottom-left (pt -48. -63.)) (layer 'metal))
+  (part 'gnd-1 rectangle (width 17.) (length 4.) (bottom-left (pt -48. -138.)) (layer 'metal))
+  (part 'freeze-bar rectangle (width 17.) (length 4.) (bottom-left (pt -48. -129.)) 
+    (layer 'metal))
+  (part 'vdd-1 rectangle (width 17.) (length 4.) (bottom-left (pt -48. -102.)) (layer 'metal))
+  (part 'phi-2 rectangle (width 17.) (length 4.) (bottom-left (pt -48. -122.)) (layer 'metal))
+  (part 'gnd-2 rectangle (width 17.) (length 4.) (bottom-left (pt -48. -95.)) (layer 'metal))
+  (part 'gnd-3 rectangle (width 17.) (length 4.) (bottom-left (pt -48. -56.)) (layer 'metal))
+  (part 'vdd-5 rectangle (width 2.) (length 6.) (bottom-left (pt -33. 39.)) (layer 'metal))
+  (part nil rectangle (top-right (pt -45. 45.)) (bottom-left (pt -48. 39.)) (layer 'metal))
+  (part nil rectangle (top-right (pt -45. 20.)) (bottom-left (pt -48. 14.)) (layer 'metal))
+  (part 'gnd-4 rectangle (width 17.) (length 6.) (bottom-left (pt -48. -20.)) (layer 'metal))
+  (part 'vdd-4 rectangle (width 17.) (length 6.) (bottom-left (pt -48. 5.)) (layer 'metal))
+  (part nil basic-inverting-sb (bottom-left (pt -32. 13.)) (xfrm 'negx))
+  (part 'connection butting-contact (bottom-left (pt -42. 48.)))
+  (part nil rectangle (top-right (pt -42. 15.)) (bottom-left (pt -47. 13.)) (layer 'poly))
+  (part 'input rectangle (width 2.) (length 13.) (bottom-left (pt -47. -140.)) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -45. -116.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -44. -103.)))
+  (part nil rectangle (top-right (pt -40. -116.)) (bottom-left (pt -44. -134.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -44. -138.)))
+  (part nil rectangle (top-right (pt -38. -125.)) (bottom-left (pt -47. -127.)) (layer 'poly))
+  (part nil rectangle (width 2.) (length 122.) (top-left (pt -47. 15.)) (layer 'poly))
+  (fracture left-stretch vertical (pt -47. 40.))
+  (fracture right-stretch vertical (pt -32. 42.)))
+
+
+
+;;;; a single input inverting driver
+
+(deflayout inverting-one-input-driver
+  `((primary-parameters 
+    ( (right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ( (xfrm 'identity)right-stretch-right right-stretch-left left-stretch-right 
+      left-stretch-left ))
+  (constraints 
+    ( (horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'gnd-5 rectangle (bottom-left (pt -33. 14.)) (length 6.) (width 2.) (layer 'metal))
+  (part 'vdd-3 rectangle (bottom-left (pt -48. -27.)) (length 4.) (width 17.) (layer 'metal))
+  (part 'phi-1 rectangle (bottom-left (pt -48. -47.)) (length 4.) (width 17.) (layer 'metal))
+  (part 'vdd-2 rectangle (bottom-left (pt -48. -63.)) (length 4.) (width 17.) (layer 'metal))
+  (part 'gnd-1 rectangle (bottom-left (pt -48. -138.)) (length 4.) (width 17.) (layer 'metal))
+  (part 'freeze-bar rectangle (bottom-left (pt -48. -129.)) (length 4.) (width 17.) 
+    (layer 'metal))
+  (part 'vdd-1 rectangle (bottom-left (pt -48. -102.)) (length 4.) (width 17.) (layer 'metal))
+  (part 'phi-2 rectangle (bottom-left (pt -48. -122.)) (length 4.) (width 17.) (layer 'metal))
+  (part 'gnd-2 rectangle (bottom-left (pt -48. -95.)) (length 4.) (width 17.) (layer 'metal))
+  (part 'gnd-3 rectangle (bottom-left (pt -48. -56.)) (length 4.) (width 17.) (layer 'metal))
+  (part 'vdd-5 rectangle (bottom-left (pt -33. 39.)) (length 6.) (width 2.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -48. 39.)) (top-right (pt -45. 45.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -48. 14.)) (top-right (pt -45. 20.)) (layer 'metal))
+  (part 'gnd-4 rectangle (bottom-left (pt -48. -20.)) (length 6.) (width 17.) (layer 'metal))
+  (part 'vdd-4 rectangle (bottom-left (pt -48. 5.)) (length 6.) (width 17.) (layer 'metal))
+  (part nil basic-inverting-sb (bottom-left (pt -32. 13.)) (xfrm 'negx))
+  (part 'connection butting-contact (bottom-left (pt -42. 48.)))
+  (part nil rectangle (bottom-left (pt -47. 13.)) (top-right (pt -42. 15.)) (layer 'poly))
+  (part 'input rectangle (bottom-left (pt -47. -140.)) (length 33.) (width 2.) 
+    (layer 'poly))
+  (part nil rectangle (top-left (pt -47. 15.)) (length 122.) (width 2.) (layer 'poly))
+  (fracture left-stretch vertical (pt -47. 40.))
+  (fracture right-stretch vertical (pt -32. 42.)))
+
+
+
+
+;;;; stack driver
+;;; takes push and pop inputs
+;;; develops clocked push and pop outputs 
+;;; as well as the restore and phi-2 outputs
+
+(deflayout stack-driver
+  `((primary-parameters 
+    ((right-stretch 0.) (left-stretch 0.)))
+  (auxiliary-parameters 
+    ((xfrm 'identity)right-stretch-right right-stretch-left left-stretch-right 
+      left-stretch-left ))
+  (constraints 
+    ((horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'pair-1 inv-sb-driver-pair (bottom-right (pt -18. -21.)))
+  (part 'pair-2 inv-sb-driver-pair (bottom-left (pt 3. -21.)) (xfrm 'negx))
+  (part 'vdd-4 rectangle (bottom-left (pt 3. 5.)) (length 6.) (width 3.) (layer 'metal))
+  (part 'vdd-5 rectangle (bottom-left (pt 3. 39.)) (length 6.) (width 3.) (layer 'metal))
+  (part 'gnd-5 rectangle (bottom-left (pt 3. 14.)) (length 6.) (width 3.) (layer 'metal))
+  (part 'gnd-4 rectangle (bottom-left (pt 3. -20.)) (length 6.) (width 3.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -27.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -27.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -27.)))
+  (part 'vdd-3 rectangle (bottom-left (pt -43. -27.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt -38. -40.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt -27. -40.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt -17. -40.)))
+  (part 'phi-1 rectangle (bottom-left (pt -43. -47.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -32. -47.)))
+  (part nil rectangle (bottom-left (pt -39. -45.)) (length 2.) (width 30.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -37. -52.)) (length 12.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -52.)) (length 12.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -16. -52.)) (length 12.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -38. -51.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -40. -105.)) (length 11.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -51.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -105.)) (length 11.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -18. -51.)) (length 2.) (width 7.) (layer 'poly))
+  (part 'vdd-2 rectangle (bottom-left (pt -43. -63.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -63.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -63.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -63.)))
+  (part 'gnd-1 rectangle (bottom-left (pt -43. -138.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part 'freeze-bar rectangle (bottom-left (pt -43. -129.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part 'vdd-1 rectangle (bottom-left (pt -43. -102.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -102.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -38. -115.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -27. -115.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -32. -129.)))
+  (part nil rectangle (bottom-left (pt -39. -127.)) (length 2.) (width 19.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -37. -134.)) (length 19.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -134.)) (length 19.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -38. -133.)) (length 2.) (width 7.) (layer 'poly))
+  (part 'pop rectangle (bottom-left (pt -40. -140.)) (length 9.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -133.)) (length 2.) (width 7.) (layer 'poly))
+  (part 'push rectangle (bottom-left (pt -29. -140.)) (length 9.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -138.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -138.)))
+  (part 'phi-2 rectangle (bottom-left (pt -43. -122.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -9. -138.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -9. -102.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -10. -115.)))
+  (part nil rectangle (bottom-left (pt -9. -134.)) (length 19.) (width 2.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -11. -120.)) (length 2.) (width 5.) (layer 'poly))
+  (part nil rectangle (top-right (pt -2. -21.)) (length 84.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -6. -122.)))
+  (part nil rectangle (bottom-left (pt -40. -30.)) (top-right (pt -38. -19.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -38. -21.)) (top-right (pt -36. -19.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -30.)) (top-right (pt -27. -19.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -21.)) (top-right (pt -25. -19.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -17. -21.)) (top-right (pt -15. -19.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -19. -30.)) (top-right (pt -17. -19.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -104.)) (length 17.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -40. -104.)) (length 17.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -94.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -94.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -94.)))
+  (part 'gnd-2 rectangle (bottom-left (pt -43. -95.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt -11. -67.)) (length 18.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -29. -67.)) (length 18.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -40. -67.)) (length 18.) (width 2.) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt -38. -77.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt -27. -77.)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) (bottom-left (pt -17. -77.)))
+  (part nil rectangle (bottom-left (pt -37. -90.)) (top-right (pt -33. -77.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. -90.)) (top-right (pt -22. -77.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -18. -94.)) (top-right (pt -16. -75.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -38. -89.)) (top-right (pt -31. -87.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -27. -89.)) (top-right (pt -20. -87.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -21. -80.)) (length 2.) (width 7.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -21. -78.)) (length 6.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -15. -86.)) (length 2.) (width 9.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -33. -86.)) (length 3.) (width 18.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -37. -86.)) (length 9.) (width 4.) (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -15. -86.)))
+  (part nil rectangle (bottom-left (pt -10. -94.)) (top-right (pt -8. -75.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -12. -94.)) (top-right (pt -10. -91.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -12. -77.)) (top-right (pt -10. -75.)) (layer 'diff))
+  (part 'gnd-3 rectangle (bottom-left (pt -43. -56.)) (length 4.) (width 49.) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -37. -56.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -26. -56.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -56.)))
+  (part nil rectangle (bottom-left (pt -43. -20.)) (top-right (pt -41. -14.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -43. 5.)) (top-right (pt -41. 11.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -43. 14.)) (top-right (pt -41. 20.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -43. 39.)) (top-right (pt -41. 45.)) (layer 'metal))
+  (fracture left-stretch vertical (pt -42. 43.))
+  (fracture right-stretch vertical (pt 5. 20.)))
+
+
+
+
+;;;; driver for clocks phi-1 and phi-2 and freeze-bar
+;;; inputs are freeze phi-1 phi-2
+;;; outputs are freeze-bar phi-1 phi-2
+
+
+(deflayout clock-freeze-driver
+  `((primary-parameters 
+      ((right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((xfrm 'identity)right-stretch-right right-stretch-left left-stretch-right 
+       left-stretch-left ))
+    (constraints 
+      ((horizontal-stretch right-stretch-left right-stretch-right right-stretch xfrm)
+       (horizontal-stretch left-stretch-left left-stretch-right left-stretch xfrm))))
+  (part 'gnd-5 rectangle (bottom-left (pt -32. 14.)) (length 6.0) (width 7.0) (layer 'metal))
+  (part 'vdd-3 rectangle (bottom-left (pt -63.0 -27.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'phi-1 rectangle (bottom-left (pt -63.0 -47.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'vdd-2 rectangle (bottom-left (pt -63.0 -63.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'gnd-1 rectangle (bottom-left (pt -63.0 -138.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'freeze-bar rectangle (bottom-left (pt -63.0 -129.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'vdd-1 rectangle (bottom-left (pt -63.0 -102.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'phi-2 rectangle (bottom-left (pt -63.0 -122.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'gnd-2 rectangle (bottom-left (pt -63.0 -95.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'gnd-3 rectangle (bottom-left (pt -63.0 -56.0)) (length 4.0) (width 38.0) 
+    (layer 'metal))
+  (part 'gnd-4 rectangle (bottom-left (pt -29. -20.)) (length 6.0) (width 4.0) (layer 'metal))
+  (part 'vdd-5 rectangle (bottom-left (pt -32. 39.)) (length 6.0) (width 7.0) (layer 'metal))
+  (part nil rectangle (top-right (pt -45. 45.)) (length 6.0) (width 18.0) (layer 'metal))
+  (part nil rectangle (top-right (pt -45. 20.)) (length 6.0) (width 18.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -63.0 -20.0)) (length 6.0) (width 20.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -63.0 5.0)) (length 6.0) (width 19.0) (layer 'metal))
+  (part 'vdd-4 rectangle (bottom-left (pt -29. 5.)) (length 6.0) (width 4.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -47.0 -107.0)) (length 89.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -35.0 -107.0)) (length 89.0) (width 2.0) (layer 'poly))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -45.0 -116.0)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -44.0 -102.0)))
+  (part nil inline-pullup (channel-length 8.) (channel-width 2.) 
+    (bottom-left (pt -33.0 -116.0)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -32.0 -102.0)))
+  (part nil rectangle (top-right (pt -42. -114.)) (bottom-left (pt -44. -135.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -44. -138.)))
+  (part nil rectangle (top-right (pt -30. -114.)) (bottom-left (pt -32. -135.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -32. -138.)))
+  (part nil rectangle (top-right (pt -40. -131.)) (bottom-left (pt -45. -133.)) (layer 'poly))
+  (part nil rectangle (top-right (pt -28. -131.)) (bottom-left (pt -33. -133.)) (layer 'poly))
+  (part 'phi-1-in rectangle (top-right (pt -45. -131.)) (bottom-left (pt -47. -140.)) 
+    (layer 'poly))
+  (part 'phi-2-in rectangle (top-right (pt -33. -131.)) (bottom-left (pt -35. -140.)) 
+    (layer 'poly))
+  (part 'freeze-driver inv-sb-driver (bottom-left (pt -46.0 13.0)) (xfrm 'negx))
+  (part 'freeze-in rectangle (bottom-left (pt -56.0 -140.0)) (top-right (pt -54.0 13.0)) 
+    (layer 'poly))
+  (part 'clock-driver inv-sb-driver-pair (bottom-left (pt -50.0 -21.0)))
+  (fracture left-stretch vertical (pt -62. 44.))
+  (fracture right-stretch vertical (pt -26. 9.)))

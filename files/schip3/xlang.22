@@ -1,0 +1,151 @@
+;;; -*-mode:LISP; package:SCHIP-*-
+
+;;; XLANG, the SCHIP compiler extended language package, by HANSON.
+
+;;; LISPM compatibilities.
+
+#M
+(eval-when (eval load)
+
+(defmacro dolist ((var init) &rest body)
+  (let ((gen (gensym)))
+    `(do ((,gen ,init (cdr ,gen))) ((null ,gen))
+       (let ((,var (car ,gen))) ,@body))))
+
+(defmacro aset (val array idx) `(store (arraycall t ,array ,idx) ,val))
+
+(defmacro aref (array idx) `(arraycall t ,array ,idx))
+
+(defmacro copylist (x) `(append ,x nil))
+
+(defmacro copytree (x) `(subst nil nil ,x))
+
+)
+
+#M
+(defun butlast (x)
+  (cond ((atom x) x)
+	((null (cdr x)) nil)
+	(t (cons (car x) (butlast (cdr x))))))
+
+;;; Useful macros.
+
+(eval-when (eval load compile)
+  (defmacro left-shift (x y) `(#Q ash #M lsh ,x ,y)))
+
+(eval-when (eval load)
+
+;;; set-addq adds members to a set, which can be anyplace that
+;;; push (and therefore setf) knows about.
+
+(defmacro set-addq (object set)
+  (let ((newsym (gensym)))
+    `(let ((,newsym ,object))
+       (or (memq ,newsym ,set)
+	   (push ,newsym ,set)))))
+
+;;; BIND-OUTSTREAM allows machine-independent I/O.
+;;; It accepts a filename, and then executes the given
+;;; code in an environment in which the standard output
+;;; is that file.  It works in both maclisp and lispm.
+
+(defmacro bind-outstream (filespec &rest stuff)
+  #M `(let ((outfiles (list (open ,filespec 'out)))
+	    (^r t)
+	    (^w t))
+	(unwind-protect (progn ,@stuff)
+			(close (car outfiles))))
+  #Q `(let ((si:standard-output (open ,filespec 'out)))
+	(unwind-protect (progn ,@stuff)
+			(close si:standard-output))))
+
+(defmacro pretty-print (thing) `(#M sprinter #Q grind-top-level ,thing))
+
+;;; This is just syntax for mappings that is easier to write.
+
+(defmacro let-mapc (bindings &rest body)
+  `(mapc #'(lambda ,(mapcar #'car bindings) ,@body)
+	 ,@(mapcar #'cadr bindings)))
+
+(defmacro let-mapcar (bindings &rest body)
+  `(mapcar #'(lambda ,(mapcar #'car bindings) ,@body)
+	   ,@(mapcar #'cadr bindings)))
+
+(defmacro let-mapcan (bindings &rest body)
+  `(mapcan #'(lambda ,(mapcar #'car bindings) ,@body)
+	 ,@(mapcar #'cadr bindings)))
+
+;;; this is like MEM in LISPM.  basically the var is bound to successive cars of the
+;;; init.  the first one for which body is true causes the return of that portion
+;;; of the list for which var is the car.
+
+(defmacro let-mem ((var init) &rest body)
+  (let ((the-list (gensym)))
+    `(do ((,the-list ,init (cdr ,the-list)))
+	 ((null ,the-list) nil)
+       (let ((,var (car ,the-list)))
+	 (and (progn ,@body) (return ,the-list))))))
+
+)
+
+;;; Useful Functions.
+
+;;; useful for un-nesting progn-like functions.
+
+(defun simplify-progn (type-of-progn body)
+  (setq body (simplify-progn-1 type-of-progn body))
+  (cond ((null body) nil)
+	((null (cdr body)) (car body))
+	(t (cons type-of-progn body))))
+
+(defun simplify-progn-1 (type-of-progn body)
+       (cond ((null body) nil)
+	     ((null (car body))
+	      (simplify-progn-1 type-of-progn (cdr body)))
+	     ((and (not (atom (car body)))
+		   (eq (caar body) type-of-progn))
+	      (simplify-progn-1 type-of-progn (append (cdar body) (cdr body))))
+	     (t (cons (car body)
+		      (simplify-progn-1 type-of-progn (cdr body))))))
+
+(defun enlist (y)
+  (cond ((null y) nil)
+	((atom y) (list y))
+	(t y)))
+
+;;; returns true iff value will not fit inside width bits.
+
+(defun value-size-check (value width)
+  (let ((max-value (1- (left-shift 1 width))))
+    (if (minusp value)
+	(if (minusp max-value) (> value max-value) t)
+	(if (minusp max-value) nil (> value max-value)))))
+
+;;; this generates names based on the fringe of its argument.
+
+(eval-when (eval load) (declare (*lexpr cons-name)))
+
+(defun cons-name (&rest args)
+  (let ((namelist (get-fringe-of args)))
+    (intern (if (null (cdr namelist)) (car namelist)
+		(format nil "~A~{-~A~}" (car namelist) (cdr namelist))))))
+
+;;; given a list, returns a list which is the fringe of the input,
+;;; linearized into a single level.  doesn't work on trees.
+
+(defun get-fringe-of (x)
+  (let ((z (cons nil (copytree x))))
+    (walker (cdr z) z)
+    (cdr z)))
+
+(defun walker (cell previous)
+  (cond ((null (car cell))
+	 (rplacd previous (cdr cell))
+	 (if (null (cdr cell)) nil
+	     (walker (cdr previous) previous)))
+	((atom (car cell))
+	 (if (null (cdr cell)) nil
+	     (walker (cdr cell) cell)))
+	(t (rplacd previous (car cell))
+	   (rplacd (last (car cell)) (cdr cell))
+	   (walker (cdr previous) previous))))

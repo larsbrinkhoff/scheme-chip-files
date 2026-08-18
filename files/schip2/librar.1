@@ -1,0 +1,43 @@
+
+(deflayout pass-transistor (length width)
+	   (box 'poly
+		(- 0 *poly-overhang* (// width 2.0))
+		(+ *poly-overhang* (// width 2.0))
+		(- 0 (// length 2.0))
+		(// length 2.0))
+	   (box 'diff
+		(- 0 (// width 2.0))
+		(// width 2.0)
+		(- 0 *diffusion-overhang* (// length 2.0))
+		(+ *diffusion-overhang* (// length 2.0))))
+
+(deflayout general-pullup (length width)
+	   (boxes (poly (+ (* 2 *poly-overhang*) width)) (pt 0 0) (+Y length))
+	   (boxes (diff width) (pt 0 -1) (+Y (+ length 2)))
+	   (boxes (implant (+ (* 2 *implant-overhang*) width))
+		  (pt 0 (- 0 *implant-overhang*))
+		  (+Y (+ length (* 2 *implant-overhang*)))))
+
+(deflayout pullup-without-contact (length)
+	   (boxes (poly 6) (pt 0 0) (+Y length))
+	   (boxes diff (pt 0 0) (+Y length))
+	   (boxes (implant (+ (* 2 *implant-overhang*) 2))	;default width
+		  (pt 0 (- 0 *implant-overhang*))
+		  (+Y (+ length (* 2 *implant-overhang*)))))
+
+(deflayout pullup (length)
+   (call 'butting-contact nil)
+   (boxes (poly 6) (pt 0 0) (+Y (1+ length)))
+   (boxes diff (pt 0 0) (+Y (1+ length)))
+   (set-the' top *XY)
+   (boxes (implant (+ (* 2 *implant-overhang*) 2))	;default width
+	  (pt 0 (- 0 *implant-overhang*))
+	  (+Y (+ length (* 2 *implant-overhang*) 1)))
+   (boxes implant (pt 0 0) (+Y (1+ length))))
+
+;Vertical butting contact with Poly on top
+(deflayout butting-contact ()
+   (boxes (diff 4) (pt 0 1) (-Y 4))
+   (boxes (poly 4) (pt 0 0) (+Y 3))
+   (boxes (metal 4) (pt 0 -3) (+Y 6))
+   (boxes (cuts 2) (pt 0 -2) (+Y 4)))

@@ -1,0 +1,119 @@
+;;; -*- mode:LISP; package:SCHIP; base: 8 -*-
+
+(eval-when (compile load eval)
+	   (reset-defs)
+	   (setq base 10.)
+	   (print '(setq base (setq ibase 8)))
+	   (setq base (setq ibase 8)))
+
+;Define the data types used by this machine.
+
+(deffield word
+  (width (+ (width-of-field '(type word)) (width-of-field '(datum word))))
+  (subfield type				;opcodes are TYPEs of sexprs
+	    (width 7)
+	    (position (width-of-field '(datum word)))
+	    (subfield pointer-bit
+		      (width 1.)
+		      (position 6)
+		      (values (non-pointer 0)))
+	    (subfield class
+		      (width 4.)
+		      (position 3)
+		      (values (array-pointer 17) (list-pointer 10 17))))
+
+  (subfield count			;counter for PUSH-COUNTER racks.
+	    (width 5)			;These bits are chosen so that, 
+					;merged with two bits "10" above them,
+					;the result is always a list-pointer.
+	    (position (width-of-field '(datum word))))
+  (subfield datum
+	    (width 29.)
+	    (position 0)
+	    (subfield machine-number (width 5) (position 24.))
+	    (subfield sign-bit (width 1) (position 28.))
+	    (subfield typenum
+		      (width (width-of-field '(type word)))
+		      (position 0))
+	    (subfield rest
+		      (width (- (width-of-field '(datum word))
+				(width-of-field '(type word))))
+		      (position (width-of-field '(type word))))
+	    (subfield high-bits
+		      (width (- (width-of-field '(datum word))
+				(width-of-field '(low-bit datum word))))
+		      (position 1))
+	    (subfield low-bit
+		      (width 1)
+		      (position 0))
+	    (subfield interrupt-bits (position 0) (width 4)))
+  (subfield external (position 0) (width 1))
+  (subfield dma (position 1) (width 1))
+  (subfield cons-server (position 2) (width 1))
+  (subfield gc (position 3) (width 1)))
+
+;; Tell defdispatch what to do to define a data-type.
+;; The subclasses are the "value"s of subfields class and pointer-bit.
+(def-dispatch-class data-type (type word) (class pointer-bit))
+
+;One dispatch table of places to handle macrocode instructions.
+(def-dispatch-table user-type data-type)
+
+;One dispatch table of places to return to in pop-return.
+(def-dispatch-table extra-type-cont data-type)
+
+(deffield machine-number (same-field machine-number datum word))
+
+(deffield interrupt-bits (same-field interrupt-bits datum word))
+
+(deffield sbus-word
+	   (subfield error
+		     (width 1) (position 0))
+	   (subfield halt			;Tell world we have halted.
+		     (width 1) (position 1))
+	   (subfield mem-request		;Request memory operation.
+		     (width 1) (position 2))
+	   (subfield mem-done			;Memory says it is done.
+		     (width 1) (position 3))
+	   (subfield write			;Tell memory to write.
+		     (width 1) (position 4))
+	   (subfield external-interrupt-request	;Someone requests int.
+		     (width 1) (position 5))
+	   (subfield external-interrupt-grant	;We grant it.
+		     (width 1) (position 6))
+	   (subfield cons-server-request	;Someone requests cons server op.
+		     (width 1) (position 7))
+	   (subfield relocate-request-to-me	;Someone requests external relocate.
+		     (width 1) (position 10))
+	   (subfield operation-grant		;We say "ok, send args".
+		     (width 1) (position 11))
+	   (subfield operation-done		;We say operation done, value on bus.
+		     (width 1) (position 12))
+	   (subfield relocate-request-from-me	;We request relocate.
+		     (width 1) (position 13))
+	   (subfield relocate-from-me-acknowledged	;Bus coupler accepts it.
+		     (width 1) (position 14))
+	   (subfield freeze
+		     (width 1) (position 15))
+	   (subfield -somebody-needs-gc
+		     (width 1) (position 16))
+	   (subfield -somebody-doesnt-need-gc
+		     (width 1) (position 17))
+	   (subfield low-address-bit
+		     (width 1) (position 20))
+	   (subfield memory-address
+		     (same-field memory-address) (position 20))
+	   (subfield word
+		     (same-field word) (position 21)))
+
+(deffield memory-address
+  (width (1+ (width-of-field '(datum word))))
+  (subfield datum
+	    (same-field datum word)
+	    (position 1))
+  (subfield low-bit
+	    (width 1)
+	    (position 0)))
+
+(deffield bit
+  (width 1))

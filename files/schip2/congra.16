@@ -1,0 +1,296 @@
+
+Date: 14 Jan 1980 1030-PST
+From: CSD.MOGUL at SU-SCORE
+Subject: New arrival
+To: gjs at MIT-AI
+cc: hic at MIT-AI
+
+Congratulations!
+
+-Jeff.
+-------
+    
+rz@MIT-MC (Sent by JIM@MIT-MC) 01/14/80 17:17:59
+To: gls at MIT-AI, h at MIT-AI, GJS at MIT-AI
+Pete Stoll asked me to convey his congratulations on the 
+Scheme chip.
+
+
+Date: 10 JAN 1980 1058-EST
+From: H at MIT-AI (Jack Holloway)
+To: (BUG SCHIP) at MIT-AI
+
+First the good news.  The SCHEME chip was powered-up last night
+and initial debugging has been started.  One of the packaged chips
+has a gross defect in the VDD metalization around the CONTROL PLA,
+as noticed by GJS.  The second chip tried has some problem that
+shows up whenever it tries to do a nano-sequence.  No clear problem
+has been located by optical inspection yet.  
+
+The third chip shows many signs of life however!  It can single-step,
+load and read state, and apparently run the garbage collector.  There
+are some problems but they seem to be bugs in the interface that
+we haven't tracked down yet.
+
+Now the not so good news.  In spite of many simulations, both of the
+microcode in LISP on the PDP-10 and also of the circuit, there is a
+subtle bug in the GC microcode.  If a node being marked
+points to itself in the CAR, the mark-node sequence follows the
+CAR again right away.  This is because it tests to see if it is
+going to trace in the CAR direction before actually setting the mark
+bit for the current node.  The code is below:
+
+(defpc mark-node
+       (assign *leader* (&car (fetch *node-pointer*)))
+       (cond ((and (&pointer? (fetch *leader*))
+		   (not (&in-use? (fetch *leader*))))
+	      (&mark-car-being-traced! (fetch *node-pointer*))
+	      (&rplaca-and-mark! (fetch *node-pointer*) (fetch *stack-top*))
+	      (go-to down-trace))
+	     (t 
+	      (&mark-in-use! (fetch *node-pointer*))
+	      (go-to trace-cdr))))
+ 
+H@MIT-AI 01/10/80 11:26:13 Re: SCHIP debugging
+To: HIC at MIT-AI
+CC: H at MIT-AI, GJS at MIT-AI, TK at MIT-AI
+Got the chip to go thru a garbage collection finally.  There
+are several bugs that I didn't get to trace down.
+
+The fact that read-interrupt doesn't seem to work causes
+the GC bug mentioned in the BUG-SCHIP note to happen fairly
+regularly because NIL ends up pointing to NIL in the CAR.
+To make the chip run around the read-interrupt bug, the following
+works (?)
+	(SCI-SETUP-MEMORY)	;This tries to clear 2000 SCHEME nodes.
+	(SCI-DEBUG)
+	L776
+	S13			;should go to MARK+2
+	D0 0 41 2		;fixup the read-interrupt
+	S600			;start the sweep phase
+
+At about step 2427 it finishes the GC and tries to run a program,
+but seems to get an interrupt right away.  No interrupt is shown
+on the status line, I hope it's not in the chip.
+
+Also, when I had the contents of location 2 (CAR 1) set to 1000, the
+garbage collector lost because the interface seemed to reference 66
+when trying for 1066 (LISPM address).  I reduced the memtop to 200
+so that it was below the 1000 boundary always.
+
+There is some stuff to display register contents (type T when in debug
+loop) but you better not do it when in a NANO sequence.  Unfortunately
+this is hard to tell if you aren't following the chip step by step
+and impossible to tell by a program.  The nano-run bit should have
+come out of the package somehow, oh well.
+
+Haven't tried #4 at all, this chip seems to work so far.
+I will probably be gone until late this evening.  You might
+look at the SCHSIM compiler if you run out of debug program hacking.
+
+When we look at speed testing, I think we will do some sort of
+multiple step run searching.  Start the chip at fast speed, run
+N steps, record the state (STATE + some memory?), try again at
+slow speed, and do binary search on the step count until the
+first diverging point is detected.  This is essentially
+what was done when testing CHEOPS in days of yore.
+   
+Date: 12 JAN 1980 0130-EST
+From: H at MIT-AI (Jack Holloway)
+Subject: Non-features
+To: (BUG SCHIP) at MIT-AI
+
+The next time, it would be nice if NANO-RUN came out
+externally, perhaps with the NANO-STATE when doing
+a READ-STATE.  As it is, you can't stop in the
+middle of a nano sequence and execute debug microcode.
+
+The microcode for READ-INTERRUPT-VECTOR should only
+assert CHIP-READ-INTERRUPT, it currently asserts READ
+also....
+
+
+Date: 12 JAN 1980 1612-EST
+From: h at MIT-AI (Jack Holloway)
+Sent-by: GJS at MIT-AI
+Subject: Winnage
+To: HIC at MIT-AI
+CC: H at MIT-AI, GJS at MIT-AI, abell at PARC-MAXC
+
+Played around for several hours, and finally got the
+chip to reliably garbage-collect and execute simple
+programs.
+
+There is a logic bug in the god damn GC-NEEDED-PAD!!!!
+We thought there would be a problem there, and there was,
+in spite of 5 or 6 versions.  The Pad tests the ADDRESS-NEWCELL=BUS
+at the beginning of PHI1, when the condition wasn't setup yet.
+I used this to exercise the garbage collector interrupt stuff.
+The GC was going off almost every other useful cycle in
+the evaluator, but with a user GC handler function (it worked!)
+the chip kept doing garbage collections until it got thru the
+program. 
+
+We'll have to patch this in the interface so that CHIP
+GC-NEEDED isn't looked at, and use an invalid page to detect
+when the CONSing has run out.  Then we can turn the page on
+temporarily and give an external-interrupt request to the chip
+pointing at the GC handler.  When the handler gets done,
+it can reference the map itself and turn off access to that page.
+
+The interface has a sight bug where single steps over 40 octal
+screw the chip.  I haven't investigated.
+
+
+ 
+Date: 12 Jan 1980 4:44 pm (Saturday)
+From: Cherry at PARC-MAXC
+Subject: Working Chips on 2 Coasts
+To: h@mit-ai,gjs@mit-ai
+
+I hear that you guys are staying up late and eating mass quatities of vitamin C
+out there.  Sound like the little bastard is CARing up a storm.  Congrats!!!!
+
+We just got MPC879 back and bonded.  I found a missing Vdd line before they
+arrived (your standard I forgot the edge problem).  The timing generators are
+cranking away - at 14MHz so far.  Just give me a faster crystal.....
+I can test quite a lot of things despite the bug, like the multiplier.  I have
+been too busy skiing at Tahoe to do it yet.  The next few days should tell.
+
+Let me know what's happening.
+
+Jim
+
+   
+RIVEST@MIT-ML 01/13/80 10:14:21
+To: gjs at MIT-AI
+	CONGRATULATIONS!!!
+
+
+	Ron 
+
+    
+Date: 13 January 1980 11:05-EST
+From: John L. Kulp <JLK at MIT-MC>
+Subject:  SCHEME-79 Lives!
+To: GJS at MIT-MC, H at MIT-MC, GLS at MIT-MC, hic at MIT-AI
+
+Well, congradulations (but 4 parents for one child?) Good luck on
+next years chip (or chip set).
+
+
+HAL@MIT-MC 01/13/80 12:32:08
+To: GJS at MIT-MC, H at MIT-MC, GLS at MIT-MC
+
+congratulations on the birth of your new chip
+
+ 
+MSG: *MSG   71    
+gjs, hic@MIT-AI 01/13/80 02:12:46 Re:  SCHEME-79 Lives!
+	At approximately 0100 EST on 13 January 1980 the SCHEME-79
+interpreter chip was declared alive and operational.  Gerald Jay Sussman
+and Howard Cannon (midwife) were present.  The chip successfully executed
+a recursive procedure using a Y operator for self-reference.  It was also
+shown to successfully garbage collect and to accept external interrupt
+requests.  The program which was executed is included below:
+
+    (new-memory)
+
+    (define (gcint . return)
+      (mark)					;Do a GC
+      (rplaca 7444002 377)				;Write interface map address to 377
+      (rplacd 7444002 0)				;Mark it invalid so consing will stop
+      (return))
+
+    (define (null x)
+    	(eq x nil))
+
+    (define (y* f)
+    	((lambda (g) (f (lambda () (g g))))
+    	 (lambda (g) (f (lambda () (g g))))))
+
+    (define (app l1 l2)
+    	((y* (lambda (f)
+    		(lambda (l1 l2)
+    			(cond ((null l1) l2)
+    			      (t (cons (car l1)
+    				       ((f) (cdr l1) l2)))))))	;!
+    	 l1
+    	 l2))
+
+
+    (&set-global-value (scheme-intern 'exp)
+      (tcomp '(app ((lambda x x) 'a 'b 'c)
+    	       ((lambda x x) 'd 'e 'f))
+    	 nil))
+
+    (&set-global-value (scheme-intern 'memtop)
+    		   (pointer 'self-evaluating-immediate 200))
+
+    The parents (gjs, h, gls, abell@parc) are now resting (on their
+laurels).  A memo (MIT AI Memo 559) will be forthcoming.
+   
+Date: 13 Jan 1980 1112-PST
+From: John Allen <JRA at SU-AI>
+Subject: scheme-79
+To:   gjs at MIT-AI    
+
+congrats on chip!!
+
+hope i'm on mailing list for forthcoming ai memo?
+
+					john
+
+
+ 
+Date: 13 JAN 1980 1155-PST
+From: CONWAY at PARC-MAXC
+Subject: Congratulations!
+To:   GJS at MIT-AI, H at MIT-AI, GLS at MIT-AI, ABell
+cc:   Conway
+
+I want to congratulate you all on the success
+of your efforts with the Scheme processor.
+
+Your success is a very important milestone in
+the development of the overall VLSI arena.
+
+I look forward to reading your report. Send a few
+extra copies - I'll pass them on to others.
+
+I am also eagerly looking forward to the 
+surprises that your great team will reveal to
+the world in the future!
+
+Lynn
+-------
+    
+Date: Sunday, 13 January 1980 1604-EST
+From: Scott.Fahlman at CMU-10A
+Subject: Re: SCHEME-79 Lives!
+To:   gjs @ mit-ai, h @ mit-ai, gls @ mit-ai, hic @ mit-ai
+Message-ID: <13Jan80 160439 SF50@CMU-10A>
+In-Reply-To: gjs' message of 13 Jan 80 02:12-EST
+
+
+Congratulations!  Now you can all start saving up to put it through college.
+-- Scott
+ 
+GJC@MIT-MC 01/13/80 18:19:40
+To: GJS at MIT-MC
+Wow. where can I buy one?
+
+ 
+MCW@MIT-MC 01/13/80 18:52:39 Re: SCHEME-79
+To: GJS at MIT-MC
+CC: HIC at MIT-MC
+	Congratulations to the proud parents.  Having not known of the
+anticipated arrival of SCHEME-79, I could only draw inferences about
+the nature of the new child.  Is it perhaps related to chip development
+projects at MIT which are also connected with the LSI projects and
+courses at Cal-Tech?  Did Jack Dennis ever get his chip designed and
+built for his Form-I dataflow prototype?
+	I'm interested in the architecture of SCHEME-79.  Any info
+available now?
+
+

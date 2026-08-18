@@ -1,0 +1,26 @@
+Language for describing machines.
+
+(defmachine <name>)
+
+Defines a machine.  This is a state machine which generates
+signals and has two busses of interest, called (THE PCBUS <name>)
+and (THE NPCBUS <name>).  The width of these busses depends on
+the size of the microcode.  The machine can only dispatch on
+sources which can be read onto its PCBUS.
+
+(defbus <name> <vectordef>)
+
+Defines a bus with fields described by <vectordef>.
+A bus is just a set of wires that people use to communicate on.
+Some things can drive it, and some can read it.
+
+
+
+
+
+
+<vectordef> is a list of things which, when concatenated, describe
+the vector.  The format is:
+	<vectordef> ::= (<fieldspec>*)
+	<fieldspec> ::= (<integer> <fielddef>*) | <bitname>
+	<fielddef> ::= <name> | <vectordef>

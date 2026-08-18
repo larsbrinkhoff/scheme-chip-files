@@ -1,0 +1,201 @@
+;;; -*- Mode: Lisp; Base: 10.; package:dpl; -*-
+
+;;; need eq-test between two regs which does the mirror-next-guy trick as in adder
+;;; it will be called value-eq-test
+
+(defconst word-size 36.)	(defconst word-start 1.)
+(defconst type-size 7.)		(defconst type-start 30.)
+(defconst datum-size 29.)	(defconst datum-start 1.)
+(defconst count-size 5.)	(defconst count-start type-start)
+(defconst low-bit-size 1.)	(defconst low-bit-start datum-start)
+
+(defconst high-bits-size (- datum-size low-bit-size))
+(defconst high-bits-start (+ low-bit-start low-bit-size))
+
+(defconst machine-number-size 5)
+(defconst machine-number-start 25.)
+
+(defconst local-pointer-start word-start)
+(defconst local-pointer-size (- datum-size machine-number-size))
+
+(defconst memory-address-start 0)
+(defconst memory-address-size (1+ datum-size))
+
+(defconst external-interrupt-position (+ datum-start 0))
+(defconst dma-interrupt-position (+ datum-start 1))
+(defconst cons-server-interrupt-position (+ datum-start 2))
+(defconst gc-interrupt-position (+ datum-start 3))
+
+(defconst main-regs
+  `((cont normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (cont-stack normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start))
+	  (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size))))
+    (thargs normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (thargs-stack normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (env normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (env-stack normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start))
+	  (associates
+	   (zero-count? bit-tester
+			(size ,count-size) (starting-position ,count-start)
+			(bit-pattern #o0))
+	   (rack-count-full? bit-tester
+			(size ,count-size) (starting-position ,count-start)
+			(bit-pattern ,(- (lsh 1 count-size) 2)))
+	   (inc-count incrementer
+			(size ,count-size) (starting-position ,count-start))
+	   (dec-count decrementer
+			(size ,count-size) (starting-position ,count-start))))
+    (exp normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start))
+	  (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size)))	  
+	  (associates
+	   (low-bit? bit-tester
+		     (starting-position ,low-bit-start) (size ,low-bit-size)
+		     (bit-pattern #o1))
+	   (high-bits-zero? bit-tester
+		     (starting-position ,high-bits-start) (size ,high-bits-size)
+		     (bit-pattern #o0))
+	   (right-shift-with-0 right-shift-with-0
+		     (starting-position ,datum-start) (size ,datum-size))))
+    (compare-reg normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (associates
+	   (index-preparer shift-negate
+			   (starting-position 0) (size ,(+ datum-size 1)))))
+    (adder adder (starting-position 0) (size ,(+ datum-size 1)))
+    (val normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start))
+	  (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size)))
+	  (associates
+	   (inc-val incrementer
+		    (size ,datum-size) (starting-position ,datum-start))
+	   (dec-val decrementer
+		    (size ,datum-size) (starting-position ,datum-start))
+	   (left-shift-with-0 left-shift-with-0
+		     (starting-position ,datum-start) (size ,datum-size))
+	   (left-shift-with-1 left-shift-with-1
+		     (starting-position ,datum-start) (size ,datum-size))
+	   (equality eq-test (starting-position ,word-start) (size ,word-size)
+		     (subfields
+		      (type nil (starting-position ,type-start) (size ,type-size))
+		      (datum nil (starting-position ,datum-start) (size ,datum-size))))
+	   ;(field-shifter type->typenum datum)
+	   ))
+    (wind-forms normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (shadowed (size ,word-size) (starting-position ,word-start)))
+    (free normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size)))
+	  (associates
+	   (inc-val incrementer
+		    (size ,local-pointer-size) (starting-position ,local-pointer-start))))
+    (eq-memtop eq-test (size ,datum-size) (starting-position ,datum-start))
+    (memtop normal-register
+	  (size ,word-size) (starting-position ,word-start))
+    (errcode normal-register
+	  (size ,word-size) (starting-position ,word-start))
+    (interrupt-enables normal-register
+	  (size ,word-size) (starting-position ,word-start)
+	  (associates
+	    (external bit-tester (size 1) (starting-position ,external-interrupt-position)
+		      (bit-pattern #o1))
+	    (dma bit-tester (size 1) (starting-position ,dma-interrupt-position)
+		 (bit-pattern #o1))
+	    (cons-server bit-tester
+			 (size 1) (starting-position ,cons-server-interrupt-position)
+			 (bit-pattern #o1))
+	    (gc bit-tester (size 1) (starting-position ,gc-interrupt-position)
+		 (bit-pattern #o1))))
+    (old normal-register (size ,word-size) (starting-position ,word-start)
+	 (subfields
+	   (type nil (starting-position ,type-start) (size ,type-size))
+	   (datum nil (starting-position ,datum-start) (size ,datum-size)))
+	 (associates
+	   (pure-pointer bit-tester
+			 (size ,machine-number-size) (starting-position ,machine-number-start)
+			 (bit-pattern ,(- (lsh 1 machine-number-size) 2)))
+	   (inc-old incrementer (size ,local-pointer-size) (starting-position ,datum-start))))
+    (old-equal-machine-number eq-test
+           (size ,machine-number-size) (starting-position ,machine-number-start))
+    (machine-number normal-register
+		    (size ,machine-number-size) (starting-position ,machine-number-start))
+    (new normal-register (size ,word-size) (starting-position ,word-start))
+    (count normal-register (size ,word-size) (starting-position ,word-start)
+	   (subfields
+	     (type nil (starting-position ,type-start) (size ,type-size))
+	     (datum nil (starting-position ,datum-start) (size ,datum-size)))
+	   (associates
+	     (dec-count decrementer
+			(size ,local-pointer-size) (starting-position ,local-pointer-start))))
+    (scan normal-register
+	  (size ,memory-address-size) (starting-position ,memory-address-start)
+	  (associates
+	    (inc-scan incrementer
+		      (size ,memory-address-size) (starting-position ,memory-address-start))
+	    (eq-free eq-test
+		     (size ,memory-address-size) (starting-position ,memory-address-start))))
+    (temp-reg-0 normal-register (size ,word-size) (starting-position ,word-start)
+		(subfields
+		  (type nil (starting-position ,type-start) (size ,type-size))
+		  (datum nil (starting-position ,datum-start) (size ,datum-size)))
+		(associates
+		  (decr decrementer (size ,datum-size) (starting-position ,datum-start))))
+    (temp-reg-1 normal-register (size ,word-size) (starting-position ,word-start)
+		(subfields
+		  (type nil (starting-position ,type-start) (size ,type-size))
+		  (datum nil (starting-position ,datum-start) (size ,datum-size))))
+    (left-address constant-source
+		  (size 1) (starting-position ,memory-address-start) (bit-pattern #o0))
+    (right-address constant-source
+		   (size 1) (starting-position ,memory-address-start) (bit-pattern #o1))
+    (global-zero-source constant-source
+			(size ,datum-size) (starting-position ,datum-start) (bit-pattern #o0))
+    (global-zero-test bit-tester
+		      (size ,datum-size) (starting-position ,datum-start) (bit-pattern #o0))))
+
+
+
+(defconst test-stack
+      '((main-reg normal-register (size 5) (starting-position 0)
+		  (associates
+		    (stack-1 stack (size 5) (starting-position 0))
+		    (stack-2 stack (size 5) (starting-position 0))
+		    (stack-3 stack (size 5) (starting-position 0))
+		    (stack-4 stack (size 5) (starting-position 0))))))
+
+(defconst next-state
+	  '((pc normal-register (size 5) (starting-position 0)
+		(associates
+		  (inc-pc incrementer (size 5) (starting-position 0))
+		  (stack-1 stack (size 5) (starting-position 0))
+		  (stack-2 stack (size 5) (starting-position 0))
+		  (stack-3 stack (size 5) (starting-position 0))
+		  (stack-4 stack (size 5) (starting-position 0))))
+	    (disp1-jumper interbus (size 5) (bus-size 5) (starting-position 0))
+	    (disp2-jumper interbus (size 5) (bus-size 5) (starting-position 0))
+	    (true-jump interbus (size 5) (bus-size 5) (starting-position 0))
+	    (false-jump interbus (size 5) (bus-size 5) (starting-position 0))
+	    (jammed-jump interbus (size 5) (bus-size 5) (starting-position 0))))

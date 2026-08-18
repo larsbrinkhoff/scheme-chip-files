@@ -1,0 +1,573 @@
+
+;;; -*-LISP-*-  SCHEME chip simulator -- RMS, GJS
+
+(defmacro dolist ((var init) . body)
+  (let ((gen (gensym)))
+    `(do ((,gen ,init (cdr ,gen))) ((null ,gen))
+       (let ((,var (car ,gen)))
+         . ,body))))
+
+;THESE ARE CONDITIONAL ON WHICH SYSTEM IS EXECUTING THEM.
+(DEFMACRO IF-IN-MACLISP (&REST FORMS)
+    (COND ((NOT (STATUS FEATURE LISPM))
+	   `(PROGN 'COMPILE . ,FORMS))))
+
+(DEFMACRO IF-IN-LISPM (&REST FORMS)
+    (COND ((STATUS FEATURE LISPM)
+	   `(PROGN 'COMPILE . ,FORMS))))
+
+;THESE ARE CONDITIONAL ON WHICH SYSTEM RESULT IS INTENDED "FOR ".
+; THIS IS THE SAME AS WHICH SYSTEM IS "IN" EXCEPT IN THE CASE
+; COMPILING IN MACLISP FOR LISPM (IE QCMP, AFTER COMPILER ITSELF HAS
+; BEEN LOADED).  THE COMPILING-FOR-LISPM SWITCH IS SET BY .LISP. (INIT)
+; AFTER QCMP HAS BEEN LOADED.
+
+(DEFMACRO IF-FOR-MACLISP (&REST FORMS)
+    (COND ((AND (NOT (STATUS FEATURE LISPM))		;IN MACLISP
+		(OR (NOT (BOUNDP 'COMPILING-FOR-LISPM))
+		    (NULL COMPILING-FOR-LISPM)))
+	   `(PROGN 'COMPILE . ,FORMS))))
+
+(DEFMACRO IF-FOR-LISPM (&REST FORMS)
+    (COND ((OR (STATUS FEATURE LISPM)
+	       (AND (BOUNDP 'COMPILING-FOR-LISPM)
+		    COMPILING-FOR-LISPM))
+	   `(COMPILER-LET ((RUN-IN-MACLISP-SWITCH NIL))
+			  (PROGN 'COMPILE . ,FORMS)))))
+
+(DEFMACRO IF-FOR-MACLISP-ELSE-LISPM (MACLISP-FORM LISPM-FORM)
+    (COND ((NOT (STATUS FEATURE LISPM))
+	   (COND ((OR (NOT (BOUNDP 'COMPILING-FOR-LISPM))	;QCMP DEFINES THIS TO T
+		      (NULL COMPILING-FOR-LISPM))
+		  MACLISP-FORM)
+		 (T `(COMPILER-LET ((RUN-IN-MACLISP-SWITCH NIL)) ,LISPM-FORM))))
+    ;COMPLR DOESNT KNOW (OR CARE) ABOUT COMPILER-LET.
+	  (T LISPM-FORM)))
+
+(DECLARE (MACROS T))
+
+;;; The SCHEME virtual machine is composed of a set of registers with
+;;; associated stacks (RACKS), other registers, and a controller.  The following allows
+;;; one to set up the registers.
+
+
+(DECLARE (SPECIAL REG-NUMBER *REG-STATS?))
+
+(DEFMACRO DEFREG (NAME TYPE FIELD-TYPE)
+  `(EVAL-WHEN (COMPILE EVAL LOAD)
+     (PUTPROP ',NAME REG-NUMBER 'REG-NUMBER)
+     (PUTPROP ',NAME ',TYPE 'REG-TYPE)
+     (PUTPROP ',NAME ',FIELD-TYPE 'FIELD-TYPE)
+     (AND (GET ',TYPE 'DEFINE)
+	  (FUNCALL (GET ',TYPE 'DEFINE) ',NAME ',TYPE ',FIELD-TYPE))
+     (SETQ REG-NUMBER (1+ REG-NUMBER))))
+
+
+;;; Register primitive operations are generic on reg type.
+
+(DEFMACRO FETCH-PREPARATION (REGNAME)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'FETCH-PREPARATION)
+	       (ERROR "Unknown reg type -- FETCH-PREPARATION" REGNAME))
+	   REGNAME))
+
+(DEFMACRO ASSIGN-PREPARATION (REGNAME)
+  (AND (SYMBOLP REGNAME)
+       (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'ASSIGN-PREPARATION)
+		    (ERROR "Unknown reg type -- ASSIGN-PREPARATION" REGNAME))	       
+		REGNAME)))
+
+(DEFMACRO SAVE (REGNAME)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'SAVE)
+	       (ERROR "Unknown reg type -- SAVE" REGNAME))
+	   REGNAME))
+
+(DEFMACRO RESTORE (REGNAME)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'RESTORE)
+	       (ERROR "Unknown reg type -- RESTORE" REGNAME))
+	   REGNAME))
+
+
+(DEFMACRO GET-STATE (REGNAME)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'GET-STATE)
+	       (ERROR "Unknown reg type -- GET-STATE" REGNAME))
+	   REGNAME))
+
+(DEFMACRO SET-STATE (REGNAME STATE)
+  (FUNCALL (OR (GET (GET REGNAME 'REG-TYPE) 'SET-STATE)
+	       (ERROR "Unknown reg type -- SET-STATE" REGNAME))
+	   REGNAME
+	   STATE))
+
+(DEFMACRO DUPLICATE (REG) `(SAVE ,REG))
+
+(DEFMACRO SAVE-AFTER-ASSIGN (REG ASSIGNMENT)
+  `(PROGN ,ASSIGNMENT
+	  (SAVE ,REG)))
+
+(DEFMACRO ASSIGN-AFTER-RESTORE (REG ASSIGNMENT)
+  `(PROGN (RESTORE ,REG)
+	  ,ASSIGNMENT))
+
+(DEFMACRO FETCH (SOURCE)
+  (COND ((SYMBOLP SOURCE)
+	 (COND ((GET (GET SOURCE 'REG-TYPE) 'FETCH)
+		(FUNCALL (GET (GET SOURCE 'REG-TYPE) 'FETCH) SOURCE))
+	       (T
+		`(PROGN (FETCH-PREPARATION ,SOURCE)
+			(READ-REG ,SOURCE)))))
+	((EQ (CAR SOURCE) 'BITVEC)
+	 (LET ((TEM (APPEND (CDR SOURCE) NIL))
+	       (REG (CAR (LAST SOURCE))))
+	   (RPLACA (LAST TEM)
+		   (COND ((SYMBOLP REG)
+			  (GET REG 'FIELD-TYPE))
+			 ((EQ (CAR REG) 'SUBPART)
+			  (LET ((PARTNAME (CDR (ASSQ (CADR REG)
+						     (GET (CADDR REG) 'PARTS)))))
+			       (OR PARTNAME (ERROR "Undefined SUBPART - ASSIGN" REG))
+			       (GET PARTNAME 'FIELD-TYPE)))
+			 (T (ERROR "Undefined dest type in BITVEC - ASSIGN" REG))))
+	   `(CONS ',(CADR SOURCE)
+		  (EXTRACT-FIELD ,(BUTLAST TEM) ,(LAST TEM)
+				 (CDR (FETCH ,(CAR (LAST SOURCE))))))))
+	((EQ (CAR SOURCE) 'SUBPART)
+	 (LET ((PARTNAME (CDR (ASSQ (CADR SOURCE) (GET (CADDR SOURCE) 'PARTS)))))
+	   (OR PARTNAME (ERROR "Undefined SUBPART - FETCH" SOURCE))
+	   `(FETCH ,PARTNAME)))
+	(T (ERROR "Undefined source type - FETCH" SOURCE))))
+
+(DEFMACRO ASSIGN (DEST VALUE)
+  (LET ((NEWVAL (PROCESS-POSSIBLE-MICROFUN-CALL VALUE DEST)))
+    (COND ((NOT (EQ NEWVAL VALUE))
+	   (OR (SYMBOLP DEST)
+	       (EQ (CAR DEST) 'SUBPART)
+	       (ERROR "Assignment of microfun result to bitvec" (LIST DEST VALUE)))
+	   `(PROGN (ASSIGN-PREPARATION ,DEST)
+		   ,NEWVAL))
+	  ((SYMBOLP DEST)
+	   (COND ((GET (GET DEST 'REG-TYPE) 'ASSIGN)
+		  (FUNCALL (GET (GET DEST 'REG-TYPE) 'ASSIGN) DEST NEWVAL))
+		 (T
+		  `(PROGN (ASSIGN-PREPARATION ,DEST)
+			  (LOAD-REG ,DEST ,NEWVAL)))))
+	  ((EQ (CAR DEST) 'BITVEC)
+	   (LET ((TEM (APPEND (CDR DEST) NIL))
+		 (REG (CAR (LAST DEST))))
+	     (RPLACA (LAST TEM)
+		     (COND ((SYMBOLP REG)
+			    (GET REG 'FIELD-TYPE))
+			   ((EQ (CAR REG) 'SUBPART)
+			    (LET ((PARTNAME (CDR (ASSQ (CADR REG)
+						       (GET (CADDR REG) 'PARTS)))))
+				 (OR PARTNAME (ERROR "Undefined SUBPART - ASSIGN" REG))
+				 (GET PARTNAME 'FIELD-TYPE)))
+			   (T (ERROR "Undefined dest type in BITVEC - ASSIGN" REG))))
+	     `(ASSIGN ,REG
+		      (CONS ',(CAR (LAST TEM))
+			    (MODIFY-FIELD ,(BUTLAST TEM) ,(LAST TEM)
+					  (CDR (FETCH ,REG))
+					  ,NEWVAL)))))
+	  ((EQ (CAR DEST) 'SUBPART)
+	   (LET ((PARTNAME (CDR (ASSQ (CADR DEST) (GET (CADDR DEST) 'PARTS)))))
+	     (OR PARTNAME (ERROR "Undefined SUBPART - ASSIGN" DEST))
+	     `(ASSIGN ,PARTNAME ,NEWVAL)))
+	  (T (ERROR "Undefined dest type - ASSIGN" DEST)))))
+
+(DEFUN BUTLAST (LIST)
+  (NREVERSE (CDR (REVERSE LIST))))
+
+;;; Simple register primitives.
+
+(DEFUN (SIMPLE-REGISTER FETCH-PREPARATION) (R)
+       NIL)
+
+(DEFUN (SIMPLE-REGISTER ASSIGN-PREPARATION) (R)
+       NIL)
+
+
+;;; Rack primitives.
+
+(DEFUN (RACK-STACK FETCH) (REG)
+  `(READ-STACK ,(GET REG 'BUFFER)))
+
+(DEFUN (RACK-STACK ASSIGN) (REG VALUE)
+  `(LOAD-STACK ,(GET REG 'BUFFER) ,VALUE))
+
+;;; Push optimizer primitives.
+
+(DEFUN (PUSH-OPTIMIZER DEFINE) (NAME TYPE FIELD-TYPE)
+  (LET ((STACK-NAME (IMPLODE (APPEND (EXPLODE NAME) '(- S T A C K)))))
+    (EVAL `(DEFREG ,STACK-NAME RACK-STACK WORD))
+    (PUTPROP NAME `((STACK . ,STACK-NAME) (BUFFER . ,NAME)) 'PARTS)
+    (PUTPROP STACK-NAME NAME 'BUFFER)))
+
+(DEFUN (PUSH-OPTIMIZER FETCH-PREPARATION) (R)
+       NIL)
+
+(DEFUN (PUSH-OPTIMIZER ASSIGN-PREPARATION) (R)
+       `(COND ((NOT (FREE-RACK? ,R))
+	       (PUSH-RACK ,R)
+	       (FREE-RACK! ,R))))
+
+(DEFUN (PUSH-OPTIMIZER SAVE) (R)
+       `(COND ((NOT (FREE-RACK? ,R))
+	       (PUSH-RACK ,R))
+	      (T (MARK-SAVED! ,R))))
+
+(DEFUN (PUSH-OPTIMIZER RESTORE) (R)
+       `(COND ((FREE-RACK? ,R)
+	       (POP-RACK ,R))
+	      (T (FREE-RACK! ,R))))
+
+
+
+(DEFUN (PUSH-OPTIMIZER GET-STATE) (R)
+       `(PROG2 (PROGN (SAVE ,R)
+		      (ASSIGN ,R NIL))
+	       (READ-STACK ,R)
+	       (RESTORE ,R)))
+
+(DEFUN (PUSH-OPTIMIZER SET-STATE) (R S)
+       `(PROGN (LOAD-STACK ,R ,S)
+	       (FREE-RACK! ,R)
+	       (RESTORE ,R)))
+
+;;; Push counter primitives.
+
+(DEFUN (PUSH-COUNTER DEFINE) (NAME TYPE FIELD-TYPE)
+  (LET ((STACK-NAME (IMPLODE (APPEND (EXPLODE NAME) '(- S T A C K)))))
+    (EVAL `(DEFREG ,STACK-NAME RACK-STACK WORD))
+    (PUTPROP NAME `((STACK . ,STACK-NAME) (BUFFER . ,NAME)) 'PARTS)
+    (PUTPROP STACK-NAME NAME 'BUFFER)))
+
+(DEFUN (PUSH-COUNTER FETCH-PREPARATION) (R)
+       NIL)
+
+(DEFUN (PUSH-COUNTER ASSIGN-PREPARATION) (R)
+       `(PROGN (COND ((NOT (ZERO-COUNT? ,R))
+		      (PUSH-RACK ,R)))))
+
+(DEFUN (PUSH-COUNTER SAVE) (R)
+  `(PROGN (INCREMENT-COUNT ,R)
+	  (COND ((RACK-COUNT-FULL? ,R) (ASSIGN-PREPARATION ,R)))))
+
+(DEFUN (PUSH-COUNTER RESTORE) (R)
+       `(PROGN (COND ((ZERO-COUNT? ,R)
+		      (POP-RACK ,R)))
+	       (DECREMENT-COUNT ,R)))
+
+(DEFUN (PUSH-COUNTER GET-STATE) (R)
+       `(PROG2 (PROGN (SAVE ,R)
+		      (ASSIGN ,R NIL))
+	       (READ-STACK ,R)
+	       (RESTORE ,R)))
+
+(DEFUN (PUSH-COUNTER SET-STATE) (R S)
+       `(PROGN (LOAD-STACK ,R ,S)
+	       (RESTORE ,R)))
+
+;;; The controller part of the virtual machine is implemented in LISP below.
+
+;;; Virtual machine PCs are defined with the following macro, which assumes
+;;; that DEFPC is appropriately defined for the application program (e.g.
+;;; simulator, compiler), and builds and returns the actual code which is
+;;; required, as well as performing any desired side-effects.
+
+;;; A fundamental question not yet addressed is at what level the multiply-
+;;; named PC will share its code!  This can perhaps be ignored due to the
+;;; size of the shared code pieces in this particular microcode, however
+;;; it is a useful enough construct that it might be fruitful to explore
+;;; it more thoroughly.
+
+(DEFMACRO DEFPC (CNAMES . BODY)
+  (IF (ATOM CNAMES) (DEFPC-BUILDER CNAMES BODY)
+      `(PROGN 'COMPILE
+	      ,@(MAPCAR (FUNCTION (LAMBDA (**CNAME)
+					  (DEFPC-BUILDER **CNAME BODY)))
+			CNAMES))))
+
+;; These are the dispatch arrays that map machine data type numbers
+;; into symbolic PCs.  There is one for each purpose of dispatch.
+
+;(IF-FOR-MACLISP      ; Not defined in Maclisp!!!
+
+  (DEFMACRO ASET (VAL ARRAY IDX)
+    `(STORE (ARRAYCALL T ,ARRAY ,IDX) ,VAL))
+
+  (DEFMACRO AREF (ARRAY IDX)
+    `(ARRAYCALL T ,ARRAY ,IDX))
+
+;)
+
+;;; Virtual machine PCs which are the targets of a dispatch are defined with:
+
+(DEFMACRO DEFDISPATCH (CNAMES DATA-TYPE PURPOSE . BODY)
+  (OR (NOT (ATOM PURPOSE)) (SETQ PURPOSE (LIST PURPOSE)))
+  (IF (ATOM CNAMES) (DEFDISPATCH-BUILDER CNAMES DATA-TYPE NIL PURPOSE BODY)
+      `(PROGN 'COMPILE
+	      ,@(DEFDISPATCH-1 CNAMES DATA-TYPE PURPOSE BODY))))
+
+(DEFUN DEFDISPATCH-1 (CNAMES DATA-TYPE PURPOSE BODY)
+  (COND ((NULL CNAMES) NIL)
+	((ATOM CNAMES) (ERROR "CDR of name-list not null in DEFDISPATCH" CNAMES))
+	((ATOM (CAR CNAMES))
+	 (CONS (DEFDISPATCH-BUILDER (CAR CNAMES) DATA-TYPE NIL PURPOSE BODY)
+	       (DEFDISPATCH-1 (CDR CNAMES) DATA-TYPE PURPOSE BODY)))
+	(T (CONS (DEFDISPATCH-BUILDER (CAAR CNAMES) DATA-TYPE (CADAR CNAMES) PURPOSE BODY)
+		 (DEFDISPATCH-1 (CDR CNAMES) DATA-TYPE PURPOSE BODY)))))
+
+(DEFUN DEFDISPATCH-BUILDER (CNAME DATA-TYPE PREFERRED-CODE PURPOSES BODY)
+  (LET ((FNAME (IMPLODE (APPEND (EXPLODEC CNAME) '(- P C))))
+	(CODE (COND (PREFERRED-CODE
+		      (DO ((P PURPOSES (CDR P))) ((NULL P))
+			(AND (AREF (SYMEVAL (CAR P)) PREFERRED-CODE)
+			     (ERROR "Preassigned dispatch code already in use"
+				    PREFERRED-CODE)))
+		      PREFERRED-CODE)
+		    (T (ALLOCATE-TYPE-CODE DATA-TYPE PURPOSES)))))
+       `(PROGN 'COMPILE
+	       ,(DEFPC-BUILDER FNAME BODY)
+	       (EVAL-WHEN (COMPILE EVAL)
+		   (MAPC (FUNCTION (LAMBDA (**PURPOSE)
+					   (INTERN-TYPE-CODE ',FNAME **PURPOSE ,CODE)))
+			 ',PURPOSES)
+		   (SETQ ,CNAME (CONS 'TYPE ,CODE))))))
+
+(DEFUN INTERN-TYPE-CODE (FNAME PURPOSE CODE)
+  (ASET FNAME (SYMEVAL PURPOSE) CODE)
+  (PUTPROP FNAME CODE PURPOSE))
+
+(DEFMACRO DISPATCH (REG PURPOSE)
+  `(GOTO (AREF (SYMEVAL ,PURPOSE) (CDR (BITVEC DATA-TYPE ,REG)))))
+
+(DEFMACRO GOTO (PC)
+  `(RETURN (CALL-PC ,PC)))
+
+;defmicrofuns.
+
+(declare (special used-temps))
+(declare (special last-temp))
+(declare (special temp-regs))
+
+;; Given an expression, if it is not a call to a microfun, return it.
+;; Otherwise replace it with a ucall-value and supply either
+;; the target which is our argument, or, if that is nil, the next temp register.
+(defun process-possible-microfun-call (call target)
+  (cond ((atom call) call)
+	((not (get (car call) 'microfun)) call)
+	(target (list* 'ucall-value target call))
+	(t `(ucall-value ,(next-temp) . ,call))))
+
+(defun next-temp ()
+  (setq last-temp (max last-temp used-temps))
+  (or (nth used-temps temp-regs)
+      (error "Ran out of temp registers")))
+
+;This is a list of the names of the arg stacks for the argument registers.
+;It is provided by the specific use.  They have names like arg1-stack.
+(declare (special arg-stack-names))
+
+;This has as its value the name of the arg register for targets.
+(declare (special target-stack-name))
+
+(defmacro ucall (microsubr &rest args)
+  (or (= (or (get microsubr 'nargs) 0) (length args))
+      (error "Wrong number of arguments to microsubr" (cons microsubr args)))
+  (let ((used-temps used-temps))
+    `(progn ,@(maplist 'process-arg (setq args (append args nil)))
+	    (same-state
+	      ,@(mapcar '(lambda (arg stack)
+				 (record-arg arg)
+				 `(push (arg-stack-read-only ,arg)
+					,stack))
+			args arg-stack-names)
+	      (call-pc ,microsubr))
+	    (same-state
+	      ,@(mapcar '(lambda (arg stack)
+				 `(pop ,stack))
+			args arg-stack-names)))))
+
+(defmacro ucall-value (target microfun &rest args)
+  (record-arg target)
+  (or (= (get microfun 'nargs) (length args))
+      (error "Wrong number of arguments to microfun" (cons microfun args)))
+  (let ((used-temps used-temps))
+    `(progn ,@(maplist 'process-arg (setq args (append args nil)))
+	    (same-state
+	      ,@(mapcar '(lambda (arg stack)
+				 (record-arg arg)
+				 `(push (arg-stack-read-only ,arg)
+					,stack))
+			args arg-stack-names)
+	      (push (arg-stack-read-write ,target)
+		    ,target-stack-name)
+	      (call-pc ,microfun))
+	    (same-state
+	      (pop ,target-stack-name)
+	      ,@(mapcar '(lambda (arg stack)
+				 `(pop ,stack))
+			args arg-stack-names)))))
+
+(defun dont-set-arg-reg (value)
+  (error "Attempt to assign an argument of a microfun or microsubr" value))
+
+;; Check an argument to a microfun to see if it is another microfun call.
+;; If so, replace the arg with a fetch of a suitable temp register,
+;; and return code to compute the arg and at run time put it in that temp.
+(defun process-arg (argslot)
+  (let ((argexp (process-possible-microfun-call (car argslot) nil)))
+    (cond ((eq argexp (car argslot))
+	   (cond ((memq (car argexp) '(read-stack read-reg make-pointer))
+		  nil)
+		 ((eq (car argexp) 'fetch)
+		  (and (memq (get (cadr argexp) 'reg-type) '(push-optimizer push-counter))
+		       `(assign-preparation ,(cadr argexp))))
+		 (t (error "Unhandleable argument to microfun" argexp))))
+	  (t (rplaca argslot `(fetch ,(next-temp)))
+	     (setq used-temps (1+ used-temps))
+	     argexp))))
+
+(declare (special arg-expressions))
+
+;; Accumulate list of all argument expressions that we put on the stack.
+(defun record-arg (arg)
+  (push arg arg-expressions)
+  arg)
+
+(defmacro defmicrofun (function args targetname &rest body)
+  (let ((pc-name (implode (append (explode function) '(- P C))))
+	internal-defpcs)
+    (and (> (length args) (length arg-stack-names))
+	 (error "Microfun wants too many args" (cons function args)))
+    (setq body (sublis (cons (cons targetname target-stack-name)
+			     (mapcar 'cons args arg-stack-names))
+		       (append body nil)))
+    (do ((elts body (cdr elts))) ((null elts))
+      (cond ((eq (caar elts) 'defpc)
+	     (push (car elts) internal-defpcs)
+	     (setq body (delq (car elts) body)))))      
+    `(progn 'compile
+	    ,@internal-defpcs
+	    (defpc ,pc-name . ,body)
+	    (defprop ,function ,pc-name microfun)
+	    (defprop ,function ,(length args) nargs))))
+
+(defmacro defmicrosubr (function args &rest body)
+  (let (internal-defpcs)
+    (and (> (length args) (length arg-stack-names))
+	 (error "Microfun wants too many args" (cons function args)))
+    (setq body (sublis (mapcar 'cons args arg-stack-names)
+		       (append body nil)))
+    (do ((elts body (cdr elts))) ((null elts))
+      (cond ((eq (caar elts) 'defpc)
+	     (push (car elts) internal-defpcs)
+	     (setq body (delq (car elts) body)))))      
+    `(progn 'compile
+	    ,@internal-defpcs
+	    (defpc ,function . ,body)
+	    (defprop ,function ,(length args) nargs))))
+
+(DEFMACRO URETURN (&OPTIONAL VALUE)
+  (COND (VALUE `(PROGN (ASSIGN ,TARGET-STACK-NAME ,VALUE)
+		       (URETURN)))
+	(T `(RETURN NIL))))
+
+; Data type names:
+
+(defun width-of-field (fieldpath)
+  (let ((exp (cadr (assq 'width (find-fieldpath fieldpath)))))
+    (cond (exp
+	   (do ((exp exp (eval exp)))
+	       ((numberp exp) exp)))
+	  (t (apply 'max (mapcar (function (lambda (spec)
+				   (cond ((eq (car spec) 'subfield)
+					  (+ (width-of-field (cons (cadr spec) fieldpath))
+					     (position-of-direct-subfield
+					       (cons (cadr spec) fieldpath))))
+					 (t 0))))
+				 (find-fieldpath fieldpath)))))))
+
+(defun position-of-direct-subfield (fieldpath)
+  (do ((exp (cadr (assq 'position (find-fieldpath fieldpath))) (eval exp)))
+      ((numberp exp) exp)))
+
+;get relative position of a subfield one or more levels from a field.
+;for example, (position-of-subfield '(class type) 'word)
+;gets the relative position of the (class type word) within the word.
+(defun position-of-subfield (subfieldpath fieldpath)
+  (cond ((and subfieldpath (symbolp subfieldpath)) (setq subfieldpath (list subfieldpath))))
+  (do ((pos 0)
+       (totalfp (append subfieldpath fieldpath) (cdr totalfp))
+       (sfp subfieldpath (cdr sfp)))
+      ((null sfp) pos)
+    (setq pos (+ pos (position-of-direct-subfield totalfp)))))
+
+(defun find-fieldpath (fieldpath)
+  (let (tem)
+    (cond ((and fieldpath (symbolp fieldpath)) (setq fieldpath (list fieldpath))))
+    (cond ((null (cdr fieldpath))
+	   (setq tem (get (car fieldpath) 'field-def)))
+	  (t (let ((superfield (find-fieldpath (cdr fieldpath))))
+	       (dolist (sf superfield)
+		 (and (eq (car sf) 'subfield)
+		      (eq (cadr sf) (car fieldpath))
+		      (return (setq tem (cddr sf)))))
+	       (and (eq (caar tem) 'same-field)
+		    (setq tem (append (cdr tem)
+				      (find-fieldpath (cdar tem))))))))
+    (or tem (error "Undefined fieldpath" fieldpath))))
+
+(defmacro def-dispatch-class (name fieldpath specified-subfields)
+  (let ((subclass-name-alist
+	  (mapcan (function (lambda (subfield)
+		    (mapcar (function (lambda (subclass-spec)
+			      (cons (car subclass-spec) (cons subfield (cdr subclass-spec)))))
+			    (cdr (assq 'values (find-fieldpath (cons subfield fieldpath)))))))
+		  specified-subfields)))
+    `(progn 'compile
+	    (defprop ,name ,fieldpath dispatch-class)
+	    (defprop ,name ,subclass-name-alist dispatch-subclasses))))
+
+(defmacro deffield (field-name &rest definition)
+  `(defprop ,field-name ,definition field-def))
+
+(defun allocate-type-code (data-type purposes)
+  (let ((fieldpath (get (car data-type) 'dispatch-class))
+	(dispatch-subclass (assq (cadr data-type)
+				 (get (car data-type) 'dispatch-subclasses))))
+    (or fieldpath (error "Undefined dispatch class -- defdispatch" data-type))
+    (or dispatch-subclass (error "Undefined dispatch subclass -- defdispatch" data-type))
+    ;; Find the range of acceptable values.
+    (let (min
+	  (max (expt 2 (width-of-field fieldpath))))
+      
+      (setq min (modify-variable-field (cadr dispatch-subclass) fieldpath 0
+				       (caddr dispatch-subclass)))
+      (setq max (min max
+		     (1- (modify-variable-field (cadr dispatch-subclass)
+						fieldpath
+						0
+						(or (cadddr dispatch-subclass)
+						    (caddr dispatch-subclass))))))
+      ;; Search for a free code in the acceptable range.
+      ;; It must be free for all the purposes we want to use it for.
+      (do ((i min (1+ i))) ((= i max) (error "Ran out of dispatch codes in type " data-type))
+	;; If it is not in use by anybody, return it.
+	(or (do ((l purposes (cdr l))) ((null l))
+	      ;; If somebody has been found using it, return t to the or.
+	      (and (aref (symeval (car l)) i) (return t)))
+	    (return i))))))
+
+;given a number representing the value in a field,
+;extract the number which is the value of a subfield.
+(defun extract-variable-field (subfieldpath fieldpath value)
+  (cond ((and subfieldpath (symbolp subfieldpath)) (setq subfieldpath (list subfieldpath))))
+  (let ((width (width-of-field (append subfieldpath fieldpath)))
+	(position (position-of-subfield subfieldpath fieldpath)))
+    (load-byte value position width)))
+
+(defun modify-variable-field (subfieldpath fieldpath entire-field-value subfield-value)
+  (cond ((and subfieldpath (symbolp subfieldpath)) (setq subfieldpath (list subfieldpath))))
+  (let ((width (width-of-field (append subfieldpath fieldpath)))
+	(position (position-of-subfield subfieldpath fieldpath)))
+    (deposit-byte entire-field-value position width subfield-value)))

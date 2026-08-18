@@ -1,0 +1,94 @@
+;;; -*- package: DPL; mode: LISP -*-
+
+(defvar *hrout-wiring* nil)
+(defvar *hrout-pitch* 4)
+(defvar *hrout-dir* 1)
+
+(defun find-influencing-sublist (x path)
+  (do ((ll path (cdr ll)))
+      ((null ll) nil)
+    (if (> (+ (* (car (car ll)) *hrout-dir*)
+	      *hrout-pitch*)
+	   (* x *hrout-dir*))
+	(return ll))))
+
+(defun follow-path (path)
+  (mapcar #'(lambda (cell)
+	      (list (+ (car cell) (* *hrout-dir* *hrout-pitch*))
+		    (+ (cadr cell) *hrout-pitch*)))
+	  path))
+
+(defun hrout-path-pair (x1 x2 prev-path)
+  (nconc (follow-path
+	   (find-influencing-sublist  x1 prev-path))
+	 (list (list x2 0))))
+
+(defun hrout-pair (x1 x2 prev-wire)
+  (push
+    (list x1 (hrout-path-pair x1 x2 (cadr prev-wire)))
+    *hrout-wiring*))
+
+(defun maximum-hrout-width ()
+  (loop for wire in *hrout-wiring*
+	maximize (cadr (car (cadr wire)))))
+
+(defun hrout-pair-list (pair-list *hrout-dir* *hrout-pitch*)
+  (dolist (pair pair-list)
+    (hrout-pair (car pair) (cadr pair) (car *hrout-wiring*))))
+
+(defun segment-hrout-pairs (list-of-pairs)
+  (let ((ll list-of-pairs)
+	(result nil)
+	dir ans)
+    (forever
+      (if (null ll) (return (nreverse result)))
+      (setq dir (hrout-pair-direction (car ll)) ans nil)
+      (do ((ls ll (cdr ls)))
+	  ((or (null ls)
+	       (not (= dir (hrout-pair-direction (car ls)))))
+	   (push (list dir (sortcar ans (pair-sorter dir))) result)
+	   (setq ll ls))
+	  (push (car ls) ans)))))
+
+(defun hrout-pair-direction (pair)
+  (if (< (car pair) (cadr pair)) 1 -1))
+
+(defun pair-sorter (dir)
+  (if (= dir 1) #'< #'>))
+
+(defcell hrout
+	 ((loc-pairs nil)
+	  (pitch *poly-pitch*)
+	  (layer 'poly))
+  (setq-my segmented-pairs (segment-hrout-pairs (>> loc-pairs)))
+  (setq-my max-width 0)
+  (setq-my wiring-lists
+	   (mapcar #'(lambda (sp)
+		       (let ((*hrout-wiring* nil))
+			 (hrout-pair-list (cadr sp) (car sp) (>> pitch))
+			 (setq-my max-width (max (>> max-width)
+						 (+ (maximum-hrout-width) (>> pitch))))
+			 *hrout-wiring*))
+		   (>> segmented-pairs)))
+  (dolist (wire-list (>> wiring-lists))
+      (dolist (wire wire-list)
+	(wire () (run-layer (>> layer))
+	      (from (pt (car wire) (>> max-width)))
+	      (dolist (pair (cadr wire))
+		(to-y (cadr pair))
+		(to-x (car pair)))
+	      (to-y (- 0 (>> pitch))))))
+  (setq-my first-start-pt (pt (caar (>> loc-pairs)) (>> max-width)))
+  (setq-my first-end-pt (pt (cadar (>> loc-pairs)) (- 0 (>> pitch)))))
+
+(defun try-hrout (pairs)
+  (remtype 'hrout)
+  (partq hrout hrout (loc-pairs pairs))
+  (lookit *me*))
+
+(defun random-hrout (n)
+  (do ((x (- 0 (* (// n 2) 6)) (+ x 4 (random 6)))
+       (y (- 0 (* (// n 2) 6)) (+ y 6))
+       (ans nil (cons (list x y) ans))
+       (k 0 (1+ k)))
+      ((= k n) (sortcar ans #'<))))

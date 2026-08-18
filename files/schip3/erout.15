@@ -1,0 +1,139 @@
+;;; -*- package: DPL; mode: LISP -*-
+
+(defstruct (nect (:type :list) :conc-name)
+  start end track greater-than)
+
+(defun create-nect (start end)
+  (make-nect start start end end))
+
+(defvar *poly-to-contact* 5)
+
+(defun find-nect-constraints (nect-list)
+  (dolist (nect nect-list)
+    (cond ((numberp (nect-end nect))
+	   (find-nect-greater-thans
+	     nect nect-list
+	     #'(lambda (n1 n2)
+		 (< (abs (- (nect-end n1) (nect-start n2))) *poly-to-contact*))))
+	  ((eq (nect-end nect) 'left)
+	   (find-nect-greater-thans
+	     nect nect-list
+	     #'(lambda (n1 n2)
+		 (and (eq (nect-end n2) 'left)
+		      (< (nect-start n1) (nect-start n2))))))
+	  ((eq (nect-end nect) 'right)
+	   (find-nect-greater-thans
+	     nect nect-list
+	     #'(lambda (n1 n2)
+		 (and (eq (nect-end n2) 'right)
+		      (> (nect-start n1) (nect-start n2))))))
+	  (t (error "Strange end" nect)))))
+
+(defun find-nect-greater-thans (nect list test)
+  (let ((gtl list))
+    (forever
+      (setq gtl
+	    (do ((ll gtl (cdr ll)))
+		((null ll) nil)
+	      (if (funcall test nect (car ll))
+		 (return ll))))
+      (cond ((null gtl) (return t))
+	    ((eq (car gtl) nect) nil)
+	    (t (push (car gtl) (nect-greater-than nect))))
+      (setq gtl (cdr gtl)))))
+
+(defun give-nect-track (nect nect-list)
+  (dolist (nn (nect-greater-than nect))
+    (give-nect-track nn nect-list))
+  (cond ((not (null (nect-track nect)))
+	 nil)				  ;already wired
+	(t
+	 (setf (nect-track nect)
+	       (find-free-track nect nect-list
+				(find-nect-min-track nect))))))
+
+(defun find-nect-min-track (nect)
+  (let ((max 0))
+    (dolist (nn (nect-greater-than nect))
+      (if (>= (nect-track nn) max)
+	  (setq max (1+ (nect-track nn)))))
+    max))
+
+(defun find-free-track (nect nect-list min)
+  (do ((i min (1+ i)))
+      (())
+    (if (eq (dolist (nn nect-list)
+	      (cond ((null (nect-track nn)))
+		    ((= i (nect-track nn))
+		     (if (not (can-share-track? nect nn))
+			 (return 'lose)))))
+	    'lose)
+	nil
+	(return i))))
+
+(defun can-share-track? (n1 n2)
+  (let (s1 e1 s2 e2)
+    (setq s1 (nect-start n1)
+	  s2 (nect-start n2))
+    (setq e1 (cond ((numberp (nect-end n1))
+		    (nect-end n1))
+		   ((eq (nect-end n1) 'left)
+		    (min s1 s2))
+		   ((eq (nect-end n1) 'right)
+		    (max s1 s2))))
+    (setq e2 (cond ((numberp (nect-end n2))
+		    (nect-end n2))
+		   ((eq (nect-end n2) 'left)
+		    (min s1 s2 e1))
+		   ((eq (nect-end n2) 'right)
+		    (max s1 s2 e1))))
+    (or (> (- (min e2 s2) (max e1 s1)) *metal-pitch*)
+	(> (- (min e1 s1) (max e2 s2)) *metal-pitch*))))
+
+(defun give-nect-tracks (nect-list)
+  (dolist (nect nect-list) (give-nect-track nect nect-list)))
+
+(defcell nect-wirer
+	 ((nect-list nil)
+	  (start-y nil)
+	  (end-y nil)
+	  (first-track-y nil)
+	  (left-x nil)
+	  (right-x nil))
+  (let ((nect-list (>> nect-list))
+	(start-y (>> start-y))
+	(end-y (>> end-y))
+	(first-track-y (>> first-track-y))
+	(left-x (>> left-x))
+	(right-x (>> right-x)))
+    (find-nect-constraints nect-list)
+    (give-nect-tracks nect-list)
+    (dolist (nect nect-list)
+      (wire () (run-layer 'poly)
+	    (from (pt (nect-start nect) start-y))
+	    (to-y (+ first-track-y
+		     (* *metal-pitch* (nect-track nect))))
+	    (run-layer 'metal)
+	    (cond ((numberp (nect-end nect))
+		   (let ((end (nect-end nect)))
+		     (cond ((< end left-x)
+			    (to-x left-x))
+			   ((> end right-x)
+			    (to-x right-x))
+			   (t
+			    (to-x (nect-end nect))
+			    (run-layer 'poly)
+			    (to-y end-y)))))
+		  (t (to-x (selectq (nect-end nect)
+			     (left left-x)
+			     (right right-x)))))))
+    (setq-my left-end-pt (pt left-x first-track-y))
+    (setq-my right-end-pt (pt right-x first-track-y))
+    (setq-my first-start-pt (pt (nect-start (car nect-list)) start-y))))
+
+(defconst try-nect-list
+	  '((0 left nil nil)
+	    (20 left nil nil)
+	    (40 10 nil nil)
+	    (60 50 nil nil)
+	    (70 60 nil nil)))

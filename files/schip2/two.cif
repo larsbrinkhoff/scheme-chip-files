@@ -1,0 +1,1219 @@
+(This is the modular pattern matcher.  It is 2 bits by 4 characters,
+with all signals brought to pads that are needed for multichips);
+
+(This contains positive and negative cells hooked to pads for
+testing.  The hooked up negative cell is symbol 220, and the
+positive cell is 230);
+
+(This file contains the definition for inverse and positive
+comparitor cells for the pattern matcher.  Symbols 160 and
+170 are the ones.
+
+161 and 171 are negative and positive comparator cells with
+extended pullups on the = gate.
+
+Symbols 150 and 151 should be combined into 1 symbol, whenever
+the bug in ckp is fixed.);
+
+(--------------------------------------------------------------------);
+(Standard symbols copped from srcell.cif);
+
+(Symbol 1: Green-to-Red butting contact; origin at center);
+DS 1 300 2;  (units of lambda/2);
+LND; B 8,8 -2,0;
+LNP; B 6,8 3,0;
+LNC; B 8,4 0,0;
+LNM; B 12,8 0,0;
+DF;
+
+(Symbol 2: Green-to-Metal contact; origin at center);
+DS 2 300 1; (units of lambda);
+LND; B 4,4 0,0;
+LNC; B 2,2 0,0;
+LNM; B 4,4 0,0;
+DF;
+
+(Symbol 3: 2/6 pulldown transistor; origin at center);
+(Input is in poly.  2 lambda high at -5,0 or 5,0);
+DS 3 300 1; (units of lambda);
+LND; B 6,6 0,0;
+LNP; B 10,2 0,0;
+DF;
+
+(Symbol 4: 6/2 pullup transistor; origin at center);
+(This has the butting contact over the gate);
+DS 4 300 1; (units of lambda);
+LND; B 2,10 0,0;
+LNP; B 6,6 0,0;
+LNI; B 6,10 0,0;
+C 1 R 0,1 T 0,-4; (butting contact for gate);
+DF;
+
+(Symbol 5: 2/2 pulldown transistor; origin at center);
+DS 5 300 1; (units of lambda);
+LND; B 2,6 0,0;
+LNP; B 6,2 0,0;
+DF;
+
+
+(-----------------------------------------------------------------);
+(These are some that I defined, rather than getting from sproull);
+
+(Symbol 11:  Red to metal contact, origin at center);
+DS 11 300 1;  (units of lambda);
+LNP;  B 4,4 0,0;
+LNM;  B 4,4 0,0;
+LNC;  B 2,2 0,0;
+DF;
+
+(Symbol 12:  2/8 pulldown transistor, origin at center);
+(Input in poly is 2 lambda high at -6,0 or 6,0);
+DS 12 300 1;  (units of lambda);
+LND;  B 8,6 0,0;
+LNP;  B 12,2 0,0;
+DF;
+
+(Symbol 13:  6/2 pullup with side contact.  Origin at center
+of pullup gate);
+DS 13 300 1; (units of lambda);
+LND;  B 2,10 0,0;   (Two lambda wide channel, with slop);
+	B 4,2 1,-5;	(Connects the channel to the contact);
+C 1 R 0,1 T 4,-3;	(The butting contact);
+LNP;  B 6,6 0,0;	(The pullup gate);
+LNI;  B 6,10 0,0;	(Implant);
+DF;
+
+(Symbol 14:  2/3 pulldown.  Origin is lambda/2 left of center.
+This transistor will therefore stick out more on the right than
+on the left);
+DS 14 300 2;  (units of lambda/2);
+LND;  B 6,12 1,0;	(the channel);
+LNP;  B 14,4 1,0;	(the gate);
+DF;
+
+(Symbol 15:  8/2 pullup with butting contact over gate.
+Origin is center of pullup gate.);
+DS 15 300 1; (units of lambda);
+LND; B 2,12 0,0;
+LNP; B 6,8 0,0;
+LNI; B 6,12 0,0;
+C 1 R 0,1 T 0,-5; (butting contact for gate);
+DF;
+
+(Symbol 16:  8/2 pullup with side contact.  Origin at center
+of pullup gate);
+DS 16 300 1; (units of lambda);
+LND;  B 2,12 0,0;   (Two lambda wide channel, with slop);
+	B 4,2 1,-6;	(Connects the channel to the contact);
+C 1 R 0,1 T 4,-4;	(The butting contact);
+LNP;  B 6,8 0,0;	(The pullup gate);
+LNI;  B 6,12 0,0;	(Implant);
+DF;
+
+(----------------------------------------------------------------);
+
+(Symbol 101:  9:1 inverter, using 6/2 and 2/6 transisitors.
+This is extra long, to allow an extra metal wire to pass
+over the pulldown.  Origin is center of power contact.
+Output may be in metal, to the right, or diffusion, to the
+left.  Input is in poly, to either left or right.
+***This comment uses units of lambda***
+Metal output is up to 6 high, centered at 6,-9.
+Diffusion output is two high, centered at -1,-11.
+poly input is two high, centered at -5,-14 or 5,-14.
+Metal crossing is 3 high, with ports at -5,-16.5 and 9,-16.5.
+     4 high ports at -5,-16 and 9, -16 may be used instead.
+Typical outputs are given below as comments.);
+DS 101 300 2;  (units of lambda/2);
+C 2 T 0,0;	(power contact);
+C 13 T 0,-12;	(pullup);
+C 3 T 0,-28;	(pulldown);
+LNM;  B 28,6 4,-33;	(metal crossing of pulldown);
+(** comments to show how to hook it up **);
+(LND;  B 4,8 0,-38);	(connection to ground);
+(C 2 T 0,-46);		(ground contact);
+(LNM;  B 16,8 20,-16);	(output wire in metal);
+(LND;  B 16,4 -10,-22);	(output in diffusion);
+DF;
+
+(Symbol 102:  9:1 NOR gate for the positive accumulator cell.
+Origin is center of power contact.  Ground contacts are at 0,24
+and -10,24.  The pulldown inputs are 4,20 and -14,16.
+Output is at 4,12);
+
+DS 102 300 1;		(units of lambda);
+C 2 T 0,0;		(power contact);
+C 13 M Y T 0,7;		(6/2 pullup);
+LND;	B 12,2 -6,12;	(connection to left pulldown);
+C 3 T -9,16;		(2/6 pulldown for left branch);
+LND;	B 2,4 -10,20;	(connection to ground contact);
+C 2 T -10 24;		(ground contact);
+LND;	B 2,4 0,15;	(connection to right pulldown);
+C 3 T 0,20;		(2/6 pulldown for right branch);
+C 2 T 0,24;		(ground contact for right branch);
+DF;
+
+(Symbol 103:  Nand gate for accumulator.  Origin is in power
+contact);
+DS 103 300 1;		(units of lambda);
+C 2 T 0,0;		(power contact);
+C 16 M Y T 0,7;		(8/2 pullup);
+C 12 T -1,16;		(2/8 pulldown);
+LNP;	B 8,2 -10,16;	(connection to pulldown);
+C 12 T -1,20;		(Another 2/8 pulldown);
+C 2 T 0,24;		(the ground contact);
+DF;
+
+(--------------------------------------------------------------);
+
+(These are the contact pads for communication with outside);
+( Created by Sif from pads2.ic );
+(Symbol numbers changed to 10000+ by mjf);
+
+DS 10001;     ( Name: PadBlank2 );
+( 3 Items. );
+Layer NMet;  Box  Len 38400  Wid 2400  Center 19200,-1200 ;
+Layer NMet;  Box  Len 21600  Wid 21600  Center 19200,-19200 ;
+Layer NGls;  Box  Len 18600  Wid 18600  Center 19200,-19200 ;
+DF;
+
+
+DS 10002;     ( Name: PadOut2 );
+( 79 Items. );
+Call 10008 Trans 0,0;
+Layer NMet;  Box  Len 31200  Wid 2400  Center 19200,-51600 ;
+Layer NDif;  Box  Len 1200  Wid 8700  Center 6000,-42150 ;
+Layer NDif;  Box  Len 3000  Wid 1200  Center 7500,-45900 ;
+Layer NDif;  Box  Len 2400  Wid 3600  Center 7500,-41100 ;
+Layer NImp;  Box  Len 1800  Wid 4800  Center 7500,-41100 ;
+Layer NImp;  Box  Len 1800  Wid 2400  Center 7500,-45900 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 7500,-47700 ;
+Layer NPol;  Box  Len 1200  Wid 900  Center 7500,-47250 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 7800,-48000 ;
+Layer NPol;  Box  Len 600  Wid 8400  Center 7500,-42900 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 7500,-47700 ;
+Layer NPol;  Box  Len 19200  Wid 600  Center 17400,-43500 ;
+Layer NDif;  Box  Len 600  Wid 5700  Center 8700,-48450 ;
+Layer NDif;  Box  Len 2400  Wid 1200  Center 9600,-42300 ;
+Layer NDif;  Box  Len 3600  Wid 600  Center 10500,-51000 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 9900,-40800 ;
+Layer NMet;  Box  Len 1800  Wid 2700  Center 9900,-41550 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 9900,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 9900,-42300 ;
+Layer NMet;  Box  Len 1200  Wid 4500  Center 10200,-44550 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 11700,-47100 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 10500,-39300 ;
+Layer NPol;  Box  Len 600  Wid 4200  Center 11400,-48000 ;
+Layer NPol;  Box  Len 16200  Wid 600  Center 19200,-45900 ;
+Layer NPol;  Box  Len 6300  Wid 600  Center 14250,-50100 ;
+Layer NDif;  Box  Len 7200  Wid 4800  Center 15600,-44700 ;
+Layer NDif;  Box  Len 4800  Wid 2100  Center 14400,-50250 ;
+Layer NMet;  Box  Len 1800  Wid 2700  Center 12900,-41550 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 12900,-42300 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 12900,-40800 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 12900,-47100 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-42300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-47100 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 13500,-39300 ;
+Layer NMet;  Box  Len 7800  Wid 1200  Center 19200,-44700 ;
+Layer NMet;  Box  Len 7800  Wid 1200  Center 19200,-48900 ;
+Layer NDif;  Box  Len 7800  Wid 1200  Center 19200,-48900 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-44700 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-48900 ;
+Layer NMet;  Box  Len 2400  Wid 12900  Center 19200,-44550 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 19200,-44700 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 19200,-48900 ;
+Layer NPol;  Box  Len 600  Wid 3000  Center 19200,-51300 ;
+Layer NDif;  Box  Len 7200  Wid 4800  Center 22800,-44700 ;
+Layer NPol;  Box  Len 7800  Wid 600  Center 23100,-50100 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-44700 ;
+Layer NDif;  Box  Len 4800  Wid 2100  Center 24000,-50250 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-48900 ;
+Layer NMet;  Box  Len 1800  Wid 2700  Center 25500,-41550 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 25500,-42300 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 25500,-40800 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 25500,-47100 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 26700,-47100 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 24900,-39300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-42300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-47100 ;
+Layer NDif;  Box  Len 3600  Wid 600  Center 27900,-42600 ;
+Layer NDif;  Box  Len 3600  Wid 600  Center 27900,-51000 ;
+Layer NPol;  Box  Len 3900  Wid 600  Center 28650,-44700 ;
+Layer NPol;  Box  Len 600  Wid 1200  Center 27000,-45300 ;
+Layer NMet;  Box  Len 1200  Wid 6600  Center 28200,-43500 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 28500,-40800 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 28500,-40800 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 27900,-39300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 28500,-40800 ;
+Layer NDif;  Box  Len 3000  Wid 1200  Center 30900,-45900 ;
+Layer NDif;  Box  Len 600  Wid 5700  Center 29700,-48450 ;
+Layer NDif;  Box  Len 2400  Wid 3600  Center 30900,-41100 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 30600,-48000 ;
+Layer NImp;  Box  Len 1800  Wid 4800  Center 30900,-41100 ;
+Layer NImp;  Box  Len 1800  Wid 2400  Center 30900,-45900 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 30900,-47700 ;
+Layer NPol;  Box  Len 1200  Wid 900  Center 30900,-47250 ;
+Layer NPol;  Box  Len 600  Wid 8400  Center 30900,-42900 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 30900,-47700 ;
+Layer NDif;  Box  Len 1200  Wid 8700  Center 32400,-42150 ;
+DF;
+
+
+DS 10003;     ( Name: PadInOut2 );
+( 126 Items. );
+Call 10008 Trans 0,0;
+Layer NDif;  Box  Len 2400  Wid 7200  Center 4200,-54000 ;
+Layer NDif;  Box  Len 600  Wid 5700  Center 3300,-47850 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 4200,-48300 ;
+Layer NDif;  Box  Len 3000  Wid 1800  Center 4800,-45900 ;
+Layer NImp;  Box  Len 1800  Wid 3000  Center 4500,-45900 ;
+Layer NMet;  Box  Len 31200  Wid 2400  Center 19200,-57600 ;
+Layer NPol;  Box  Len 600  Wid 9000  Center 4200,-54300 ;
+Layer NPol;  Box  Len 1200  Wid 900  Center 4500,-47550 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 4500,-48000 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 4500,-48000 ;
+Layer NPol;  Box  Len 600  Wid 3000  Center 4500,-45900 ;
+Layer NDif;  Box  Len 600  Wid 3000  Center 5100,-55800 ;
+Layer NDif;  Box  Len 4200  Wid 1200  Center 6900,-57000 ;
+Layer NPol;  Box  Len 900  Wid 600  Center 5250,-47400 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 5700,-57000 ;
+Layer NDif;  Box  Len 1200  Wid 9000  Center 6000,-42300 ;
+Layer NPol;  Box  Len 600  Wid 3000  Center 6000,-48600 ;
+Layer NPol;  Box  Len 4200  Wid 600  Center 8100,-49800 ;
+Layer NDif;  Box  Len 2400  Wid 3600  Center 7500,-41100 ;
+Layer NDif;  Box  Len 2400  Wid 1200  Center 7500,-46200 ;
+Layer NImp;  Box  Len 1800  Wid 2400  Center 7500,-46200 ;
+Layer NImp;  Box  Len 1800  Wid 4800  Center 7500,-41100 ;
+Layer NMet;  Box  Len 1200  Wid 7200  Center 7500,-50700 ;
+Layer NPol;  Box  Len 1200  Wid 900  Center 7500,-47550 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 7800,-48300 ;
+Layer NMet;  Box  Len 6900  Wid 1200  Center 10350,-54600 ;
+Layer NPol;  Box  Len 600  Wid 8700  Center 7500,-43050 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 7500,-48000 ;
+Layer NPol;  Box  Len 3900  Wid 600  Center 9450,-43800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 8100,-57000 ;
+Layer NDif;  Box  Len 2400  Wid 1200  Center 9600,-42300 ;
+Layer NDif;  Box  Len 600  Wid 3300  Center 8700,-47250 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 9900,-40800 ;
+Layer NMet;  Box  Len 1800  Wid 2700  Center 9900,-41550 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 9900,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 9900,-42300 ;
+Layer NMet;  Box  Len 1200  Wid 7800  Center 10200,-46500 ;
+Layer NPol;  Box  Len 600  Wid 7500  Center 10200,-52050 ;
+Layer NPol;  Box  Len 17100  Wid 600  Center 18450,-55800 ;
+Layer NPol;  Box  Len 17100  Wid 600  Center 18750,-48600 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 10500,-39300 ;
+Layer NMet;  Box  Len 3300  Wid 1200  Center 12150,-49800 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 11400,-52200 ;
+Layer NPol;  Box  Len 17700  Wid 600  Center 19950,-51000 ;
+Layer NPol;  Box  Len 600  Wid 2700  Center 11400,-47250 ;
+Layer NPol;  Box  Len 6300  Wid 600  Center 14250,-53400 ;
+Layer NPol;  Box  Len 15600  Wid 600  Center 19200,-43800 ;
+Layer NPol;  Box  Len 15600  Wid 600  Center 19200,-46200 ;
+Layer NMet;  Box  Len 1800  Wid 5400  Center 12900,-42900 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 12900,-40800 ;
+Layer NDif;  Box  Len 14400  Wid 10800  Center 19200,-47400 ;
+Layer NDif;  Box  Len 4800  Wid 5100  Center 14400,-55050 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-45000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-49800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-54600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-57000 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 13500,-39300 ;
+Layer NMet;  Box  Len 7800  Wid 1200  Center 19200,-42600 ;
+Layer NMet;  Box  Len 7800  Wid 1200  Center 19200,-47400 ;
+Layer NMet;  Box  Len 7800  Wid 1200  Center 19200,-52200 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 15900,-57000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-47400 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-42600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-52200 ;
+Layer NMet;  Box  Len 2400  Wid 18900  Center 19200,-47550 ;
+Layer NCut;  Box  Len 600  Wid 600  Center 18900,-47400 ;
+Layer NCut;  Box  Len 600  Wid 600  Center 18900,-42600 ;
+Layer NCut;  Box  Len 600  Wid 600  Center 18900,-52200 ;
+Layer NCut;  Box  Len 600  Wid 600  Center 19500,-47400 ;
+Layer NCut;  Box  Len 600  Wid 600  Center 19500,-42600 ;
+Layer NCut;  Box  Len 600  Wid 600  Center 19500,-52200 ;
+Layer NPol;  Box  Len 7200  Wid 600  Center 24600,-53400 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-47400 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-42600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-52200 ;
+Layer NDif;  Box  Len 4800  Wid 5100  Center 24000,-55050 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22500,-57000 ;
+Layer NMet;  Box  Len 1800  Wid 5400  Center 25500,-42900 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 25500,-40800 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 26700,-49800 ;
+Layer NMet;  Box  Len 6900  Wid 1200  Center 28050,-54600 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 24900,-39300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-45000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-49800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-54600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-57000 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 27000,-45000 ;
+Layer NPol;  Box  Len 600  Wid 2700  Center 27000,-47250 ;
+Layer NDif;  Box  Len 900  Wid 3300  Center 27750,-43950 ;
+Layer NDif;  Box  Len 2700  Wid 1200  Center 28650,-42300 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 28200,-52500 ;
+Layer NPol;  Box  Len 900  Wid 1200  Center 27750,-52500 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 28500,-40800 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 28500,-40800 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 28500,-40800 ;
+Layer NMet;  Box  Len 1200  Wid 9300  Center 28200,-45750 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 28200,-52500 ;
+Layer NPol;  Box  Len 600  Wid 5400  Center 27900,-56100 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 27900,-39300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 28500,-40800 ;
+Layer NDif;  Box  Len 1200  Wid 1200  Center 28500,-52500 ;
+Layer NPol;  Box  Len 600  Wid 6600  Center 28800,-48000 ;
+Layer NPol;  Box  Len 2400  Wid 600  Center 29700,-45000 ;
+Layer NDif;  Box  Len 600  Wid 6000  Center 28800,-55800 ;
+Layer NDif;  Box  Len 600  Wid 3300  Center 29700,-47250 ;
+Layer NDif;  Box  Len 2400  Wid 3600  Center 30900,-41100 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 30600,-48300 ;
+Layer NDif;  Box  Len 2400  Wid 1200  Center 30900,-46200 ;
+Layer NImp;  Box  Len 1800  Wid 2400  Center 30900,-46200 ;
+Layer NImp;  Box  Len 1800  Wid 4800  Center 30900,-41100 ;
+Layer NMet;  Box  Len 1200  Wid 7200  Center 30900,-50700 ;
+Layer NPol;  Box  Len 1200  Wid 900  Center 30900,-47550 ;
+Layer NPol;  Box  Len 600  Wid 8700  Center 30900,-43050 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 30900,-48000 ;
+Layer NDif;  Box  Len 1200  Wid 9000  Center 32400,-42300 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 33900,-54600 ;
+Layer NPol;  Box  Len 900  Wid 1200  Center 33450,-54600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 33900,-54600 ;
+Layer NPol;  Box  Len 600  Wid 3900  Center 33600,-56850 ;
+Layer NMet;  Box  Len 1200  Wid 20700  Center 34200,-43950 ;
+Layer NDif;  Box  Len 1200  Wid 1200  Center 34200,-54600 ;
+Layer NCut;  Box  Len 600  Wid 600  Center 34200,-34200 ;
+Layer NDif;  Box  Len 600  Wid 3900  Center 34500,-56850 ;
+DF;
+
+
+DS 10004;     ( Name: PadIn2 );
+( 25 Items. );
+Call 10001 Trans 0,0;
+Layer NDif;  Box  Len 30600  Wid 5400  Center 18000,-34500 ;
+Layer NMet;  Box  Len 31200  Wid 2400  Center 19200,-37200 ;
+Layer NPol;  Box  Len 600  Wid 2100  Center 4200,-34350 ;
+Layer NPol;  Box  Len 30900  Wid 600  Center 19350,-33300 ;
+Layer NPol;  Box  Len 30900  Wid 600  Center 19350,-35400 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 4800,-36600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 7800,-36600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 10800,-36600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 13800,-36600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16800,-36600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 19800,-36600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22800,-36600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25800,-36600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 28800,-36600 ;
+Layer NMet;  Box  Len 5100  Wid 1200  Center 31650,-9000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 31800,-36600 ;
+Layer NDif;  Box  Len 3300  Wid 1200  Center 34050,-9000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 33300,-9000 ;
+Layer NDif;  Box  Len 2400  Wid 3900  Center 34200,-34350 ;
+Layer NPol;  Box  Len 1200  Wid 1200  Center 34200,-37200 ;
+Layer NCut;  Box  Len 600  Wid 600  Center 34200,-37200 ;
+Layer NPol;  Box  Len 600  Wid 1500  Center 34500,-32550 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 34500,-36600 ;
+Layer NDif;  Box  Len 600  Wid 29100  Center 35400,-23850 ;
+DF;
+
+
+DS 10005;     ( Name: PadVdd2 );
+( 3 Items. );
+Call 10001 Trans 0,0;
+Layer NMet;  Box  Len 3600  Wid 6900  Center 10200,-5250 ;
+Layer NMet;  Box  Len 3600  Wid 6900  Center 28200,-5250 ;
+DF;
+
+
+DS 10006;     ( Name: PadGround2 );
+( 4 Items. );
+Call 10001 Trans 0,0;
+Layer NMet;  Box  Len 31200  Wid 2400  Center 19200,-37200 ;
+Layer NMet;  Box  Len 3600  Wid 6600  Center 10200,-33000 ;
+Layer NMet;  Box  Len 3600  Wid 6600  Center 28200,-33000 ;
+DF;
+
+
+DS 10007;     ( Name: PadClockedOut2 );
+( 87 Items. );
+Call 10008 Trans 0,0;
+Layer NMet;  Box  Len 31200  Wid 2400  Center 19200,-51600 ;
+Layer NDif;  Box  Len 1200  Wid 8700  Center 6000,-42150 ;
+Layer NDif;  Box  Len 3000  Wid 1200  Center 7500,-45900 ;
+Layer NDif;  Box  Len 2400  Wid 3600  Center 7500,-41100 ;
+Layer NImp;  Box  Len 1800  Wid 4800  Center 7500,-41100 ;
+Layer NImp;  Box  Len 1800  Wid 2400  Center 7500,-45900 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 7500,-47700 ;
+Layer NPol;  Box  Len 1200  Wid 900  Center 7500,-47250 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 7800,-48000 ;
+Layer NPol;  Box  Len 600  Wid 8400  Center 7500,-42900 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 7500,-47700 ;
+Layer NPol;  Box  Len 19200  Wid 600  Center 17400,-43500 ;
+Layer NDif;  Box  Len 600  Wid 3900  Center 8700,-47550 ;
+Layer NDif;  Box  Len 2400  Wid 1200  Center 9600,-42300 ;
+Layer NDif;  Box  Len 3600  Wid 600  Center 10500,-49200 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 9900,-40800 ;
+Layer NMet;  Box  Len 1800  Wid 2700  Center 9900,-41550 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 9900,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 9900,-42300 ;
+Layer NMet;  Box  Len 1200  Wid 4500  Center 10200,-44550 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 11700,-47100 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 10500,-39300 ;
+Layer NPol;  Box  Len 600  Wid 2700  Center 11400,-47250 ;
+Layer NPol;  Box  Len 16200  Wid 600  Center 19200,-45900 ;
+Layer NPol;  Box  Len 6300  Wid 600  Center 14550,-48300 ;
+Layer NPol;  Box  Len 6000  Wid 600  Center 14400,-50100 ;
+Layer NDif;  Box  Len 7200  Wid 4800  Center 15600,-44700 ;
+Layer NMet;  Box  Len 1800  Wid 2700  Center 12900,-41550 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 12900,-42300 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 12900,-40800 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 12900,-47100 ;
+Layer NDif;  Box  Len 4800  Wid 2100  Center 14400,-49950 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-42300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 12900,-47100 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 13500,-39300 ;
+Layer NMet;  Box  Len 7800  Wid 1200  Center 19200,-44700 ;
+Layer NDif;  Box  Len 7800  Wid 1200  Center 19200,-51300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-44700 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-51300 ;
+Layer NPol;  Box  Len 600  Wid 2100  Center 17400,-49350 ;
+Layer NMet;  Box  Len 2400  Wid 12900  Center 19200,-44550 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 19200,-44700 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 19200,-51300 ;
+Layer NDif;  Box  Len 7200  Wid 4800  Center 22800,-44700 ;
+Layer NPol;  Box  Len 11700  Wid 600  Center 26850,-50100 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-44700 ;
+Layer NDif;  Box  Len 4800  Wid 2100  Center 24000,-49950 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-51300 ;
+Layer NMet;  Box  Len 1800  Wid 2700  Center 25500,-41550 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 25500,-42300 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 25500,-40800 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 25500,-47100 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 25500,-47100 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 24900,-39300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-42300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-40800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 25500,-47100 ;
+Layer NDif;  Box  Len 3600  Wid 600  Center 27900,-42600 ;
+Layer NMet;  Box  Len 2700  Wid 900  Center 27450,-46950 ;
+Layer NDif;  Box  Len 3600  Wid 600  Center 27900,-49200 ;
+Layer NPol;  Box  Len 3900  Wid 600  Center 28650,-44700 ;
+Layer NPol;  Box  Len 600  Wid 1200  Center 27000,-45300 ;
+Layer NMet;  Box  Len 1200  Wid 6600  Center 28200,-43500 ;
+Layer NPol;  Box  Len 1800  Wid 1200  Center 28500,-40800 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 28500,-40800 ;
+Layer NPol;  Box  Len 600  Wid 2400  Center 27900,-39300 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 28500,-40800 ;
+Layer NDif;  Box  Len 3000  Wid 600  Center 30900,-46200 ;
+Layer NDif;  Box  Len 600  Wid 3300  Center 29700,-47850 ;
+Layer NDif;  Box  Len 2400  Wid 3600  Center 30900,-41100 ;
+Layer NDif;  Box  Len 1800  Wid 1200  Center 30600,-48000 ;
+Layer NImp;  Box  Len 1800  Wid 4800  Center 30900,-41100 ;
+Layer NImp;  Box  Len 1800  Wid 1800  Center 30900,-46200 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 30900,-47700 ;
+Layer NPol;  Box  Len 1200  Wid 900  Center 30900,-47250 ;
+Layer NPol;  Box  Len 600  Wid 8400  Center 30900,-42900 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 30900,-47700 ;
+Layer NDif;  Box  Len 1200  Wid 8700  Center 32400,-42150 ;
+Layer NPol;  Box  Len 600  Wid 1200  Center 32400,-49200 ;
+Layer NPol;  Box  Len 600  Wid 1200  Center 32400,-52200 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 33300,-48600 ;
+Layer NPol;  Box  Len 900  Wid 1200  Center 32850,-48600 ;
+Layer NPol;  Box  Len 2400  Wid 600  Center 33600,-51900 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 33300,-48600 ;
+Layer NDif;  Box  Len 1200  Wid 4800  Center 33600,-50400 ;
+DF;
+
+
+DS 10008;     ( Name: PadDriver2 );
+( 72 Items. );
+Call 10001 Trans 0,0;
+Layer NDif;  Box  Len 7200  Wid 30900  Center 4200,-22350 ;
+Layer NDif;  Box  Len 37200  Wid 7200  Center 19200,-4200 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 2700,-1800 ;
+Layer NPol;  Box  Len 33000  Wid 600  Center 19200,-3000 ;
+Layer NPol;  Box  Len 600  Wid 33000  Center 3000,-19200 ;
+Layer NPol;  Box  Len 7500  Wid 600  Center 6750,-35400 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 4200,-29400 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 4200,-19200 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 4200,-9000 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 4200,-29400 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 4200,-19200 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 4200,-9000 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 6600,-29400 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 6600,-19200 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 6600,-9000 ;
+Layer NPol;  Box  Len 28200  Wid 600  Center 19200,-5400 ;
+Layer NPol;  Box  Len 600  Wid 28200  Center 5400,-19200 ;
+Layer NPol;  Box  Len 8400  Wid 600  Center 9300,-33000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 5700,-1800 ;
+Layer NDif;  Box  Len 24600  Wid 7200  Center 19200,-34200 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 9000,-4200 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 9000,-34200 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 8700,-1800 ;
+Layer NMet;  Box  Len 1200  Wid 4200  Center 9000,-6600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 9000,-4200 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 9000,-34200 ;
+Layer NMet;  Box  Len 1200  Wid 4200  Center 9000,-31800 ;
+Layer NPol;  Box  Len 600  Wid 3300  Center 10500,-36750 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 11700,-1800 ;
+Layer NPol;  Box  Len 600  Wid 5700  Center 13500,-35550 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 14700,-1800 ;
+Layer NMet;  Box  Len 7800  Wid 3000  Center 19200,-36900 ;
+Layer NDif;  Box  Len 7800  Wid 600  Center 19200,-38100 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-36000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 16200,-37800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 17700,-1800 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 19200,-4200 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 19200,-4200 ;
+Layer NMet;  Box  Len 1200  Wid 4200  Center 19200,-6600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 19200,-36000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 19200,-37800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 20700,-1800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-36000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 22200,-37800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 23700,-1800 ;
+Layer NPol;  Box  Len 600  Wid 5700  Center 24900,-35550 ;
+Layer NPol;  Box  Len 8400  Wid 600  Center 29100,-33000 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 26700,-1800 ;
+Layer NPol;  Box  Len 600  Wid 3300  Center 27900,-36750 ;
+Layer NPol;  Box  Len 7500  Wid 600  Center 31650,-35400 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 29400,-4200 ;
+Layer NMet;  Box  Len 1800  Wid 1200  Center 29400,-34200 ;
+Layer NMet;  Box  Len 1200  Wid 4200  Center 29400,-6600 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 29400,-4200 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 29400,-34200 ;
+Layer NMet;  Box  Len 1200  Wid 4200  Center 29400,-31800 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 29700,-1800 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 31800,-9000 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 31800,-19200 ;
+Layer NMet;  Box  Len 4200  Wid 1200  Center 31800,-29400 ;
+Layer NDif;  Box  Len 7200  Wid 30900  Center 34200,-22350 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 32700,-1800 ;
+Layer NPol;  Box  Len 600  Wid 28200  Center 33000,-19200 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 34200,-9000 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 34200,-19200 ;
+Layer NMet;  Box  Len 1200  Wid 1800  Center 34200,-29400 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 34200,-9000 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 34200,-19200 ;
+Layer NCut;  Box  Len 600  Wid 1200  Center 34200,-29400 ;
+Layer NPol;  Box  Len 600  Wid 33000  Center 35400,-19200 ;
+Layer NCut;  Box  Len 1200  Wid 600  Center 35700,-1800 ;
+DF;
+
+
+
+(----------------------------------------------------------------);
+
+(Symbol 150:  Top of a cell.  This is bounded above by
+a power wire, and below by ground.  Origin is the center
+of the power contact of the leftmost, or pattern, inverter.
+The center of the power wire is [*,0].  The center of the ground
+wire is [*,-23].
+
+Top of the cell is top of power wire: 2, except that the
+clock herniates in two places, going up to 5.  The herniae
+are [-15,5] to [7,5] and [39,5] to [53,5].
+Contacts to diffusion can be placed on the power wire with centers
+from [16,0] to [32,0].
+
+Bottom of the cell is the bottom of the ground wire: -25.
+Contacts to diffusion can be placed along the ground wire with
+centers from [13,-25] to [21,-25].
+
+The left edge is -15.  P and S both overshoot the left edge by lambda.
+clock enters from left at [-15,3] to [-15,5]
+	or from above at [-15,5] to [7,5]
+power enters from left at [-2,-15] to [2,-15].
+P enters from left at -6 to -8.
+S leaves from left at -14 to -18.
+ground enters from left at -21 to -25.
+
+The right edge is at 75.  power, ground, p, and s are at the same
+levels here as on the left edge.  The clock leaves from the bottom
+at [68,-25] to [70,-25].
+
+The code is divided into 5 sections:
+	power and ground
+	p
+	d
+	s
+	clock
+Within each section, components are specified from left to right.);
+DS 150 300 1;  (units of lambda);
+LNM;  B 90,4 30,0;	(power wire);
+      B 90,4 30,-23;	(ground wire);
+
+(** p--pattern from left to right on top **);
+(see clock section for pass gate at input);
+C 1 R 0,-1 T -8,-8;	(contact from pdiff to ppoly);
+LNP;  B 4,2 T -8,-12;	(connection to inverter input);
+       B 6,2 -7,-14;
+C 101 T 0,0;		(p inverter);
+   LND;  B 2,4 0,-19;	(connection to ground);
+	C 2 T 0,-23;	(ground contact);
+LNM;  B 12,4 12,-8;	(output from the p inverter);
+C 2 T 20,-8;		(contact to = gate for controlled p);
+LNM;  B 12,4 28,-8;	(connection between contacts);
+C 11 T 31,-9;		(contact for p control of = gate);
+(* controlled p--part of = gate.  This is p gated by s *);
+	(gate is described in s section);
+	LND;  B 4,2 24,-17;	(path in diffusion from gate to joint);
+	      B 2,6 27,-19;
+	      B 14,2 33,-23;
+	LNP;  B 2,12 30,-15;	(connection from contact to gate);
+LNM;  B 6,4 36,-8;	(connection from contact to bridge of s);
+      B 2,12 40,-12;
+      B 2,12 41,-12;
+
+(** d--result goes top to bottom **);
+(see clock section for pass gate at input);
+LND;  B 2,18 10,-7;	(d runs vertically straight through);
+      B 4,2 8,-16;	(jogs to the left);
+      B 2,2 10,-16;
+      B 2,10 7,-20;	(and continues);
+
+(** s--string from right to left **);
+LNM;  B 8,4 -12,-16;	(s output from cell in metal);
+      B 4,4 -7,-16;	(connect bridge of p gate to s output);
+LNM;  B 4,4 11,-16;	(connect bridge of p gate to s at contact);
+C 11 T 14,-16;		(contact from s to poly for = control);
+LNP;  B 2,2 15,-13;	(connection from contact to transistor);
+C 12 T 21,-13;		(2/8 for s control of p on = gate);
+LNM;  B 16,4 24,-16;	(connection between contacts);
+C 2 T 34,-16;		(contact for controlled s to = gate);
+C 12 T 36,-20;		(2/8 for p control of s on = gate);
+LND;  B 2,4 35,-12;	(connection from s inverter output to contact);
+      B 12,2 42,-11;
+C 101 T 46,0;		(s inverter);
+   LND;  B 12,4 T 50,-19;	(connection to ground contact);
+	C 2 T 54,-23;	(ground contact);
+
+(** clock **);
+C 5 R 0,1 T -13,-7;	(clock gate on p input);
+LNP;  B 2,8 -13,0;	(clock input);
+      B 22,2 -4,4;	(clock goes around p inverter);
+      B 2,8 6,0;	(and down to the d input);
+C 5 T 10,-3;		(clock gate on d input);
+LNP;  B 2,2 13,-3;	(clock leaves d gate);
+      B 28,2 26,-4;	(over to s inverter);
+      B 2,8 40,-1;	(up);
+DF;
+
+(ckp lost big trying to understand the complete definition of
+symbol 150.  I am therefore forced to split it into two symbols.
+This is the second half of the top half of a cell.  The split
+is nowhere convenient, but I'll once again divide this into 5
+parts.);
+DS 151 300 1;		(units of lambda);
+C 150 T 0,0;		(get first part.  origin in same spot);
+
+(** p **);
+LNM;  B 2,12 56,-12;	(p goes back up from bridge);
+      B 2,12 57,-12;
+LNM;  B 8,2 59,-7;	(connect to contact);
+      B 8,2 59,-6;
+C 2 T 64, -7;		(contact to diffusion);
+LND;  B 6,2 69,-7;	(output in diffusion);
+      B 4,2 73,-7;
+
+(** s **);
+LNP;  B 2,2 51,-14;	(connect to s inverter input);
+      B 2,2 51,-15;
+      B 10,2 56,-15;
+C 1 M X T 64,-16;	(contact from diffusion to poly);
+C 2 T 73,-16;		(contact from metal to diffusion);
+
+(** clock **);
+LNP;  B 14,2 46,4;	(clock goes around s inverter);
+      B 2,8 52,0;	(and down);
+      B 4,2 55,-3;	(jog over to miss side contact);
+      B 2,8 56,-8;
+      B 12,2 63,-11;	(over to s control);
+      B 2,2 69,-11;
+C 5 R 0,1 T 69,-15;	(pass gate for s input);
+LNP;  B 2,8 69,-21;	(down and out);
+
+DF;
+
+(-----------------------------------------------------------------);
+(This is a description of the pattern matcher comparator cell);
+
+(This cell has two versions:  one for normal input, and one for
+inverted input.  There is one clock line controlling the cell, and
+opposite versions are expected to be controlled by opposite phases
+of the two phase clock.  This description of input and output
+connections applies to both versions of the cell.
+
+Here is a schematic view of the paths through the cell:
+
+ccccc            ccccc
+5555c55d555555555c555c5555
+    c  d         c   c
+    cccdcccccccccc   cc
+       d              c
+pppppppdppppppppppppppcpp
+       d              c
+       d              c
+sssssssdsssssssssssssscss
+       d              c
+     | d              c
+0000-+-d00000000000000c00
+     | d              c
+       d              c
+bbbbbbbdbbbbbbbbbbbbbbcbb
+       d              c
+       d              ccc
+5555555d55555555555555555
+
+The meanings of the symbols are:
+	c:	clock
+	5:	power
+	0:	ground
+	b:	bridge--this is just a path across the cell
+	+:	origen of the coordinate system used to describe cell
+	p:	pattern
+	s:	string
+	d:	downward result.
+
+In this description, lambda is 3 microns.  The cell is 88 lambda wide,
+and 49 lambda high.  The origen is the center of the ground contact for
+the p inverter.  With respect to this origen, the left edge is at -16,
+the right edge is at 72, the center of the lower power wire is -26,
+the center of the upper power wire is 23, and the clock extends above
+the upper power wire to 28.
+
+Now we describe the connections.
+Clock:	connected on left edge in poly from <-16,26> to <-16,28>
+	connected on right edge in poly from <72,-23> to <72,-21>
+
+Power1:	connected on left in metal from <-16,21> to <-16,25>
+	on right in metal from <72,21> to <72,25>
+
+p:	left in diffusion from <-16,15> to <-16,17>
+	right in diffusion from <72,15> to <72,17>
+
+s:	left in metal from <-16,5> to <-16,9>
+	right in metal,diffusion, and contact from <72,5> to <72,9>
+
+Ground:	left in metal from <-16,-2> to <-16,2>
+	right in metal from <72,-2> to <72, 2>
+
+Bridge:	left in metal from <-16,-16> to <-16,-12>
+	right in metal from <72,-16> to <72,-12>
+
+Power2:	left in metal from <-16,-24> to <-16,-28>
+	right in metal from <72,-24> to <72,-28>
+
+d:	above in diffusion from <9,25> to <11,25>
+	below in diffusion from <9,-28> to <11,-28>
+
+
+A pad may be placed connecting the bridge to the clock at <69,-14>);
+
+(Symbol 160:  Negative cell.  This is the complicated one.
+Origin is at the center of the ground pad of the p, or leftmost
+inverter.);
+(This is the negative pattern matcher cell.  It may be combined
+with positive pattern matcher cells, and
+with others like itself to form a complete pattern matcher.  Data
+paths for p, s, and d are contained in the cell.  One phase of the 
+clock comes through each cell.  Phase 2 comes through this
+cell.  When that phase is high, the cell inputs pbar from the
+left, sbar from the right, and dbar from above.  It then does three
+computations in parallel:
+
+	p out := NOT pbar in
+	s out := NOT sbar in
+	d out := NOT  [dbar in  OR NOT  p=s]
+Because alternate cells have inverted signals, the bottom
+half has two versions.  The top half, however, which just
+computes equality and passes signal, is the same in all cells.);
+
+
+DS 160 300 1;		(units of lambda);
+C 151 T 0,23;		(the top half);
+
+(** NOR gate **);
+LND;  B 2,4 7,-4;	(dbar enters from the top);
+      B 6,2 5,-6;	(connection to contact);
+C 1 M X T 0,-7;		(contact diffusion to poly);
+LND;  B 2,2 -8,-3;	(connection to pulldown);
+
+C 2 T -8,0;		(ground contact for d half of nor);
+C 3 T -8,-6;		(2/6 pulldown for d half);
+LND;  B 2,6 -8,-11;	(connect to pullup);
+      B 20,2 2,-13;
+
+C 2 T 14,0;		(ground contact for not= half of nor);
+LND;  B 4,4 14,-4;	(connect ground contact to pulldown);
+C 14 T 14,-9;		(2/3 pulldown on not= half);
+LND;  B 4,4 14,-14;	(connect pulldown to pullup);
+C 13 M Y T 15,-20;	(6/2 pullup with side contact);
+LND;  B 2,2 15,-25;	(connect pullup to contact);
+C 2 T 18,-26;		(power contact for nor gate);
+
+LND;  B 4,2 11,-15;	(connect d out to inverter);
+LND;  B 2,8 10,-20;	(d goes out the bottom);
+
+(** = inverter **);
+C 2 T 21,0;		(ground contact for = inverter);
+LND;  B 2,2 22,-3;	(connect contact to pulldown);
+      B 10,2 26,-5;
+      B 2,2 30,-12;
+C 5 T 30,-8;			(2/2 pulldown);
+C 16 M Y T 30,-19;	(8/2 pullup for = inverter);
+C 2 T 30,-26;		(power contact for inverter);
+
+LNP;  B 2,8 26,-16;	(inverter output);
+      B 4,2 25,-12;	(connect to nor gate input);
+      B 2,4 23,-11;
+      B 6,2 21,-9;
+
+(** The rest of the = gate **);
+LND;  B 4,4 38,-3;	(connect top part to pullup);
+      B 12,4 42,-4;
+C 16 M Y T 46,-12;	(8/2 pullup on = gate);
+LND;  B 18,2 54,-18;	(connect pullup to power);
+      B 2,6 62,-21;
+C 2 T 62,-26;		(power contact);
+
+LNP;  B 4,2 35,-8;	(= gate output to inverter input);
+      B 8,2 39,-9;
+
+(** clock **);
+LNP;  B 2,20 69,-12;	(clock goes straight down);
+      B 8,2 72,-22;	(and over to connect to next cell);
+
+(** Metal Bridge **);
+LNM;  B 24,4 -4,-14;	(Bridge enters from the left);
+      B 4,8 10,-12;	(up to miss NOR gate contact);
+      B 36,4 26,-7;	(over NOR gate and inverter);
+LNM;  B 4,12 42,-14;	(down to miss =gate);
+      B 20,4 50,-18;	(over to the right);
+	B 20,4 66,-14;	(and out);
+DF;
+
+(Symbol 161:  Negative cell, with extended = gate pullup.
+Origin is at the center of the ground pad of the p, or leftmost
+inverter.);
+(This is the negative pattern matcher cell.  It may be combined
+with positive pattern matcher cells, and
+with others like itself to form a complete pattern matcher.  Data
+paths for p, s, and d are contained in the cell.  One phase of the 
+clock comes through each cell.  Phase 2 comes through this
+cell.  When that phase is high, the cell inputs pbar from the
+left, sbar from the right, and dbar from above.  It then does three
+computations in parallel:
+
+	p out := NOT pbar in
+	s out := NOT sbar in
+	d out := NOT  [dbar in  OR NOT  p=s]
+Because alternate cells have inverted signals, the bottom
+half has two versions.  The top half, however, which just
+computes equality and passes signal, is the same in all cells.);
+
+
+DS 161 300 1;		(units of lambda);
+C 151 T 0,23;		(the top half);
+
+(** NOR gate **);
+LND;  B 2,4 7,-4;	(dbar enters from the top);
+      B 6,2 5,-6;	(connection to contact);
+C 1 M X T 0,-7;		(contact diffusion to poly);
+LND;  B 2,2 -8,-3;	(connection to pulldown);
+
+C 2 T -8,0;		(ground contact for d half of nor);
+C 3 T -8,-6;		(2/6 pulldown for d half);
+LND;  B 2,6 -8,-11;	(connect to pullup);
+      B 20,2 2,-13;
+
+C 2 T 14,0;		(ground contact for not= half of nor);
+LND;  B 4,4 14,-4;	(connect ground contact to pulldown);
+C 14 T 14,-9;		(2/3 pulldown on not= half);
+LND;  B 4,4 14,-14;	(connect pulldown to pullup);
+C 13 M Y T 15,-20;	(6/2 pullup with side contact);
+LND;  B 2,2 15,-25;	(connect pullup to contact);
+C 2 T 18,-26;		(power contact for nor gate);
+
+LND;  B 4,2 11,-15;	(connect d out to inverter);
+LND;  B 2,8 10,-20;	(d goes out the bottom);
+
+(** = inverter **);
+C 2 T 21,0;		(ground contact for = inverter);
+LND;  B 2,2 22,-3;	(connect contact to pulldown);
+      B 10,2 26,-5;
+      B 2,2 30,-12;
+C 5 T 30,-8;			(2/2 pulldown);
+C 16 M Y T 30,-19;	(8/2 pullup for = inverter);
+C 2 T 30,-26;		(power contact for inverter);
+
+LNP;  B 2,8 26,-16;	(inverter output);
+      B 4,2 25,-12;	(connect to nor gate input);
+      B 2,4 23,-11;
+      B 6,2 21,-9;
+
+(** The rest of the = gate **);
+LND;  B 4,4 38,-3;	(connect top part to pullup);
+      B 12,4 42,-4;
+C 13 M Y T 46,-11;	(6/2 pullup on = gate);
+LND;  B 18,2 54,-16;	(connect pullup to power);
+      B 2,8 62,-20;
+LNI;	B 14,6 53,-16;	(implant for extended pullup);
+LNP;	B 10,6 53,-16;	(gate for extended pullup);
+LNI;	B 6,6 46,-16;	(clean up corner);
+LNP;	B 6,6 46,-16;
+
+C 2 T 62,-26;		(power contact);
+
+LNP;  B 4,2 35,-8;	(= gate output to inverter input);
+      B 8,2 39,-9;
+
+(** clock **);
+LNP;  B 2,20 69,-12;	(clock goes straight down);
+      B 8,2 72,-22;	(and over to connect to next cell);
+
+(** Metal Bridge **);
+LNM;  B 24,4 -4,-14;	(Bridge enters from the left);
+      B 4,8 10,-12;	(up to miss NOR gate contact);
+      B 36,4 26,-7;	(over NOR gate and inverter);
+LNM;  B 4,12 42,-14;	(down to miss =gate);
+      B 20,4 50,-18;	(over to the right);
+	B 20,4 66,-14;	(and out);
+DF;
+
+
+(------------------------------------------------------------);
+
+(Symbol 170:  positive comparitor cell.  Origin is center of ground
+pad of leftmost inverter.);
+(This is the positive pattern matcher cell.  It may be combined
+with negative pattern matcher cells, and
+with others like itself to form a complete pattern matcher.  Data
+paths for p, s, and d are contained in the cell.  One phase of the 
+clock comes through each cell.  Phase 1 comes through this
+cell.  When that phase is high, the cell inputs p from the
+left, s from the right, and d from above.  It then does three
+computations in parallel:
+
+	pbar out := NOT p in
+	sbar out := NOT s in
+	dbar out := NOT  [d in  AND  p=s]
+Because alternate cells have inverted signals, the bottom
+half has two versions.  The top half, however, which just
+computes equality and passes signal, is the same in all cells.);
+
+DS 170 300 1;		(units of lambda);
+C 151 T 0,23;		(top half of cell);
+
+(** nand gate **);
+C 2 T 16,0;		(ground contact for nand gate);
+LND;  B 4,2 16,-3;	(connection from ground to pulldown);
+C 12 T 17,-6;		(first pulldown);
+C 12 T 17,-10;		(second pulldown);
+C 16 M Y T 18,-19;	(8/2 pullup);
+C 2 T 18,-26;		(power contact for nand gate);
+
+(** d from top half **);
+LND;  B 2,6 7,-4;	(connection from input to contact);
+C 1 R 0,-1 T 6,-8;	(butting contact to gate input);
+LNP;  B 4,2 10,-10;	(connection to gate input);
+
+LND;  B 8,2 13,-13;	(nand gate output);
+      B 2,10 10,-19;	(connect d to next cell down);
+
+(** continuation of = gate from top half **);
+LND;  B 6,4 34,-3;	(connection from top half);
+LNP;  B 6,2 25,-6;	(connection to input of nand gate);
+      B 2,6 29,-8;
+C 16 M Y T 32,-12;	(8/2 pullup);
+LND;  B 2,6 32,-21;	(connection to power contact);
+C 2 T 32,-26;		(power contact for = gate);
+
+(** clock **);
+LNP;   B 2,20 69,-12;	(drop straight down from the top half);
+	B 8,2 72,-22;	(connect to lower right);
+
+(** Metal Bridge **);
+LNM;  B 14,4 -8,-14;	(Bridge enters from the left);
+      B 20,4 2,-18;	(up to miss butting contact);
+LNM;  B 4,12 14,-14;	(up to cross over nand gate);
+      B 16,4 20,-7;	(cross over);
+      B 4,12 29,-11;	(down to cross = gate);
+      B 24,4 39,-16;	(across = gate);
+      B 32,4 60,-14;	(out to the right);
+DF;
+
+
+(Symbol 171:  positive comparitor cell.  Origin is center of ground
+pad of leftmost inverter.  This has the extended = pullup.);
+(This is the positive pattern matcher cell.  It may be combined
+with negative pattern matcher cells, and
+with others like itself to form a complete pattern matcher.  Data
+paths for p, s, and d are contained in the cell.  One phase of the 
+clock comes through each cell.  Phase 1 comes through this
+cell.  When that phase is high, the cell inputs p from the
+left, s from the right, and d from above.  It then does three
+computations in parallel:
+
+	pbar out := NOT p in
+	sbar out := NOT s in
+	dbar out := NOT  [d in  AND  p=s]
+Because alternate cells have inverted signals, the bottom
+half has two versions.  The top half, however, which just
+computes equality and passes signal, is the same in all cells.);
+
+DS 171 300 1;		(units of lambda);
+C 151 T 0,23;		(top half of cell);
+
+(** nand gate **);
+C 2 T 16,0;		(ground contact for nand gate);
+LND;  B 4,2 16,-3;	(connection from ground to pulldown);
+C 12 T 17,-6;		(first pulldown);
+C 12 T 17,-10;		(second pulldown);
+C 16 M Y T 18,-19;	(8/2 pullup);
+C 2 T 18,-26;		(power contact for nand gate);
+
+(** d from top half **);
+LND;  B 2,6 7,-4;	(connection from input to contact);
+C 1 R 0,-1 T 6,-8;	(butting contact to gate input);
+LNP;  B 4,2 10,-10;	(connection to gate input);
+
+LND;  B 8,2 13,-13;	(nand gate output);
+      B 2,10 10,-19;	(connect d to next cell down);
+
+(** continuation of = gate from top half **);
+LND;  B 6,4 34,-3;	(connection from top half);
+LNP;  B 6,2 25,-6;	(connection to input of nand gate);
+      B 2,6 29,-8;
+C 13 M Y T 32,-11;	(6/2 pullup);
+LND;	B 28,2 47,-16;	(connection to power contact);
+	B 2,10 62,-20;
+LNI;	B 14,6 40,-16;	(Implant for extended = gate);
+LNP;	B 10,6 40,-16;	(Gate for pullup);
+LNI;	B 6,6 32,-16;	(clean up corner);
+LNP;	B 6,6 32,-16;
+LND;	B 2,2 32,-16;
+C 2 T 62,-26;		(power contact for = gate);
+
+(** clock **);
+LNP;   B 2,20 69,-12;	(drop straight down from the top half);
+	B 8,2 72,-22;	(connect to lower right);
+
+(** Metal Bridge **);
+LNM;  B 14,4 -8,-14;	(Bridge enters from the left);
+      B 20,4 2,-18;	(up to miss butting contact);
+LNM;  B 4,12 14,-14;	(up to cross over nand gate);
+      B 16,4 20,-7;	(cross over);
+      B 4,12 29,-11;	(down to cross = gate);
+      B 24,4 39,-16;	(across = gate);
+      B 32,4 60,-14;	(out to the right);
+DF;
+
+(-----------------------------------------------------------);
+
+(Pad hookup for one cell.  There are 9 pads for a
+cell.  Starting at the upper left, and going clockwise, they are:
+	ground input:
+	P input
+	D input
+	S input
+	<Symbol goes here>
+	p output	<at the side>
+	power input
+	D output
+	clock input
+	S output
+
+);
+DS 210 300 1;	(units of lambda);
+
+(** Power hookup **);
+(power pad to P out pad);
+LNM;	B 92,8 378,-104;	(right from power pad);
+	B 8,12 420,-94;		(up to output pad);
+
+(cell hookup);
+LNM;	B 36,8 242,-104;	(horizontal out of power pad);
+	B 8,88 228,-56;		(up to go around D out pad);
+	B 144,8 160,-8;		(over to bus bar);
+LNM;	B 88,4 28,-26;		(lowest power wire);
+	B 16,4 80,23;		(hook top to bus bar);
+	B 16,4 80,-26;		(hook bottom to busbar);
+	B 8,50 84,-2;		(vertical bus bar);
+
+(** Ground hookup **);
+LNM;	B 24,8 -24,44;	(Ground pad to P in pad);
+LNM;	B 24,8 104,44;	(P in pad to Din pad);
+LNM;	B 24,8 232,44;	(D in pad to S in pad);
+LNM;	B 8,12 252,34;	(S in pad to P out pad);
+LNM;	B 8,64 -100,8;	(Ground pad to S out pad);
+LNM;	B 4,26 -30,-11;	(S out pad to cell ground);
+	B 16,4 -20,0;
+LNM;	B 8,56 -32,-52;	(S out pad to clock in pad);
+	B 20,8 -20,-76;
+LNM;	B 16,8 100,-76;		(Clock in pad to D out pad);
+	B 8,56 112,-52;
+
+(** P input hookup **);
+LND;	B 2,4 -14,38;	(out of pad to contact);
+C 2 T -14,34;		(contact to metal);
+LNM;	B 4,4 -18,34;	(to the left);
+	B 4,20 -22,26;	(down to input);
+C 2 T -22,16;		(contact to diffusion);
+LND;	B 4,2 -18,16;	(into cell);
+(** P output hookup **);
+LND;	B 28,4 86,16;	(diffusion out of cell);
+C 2 T 102,16;		(contact to metal);
+LNM;	B 142,4 173,16;	(metal over to the right);
+LNM;	B 4,40 242,-4;	(down to pad);
+C 11 T 242,-24;		(contact from metal to poly);
+LNP;	B 4,2 246,-24;	(to output pad);
+
+(**S input hookup **);
+LND;	B 2,4 242,38;	(diffusion path to contact);
+C 2 T 242,34;		(contact to metal);
+LNM;	B 100,4 190,34;	(metal run to the left);
+	B 20,4 130,34;
+	B 4,4 122,30;	(down);
+	B 32,4 108,26;	(to the left again);
+	B 4,16 94,18;	(down to contact);
+C 2 T 94,8;		(contact from metal to gate input);
+LND;	B 20,2 82,8;	(gate input in diffusion);
+(** S output hookup **);
+LNM;	B 74,4 -53,7;	(From cell leftward to pad);
+	B 4,22 -88,-6;	(Down to contact);
+C 11 T -88,-18;		(contact from metal to poly);
+LNP;	B 2,4 -88,-22;	(poly into pad);
+
+(** D input hookup **);
+LND;	B 2,4 114,38;	(diffusion path to contact);
+C 2 T 114,34;		(contact to metal);
+LNM;	B 102,4 61,34;	(metal run to input);
+C 2 T 10,34;		(contact back to diffusion);
+LND;	B 2,12 10,28;	(into cell);
+(** D output hookup **);
+LND;	B 2,8 10,-28;	(Leave cell in diffusion);
+C 2 T 10,-34;		(contact to metal);
+LNM;	B 84,4 54,-34;	(metal run to end of cell);
+	B 4,12 94 -26;	(up to go around output pad);
+	B 76,4 130,-18;	(over to pad);
+C 11 T 168,-18;		(contact from metal to poly);
+LNP;	B 2,4 168,-22;	(down to gate);
+
+(** clock hookup **);
+LND;	B 2,4 -14,-70;	(diffusion path from pad to contact);
+C 2 T -14,-66;		(contact to metal);
+LNM;	B 8,4 -20,-66;	(path up to metal bridge);
+	B 4,52 -22,-38;
+	B 8,4 -16,-14;
+C 11 T 69 -14;		(contact from metal to poly);
+
+(*Upper row of 

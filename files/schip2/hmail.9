@@ -1,0 +1,27 @@
+HIC@MIT-AI 07/08/79 20:52:37 Re:  BADREQ found...
+To: H at MIT-AI, GJS at MIT-AI, (FILE [SCHIP2;HMAIL >]) at MIT-AI
+FROM-JOB:LEDIT
+SENT-BY:H
+CLAIMED-FROM:H
+
+TO:(h)
+TO:(gjs)
+TO:(schip2;hmail >)
+TEXT;-1
+The way freeze should be used for debugging:
+
+Freeze hangs machine, with current micro state
+repeatedly executed.  While freezing, external LD STATE causes the
+pads to turn around, reading external state number
+onto bus, and "dispatching" to that location.  There
+should be some dedicated defpc's that allow
+the external kludge to look at all of the registers
+(this may often be existing defpc's).
+An external RD STATE gets the current state onto
+the bus and out on the pads.
+Both RD STATE and LD STATE will have to disable
+the PH1*FROM-xx and probably PH1*TO-xx.
+It may also be a good idea to allow
+RD STATE to get at the GC-NEEDED bit, NANO-RUN,
+NANO-STATE, etc.
+

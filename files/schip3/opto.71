@@ -1,0 +1,291 @@
+;;; -*-LISP-*-
+
+;;; Runs on result of running PASS3, then OPTO (requires OPREC and HDWRE to be loaded).
+
+;;; Requires (OVERLAP? <statement> <right-neighbor> <overlap-flag>) to be defined
+;;; in terms of hardware model.  OVERLAP? returns a statement which IS the overlap
+;;; if possible, and NIL if not possible.
+
+;;; Should be called on things like (COLD-BOOT BOOT-LOAD) which have no predecessors
+;;; but which we would be unhappy about going away.
+
+(defun optimize (absolute-entries)
+  (mapc #'protect-entry absolute-entries)
+  (mapc #'(lambda (pc)
+	    (if (equal (get pc 'pc-kind) 'dispatch)
+		(protect-entry pc)))
+	*pc-list*)
+  (mapc #'optimize-pc *pc-list*)
+  (mapc #'(lambda (pc)
+	    (mapc #'clean-up (get pc 'primitive-operations)))
+	*pc-list*)
+  'done)
+
+(defprop *start-statement* statement ctype)
+(defprop *start-statement* (*start-statement*) special-fan-out)
+
+(defun protect-entry (entry)
+  (introduce-statement '*start-statement* (get entry 'entry-hook) 'nil))
+
+(defun optimize-pc (pc)
+  (mapc #'optimize-operation (get pc 'primitive-operations)))
+
+(defun optimize-operation (stmt)
+  (cond ((predicate? stmt)
+	 (optimize-predicate stmt))
+	((call-statement? stmt)
+	 (optimize-call stmt))
+	(t (optimize-statement stmt))))
+
+(defun optimize-statement (stmt)
+  (let (((rn of) (right-neighbor stmt)))
+    (if (eq of 't)
+	(let ((ans (overlap? stmt rn)))
+	  (if (not (null ans))
+	      (progn (splice-stmt-out stmt ans)
+		     (optimize-operation ans)))))))
+
+(defun optimize-call (stmt)
+  (let (((rn of) (continuation stmt)))
+    (if (and (eq of 't)
+	     (equal (statement-type rn) '(goto)))
+	(splice-continuation-out stmt))))
+
+(defun optimize-predicate (stmt)
+  (let (((cn cof) (consequent-neighbor stmt))
+	((an aof) (alternative-neighbor stmt)))
+    (cond ((eq cof 't) (optimize-operation cn))
+	  ((eq aof 't) (optimize-operation an))))
+  (let (((cn cof) (consequent-neighbor stmt))
+	((an aof) (alternative-neighbor stmt)))
+    (if (or (eq cof 't) (eq aof 't))
+	(let ((ans (overlap-predicate? stmt cn an cof aof)))
+	  (if (not (null ans))
+	      (splice-predicate-out stmt ans))))))
+
+(defun splice-stmt-out (old-me new-me)
+  (if (or (predicate? old-me)
+	  (call-statement? old-me))
+      (break "Replacing predicate or call -- SPLICE-STMT-OUT"))
+  (replace-me-on-left old-me new-me)
+  (replace-me-on-right old-me new-me))
+
+(defun replace-me-on-left (old-me new-me)
+  (transplant-entry-hook old-me new-me)
+  (mapc #'(lambda (ln-spc)
+	    (let (((ln of) ln-spc))
+	      (if (predicate? ln)
+		  (progn (if (eq (car (consequent-neighbor ln)) old-me)
+			     (progn (divorce-choice 'consequent-neighbor ln old-me)
+				    (introduce-choice 'consequent-neighbor ln new-me of)))
+			 (if (eq (car (alternative-neighbor ln)) old-me)
+			     (progn (divorce-choice 'alternative-neighbor ln old-me)
+				    (introduce-choice 'alternative-neighbor ln new-me of)))))
+	      (if (and (call-statement? ln)
+		       (eq (car (continuation ln)) old-me))
+		  (progn (divorce-continuation ln old-me)
+			 (introduce-continuation ln new-me of)))
+	      (if (eq (car (right-neighbor ln)) old-me)
+		  (progn (divorce-statement ln old-me)
+			 (introduce-statement ln new-me of)))
+	      (update-control ln old-me new-me)))
+	(left-neighbors old-me)))
+
+(defun replace-me-on-right (old-me new-me)
+  (transplant-return-hooks old-me new-me)
+  (let (((my-rn of) (right-neighbor old-me)))
+    (transplant-return-hooks my-rn new-me)
+    (divorce-statement old-me my-rn)
+    (if (predicate? my-rn)
+	(progn (if (not (predicate? new-me))
+		   (break "Overlap predicate? -- REPLACE-ME-ON-RIGHT"))
+	       (suck-choice 'consequent-neighbor my-rn new-me)
+	       (suck-choice 'alternative-neighbor my-rn new-me)))
+    (if (call-statement? my-rn)
+	(progn (if (not (call-statement? new-me))
+		   (break "Overlap call? -- REPLACE-ME-ON-RIGHT"))
+	       (suck-continuation my-rn new-me)))
+    (if (not (predicate? my-rn))
+	(suck-normal-right-neighbor my-rn new-me))))
+
+(defun splice-predicate-out (old-me ans)
+  (if (or (not (predicate? old-me)) (call-statement? old-me))
+      (break "Wrong type pred -- SPLICE-PREDICATE-OUT"))
+  (let (((new-me conseq? altern?) ans))
+    (replace-me-on-left old-me new-me)
+    (if (not (null conseq?))
+	(replace-my-choice 'consequent-neighbor old-me new-me)
+	(import-my-choice 'consequent-neighbor old-me new-me))
+    (if (not (null altern?))
+	(replace-my-choice 'alternative-neighbor old-me new-me)
+	(import-my-choice 'alternative-neighbor old-me new-me))))
+
+(defun import-my-choice (name old-me new-me)
+  (let (((rn of) (get old-me name)))
+    (if (not (null rn))
+	(progn (divorce-choice name old-me rn)
+	       (introduce-choice name new-me rn of)))))
+
+(defun replace-my-choice (name old-me new-me)
+  (let (((rn of) (get old-me name)))
+    (if (predicate? rn) (break "Merge predicates? -- REPLACE-MY-CHOICE"))
+    (divorce-choice name old-me rn)
+    (if (call-statement? rn)
+	(suck-continuation rn new-me))
+    (let (((rn-rn rof) (right-neighbor rn)))
+      (if (not (null rn-rn))
+	  (introduce-choice name new-me rn-rn rof)))))
+
+
+
+(defun splice-continuation-out (old-me)
+  (let* (((cn cof) (continuation old-me))
+	 ((rn-rn rof) (right-neighbor cn)))
+    (if (null rn-rn)
+	(break "Goto without right-neighbor -- SPLICE-CONTINUATION-OUT"))
+    (compress-control-acts cn old-me)
+    (divorce-continuation old-me cn)
+    (introduce-continuation old-me rn-rn rof)))
+
+(defun suck-choice (name my-rn new-me)
+  (let (((rn-rn rof) (get my-rn name)))
+    (if (not (null rn-rn))
+	(introduce-choice name new-me rn-rn rof))))
+
+(defun suck-continuation (my-rn new-me)
+  (let (((rn-rn rof) (continuation my-rn)))
+    (if (null rn-rn)
+	(break "call without continuation -- SUCK-CONTINUATION"))
+    (introduce-continuation new-me rn-rn rof)))
+
+(defun suck-normal-right-neighbor (my-rn new-me)
+  (let (((rn-rn rof) (right-neighbor my-rn)))
+    (if (not (null rn-rn))
+	(introduce-statement new-me rn-rn rof)
+	(if (not (or (dispatch-statement? my-rn) (return-statement? my-rn)))
+	    (break "Statement without right-neighbor -- SUCK-NORMAL")))))
+
+(defun clean-up (s)
+     (if (and (null (left-neighbors s))
+	      (null (predecessors s)))
+	 (progn (flush-me s)
+		(if (predicate? s)
+		    (let (((cn co) (consequent-neighbor s))
+			  ((an ao) (alternative-neighbor s)))
+		      (if cn (divorce-choice 'consequent-neighbor s cn))
+		      (if an (divorce-choice 'alternative-neighbor s an))
+		      (if cn (clean-up cn))
+		      (if an (clean-up an))))
+		(if (call-statement? s)
+		    (let (((cn co) (continuation s)))
+		      (if cn (progn (divorce-continuation s cn)
+				    (clean-up cn)))))
+		(let (((cn co) (right-neighbor s)))
+		  (if cn (progn (divorce-statement s cn)
+				(clean-up cn)))))))
+
+
+
+(defun introduce-continuation (call cont of)
+  (if (not (and (call-statement? call) (statement? cont)))
+      (break "Illegal marriage -- INTRODUCE-CONTINUATION"))
+  (addprop cont (list call of) 'predecessors)
+  (let ((c (get call 'continuation)) (nc (list cont of)))
+    (if (and (not (null c)) (not (equal c nc)))
+	(error "Two distinct continuations? -- INTRODUCE-CONTINUATION"))
+    (putprop call nc 'continuation)))
+
+(defun introduce-statement (ln rn of)
+  (if (not (and (statement? ln) (statement? rn)))
+      (break "Illegal marriage -- INTRODUCE-STATEMENT"))
+  (addprop rn (list ln of) 'left-neighbors)
+  (let ((c (get ln 'right-neighbor)) (nc (list rn of)))
+    (if (null c)
+	(putprop ln nc 'right-neighbor)
+	(if (null (get ln 'special-fan-out))
+	    (error "Two right-neighbors? -- INTRODUCE-STATEMENT")
+	    (addprop ln rn 'special-fan-out)))))
+
+(defun introduce-choice (name pred rn of)
+  (if (not (and (predicate? pred) (statement? rn)))
+      (break "Illegal marriage -- INTRODUCE-CHOICE"))
+  (addprop rn (list pred of) 'left-neighbors)
+  (let ((c (get pred name)) (nc (list rn of)))
+    (if (not (null c))
+	(error "Two distinct choices? -- INTRODUCE-CHOICE"))
+    (putprop pred nc name)))
+
+
+(defun divorce-continuation (call cont)
+  (let ((b (assq call (get cont 'predecessors))))
+    (if (not (and (call-statement? call) (statement? cont) (not (null b))))
+	(break "Illegal divorce -- DIVORCE-CONTINUATION"))
+    (remprop call 'continuation)
+    (delprop cont b 'predecessors)))
+
+(defun divorce-statement (ln rn)
+  (let ((b (assq ln (get rn 'left-neighbors))))
+    (if (not (and (statement? ln) (statement? rn) (not (null b))))
+	(break "Illegal divorce -- DIVORCE-STATEMENT"))
+    (remprop ln 'right-neighbor)
+    (delprop rn b 'left-neighbors)))
+
+(defun divorce-choice (name pred rn)
+  (let ((b (assq pred (get rn 'left-neighbors))))
+    (if (not (and (predicate? pred) (statement? rn) (not (null b))))
+	(break "Illegal divorce -- DIVORCE-CHOICE"))
+    (remprop pred name)
+    (delprop rn b 'left-neighbors)))
+
+(defun transplant-entry-hook (old-me new-me)
+  (let* ((pc (get old-me 'pc-name))
+	 (hook (get pc 'entry-hook)))
+    (if (eq old-me hook)
+	(putprop pc new-me 'entry-hook))))
+
+(defun transplant-return-hooks (old-me new-me)
+  (let* ((pc (get old-me 'pc-name))
+	 (hooks (get pc 'exit-hooks)))
+    (if (memq old-me hooks)
+	(progn (delprop pc old-me 'exit-hooks)
+	       (addprop pc new-me 'exit-hooks)))))
+
+(defun flush-me (st)
+  (delprop (get st 'pc-name) st 'primitive-operations))
+
+
+(defun right-neighbor (s)
+  (get s 'right-neighbor))
+
+(defun left-neighbors (s)
+  (get s 'left-neighbors))
+
+(defun continuation (s)
+  (get s 'continuation))
+
+(defun predecessors (s)
+  (get s 'predecessors))
+
+(defun consequent-neighbor (s)
+  (get s 'consequent-neighbor))
+
+(defun alternative-neighbor (s)
+  (get s 'alternative-neighbor))
+
+
+(defun update-control (ln old-me new-me)
+  (putprop ln
+	   (subst new-me old-me (get ln 'primitive-control-actions))
+	   'primitive-control-actions))
+
+(defun dump-code ()
+  (mapcan #'(lambda (pc)
+	      (mapcan #'(lambda (s)
+			  (if (or (not (null (left-neighbors s)))
+				  (not (null (predecessors s))))
+			      (list `(,s 
+				      ,@(if (eq (get pc 'entry-hook) s) `((entry: ,pc)))
+				      ,@(get s 'primitive-data-actions)
+				      ,@(get s 'primitive-control-actions)))))
+		      (get pc 'primitive-operations)))
+	  *pc-list*))

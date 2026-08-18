@@ -1,0 +1,1012 @@
+;;; -*- mode: LISP; package:SCHIP -*-
+;;; SCHEME chip simulator -- RMS, GJS, HANSON
+
+(eval-when (compile) (load "xlang") (load "cwalk") (load "fields"))
+
+(declare (*lexpr cons-name))
+#M(declare (*expr butlast))
+(declare (*expr codewalk codewalk-1))
+(declare (*expr simplify-progn enlist))
+(declare (*expr reset-dispatch-tables width-of-field modify-variable-field))
+
+(defvar ignore)						;dummies.
+(defvar ignore1)
+
+#Q(defun schip:getargdesc (x) (compiler:getargdesc x))
+
+(defun copytop (exp)
+  (cond ((atom exp) exp)
+	(t (copylist exp))))
+
+;;; object definitions.
+
+;;; the SCHEME virtual machine is composed of a set of objects and a controller.
+;;; currently the available objects include registers, registers with associated
+;;; stacks (racks), and a very special-purpose adder.  any of these objects can
+;;; have simple hardware associated with them, e.g. incrementers, shifters, and
+;;; inverters.  also, a facility for generating random logic gates exists, but
+;;; has yet to be correctly implemented.  it is currently used only in defining
+;;; predicate wires, and is about to be flushed by a more sophisticated method.
+
+;;; here is the definition machinery for all kinds of registers.
+
+(defvar reg-number)
+(defvar *reg-stats? nil)
+(defvar *reg-list*)
+(defvar temp-regs)
+
+(eval-when (eval load)
+  (defmacro defreg (name type field-type &rest register-attributes)
+    `(eval-when (compile eval load)
+       (defreg-builder ',name ',type ',field-type ',register-attributes))))
+
+(defun defreg-builder (name type field-type register-attributes)
+  (or (memq name *reg-list*)
+      (push name *reg-list*))
+  (putprop name 'register 'ctype)
+  (putprop name reg-number 'reg-number)
+  (setq reg-number (1+ reg-number))
+  (putprop name type 'reg-type)
+  (putprop name field-type 'field-type)
+  (and (memq 'compiler-temporary register-attributes)
+       (push name temp-regs))
+  (putprop name register-attributes 'register-attributes)
+  (and (get type 'define)
+       (funcall (get type 'define) name field-type)))
+
+
+;;; Argument registers.
+;;; An arg register is a phony register.
+;;; The microcode can fetch or assign the arg register as if it were a
+;;; real register but the arg register remembers the name of some other
+;;; real register and fetches or assigns that register.
+
+;;; In fact, the arg register has a stack of rememebered registers
+;;; and it uses the last one pushed.
+
+;;; DEFMICROFUN and UCALL both refer to this information.
+
+(defvar *the-stacks*)
+
+(eval-when (eval load)
+  (defmacro defargreg (name field-type &optional stack-type)
+    `(eval-when (compile eval load)
+       (or (memq ',name *the-stacks*)
+	   (push ',name *the-stacks*))
+       (putprop ',name 'register 'ctype)
+       (putprop ',name 'arg-register 'reg-type)
+       (putprop ',name ',field-type 'field-type)
+       ,(if (eq stack-type 'target)
+	    `(setq target-stack-name ',name)
+	    `(or (memq ',name arg-stack-names)
+		 (push ',name arg-stack-names))))))
+
+;;; other kinds of things.
+
+(defvar *pads*)
+(eval-when (eval load)
+  (defmacro defpad (name field-type dirs &rest other-properties)
+    `(eval-when (eval load compile)
+       (defprop ,name pad ctype)
+       (defprop ,name ,field-type field-type)
+       (defprop ,name ,dirs pad-directions)
+       ,@(mapcar #'(lambda (x)
+		     `(defun (,name ,(car x)) () ,(cadr x)))
+		 other-properties)
+       (defprop ,name ,other-properties other-properties)
+       (or (memq ',name *pads*)
+	   (push ',name *pads*)))))
+
+
+(defvar *black-boxes*)
+(eval-when (eval load)
+  (defmacro defblackbox (name field-type box-type)
+    `(eval-when (eval load compile)
+       (defprop ,name black-box ctype)
+       (defprop ,name ,field-type field-type)
+       (defprop ,name ,box-type box-type)
+       (or (memq ',name *black-boxes*)
+	   (push ',name *black-boxes*)))))
+
+
+(eval-when (eval load)
+  (defmacro defconstant (name fieldspec value)
+    `(eval-when (eval compile load)
+       (defvar ,name)
+       (setq ,name (cons ',fieldspec ,value))
+       (putprop ',name ,value 'constant-value))))
+
+(defvar *logic-flags* nil)
+(eval-when (eval load)
+  (defmacro deflogic (name args body)
+    `(progn 'compile
+	    (defprop ,name codewalk-args codewalk)
+	    (defprop ,name logic-flag ctype)
+	    (set-addq ',name *logic-flags*)
+	    (defmacro ,name ,args ,body))))
+
+;;; object operations.
+
+(defvar *directions* '((register . reg-type) (black-box . box-type)))
+
+(defun direct (direction object &rest extra)
+  #Q(setq extra (copylist extra))
+  (let ((temp)
+	(prop (assq (get object 'ctype) *directions*)))
+    (or (and (symbolp object)
+	     prop
+	     (setq temp
+		   (or (get (get object (cdr prop)) direction)
+		       (get '*the-default* direction))))
+	(error (format nil "unknown ~A -- ~A" prop direction) object))
+    (apply temp (cons object extra))))
+
+;;; registers, of course, use this heavily:
+
+(eval-when (eval compile load)
+
+(defmacro redirect-register-properties (&rest props)
+  `(eval-when (eval load)
+	      ,@(mapcar #'(lambda (direction)
+			    `(defmacro ,direction (regname)
+			       (direct ',direction regname)))
+			props)))
+)
+
+(redirect-register-properties fetch-preparation assign-preparation
+			      assign-value-preparation
+			      save force-save bummed-save
+			      restore assign-preparation-after-restore
+			      get-state reset-rack)
+
+;;; this function analyzes the arguments to fetch and assign expressions.
+;;; it returns three values.  the first is a flag which is true iff the
+;;; expression refers to an internal subpart of something.  the second
+;;; is the subpath (or nil), and the third is the object's field, which
+;;; is guaranteed to be a list.  the fourth is the object's name,
+;;; which has been error-checked.
+
+(defun split-path (px)
+  (multiple-value-bind (a b c d) (split-reg-expr px)
+    (values a b (enlist (get c 'field-type)) c d)))
+
+(defun split-reg-expr (rx)
+  (let (temp)
+    (cond ((symbolp rx) (values nil nil rx rx))
+	  ((setq temp (get (car rx) 'reg-splitter))
+	   (funcall temp rx))
+	  (t (error "illegal path expression" rx)))))
+
+(defun (bitvec reg-splitter) (rx)
+  (let ((bitvec (butlast (cdr rx)))
+	(subexp (car (last rx))))
+    (multiple-value-bind (a b c d) (split-reg-expr subexp)
+      (values a (nconc bitvec b) c d))))
+
+(defun (subpart reg-splitter) (rx)
+  (let ((reg (cdr (assq (cadr rx) (get (caddr rx) 'parts)))))
+    (or (atom reg) (error "illegal path expression" rx))
+    (values nil nil reg (caddr rx))))
+
+(defun (subpart-internal reg-splitter) (rx)
+  (let ((reg (cdr (assq (cadr rx) (get (caddr rx) 'parts)))))
+    (or (atom reg) (error "illegal path expression" rx))
+    (values t nil reg (caddr rx))))
+
+(defun (add reg-splitter) (rx)
+  (values rx nil 'adder 'adder))
+
+;;; Special Handling.
+
+(defmacro add (field x y) `(add-field ,(enlist field) ,x ,y))
+
+(defmacro sense-pad (name)
+  `(sense-pad-fun ,(enlist (get name 'field-type)) ,name))
+
+(defmacro drive-pad (name value)
+  `(drive-pad-fun ,(enlist (get name 'field-type)) ,name ,value))
+
+(defmacro set-flag (path value)
+  (or (member value '(0 1)) (error "illegal SET-FLAG value" value))
+  (multiple-value-bind (ignore subfield field dest ignore1) (split-path path)
+    (let (temp)
+      (or (= (setq temp (width-of-field (append subfield field))) 1)
+	  (error "field width error -- SET-FLAG" (list subfield field temp))))
+    `(set-flag-subfield ,subfield ,field ,dest ,value)))
+
+(defmacro set-flag-conditional (path value condition)
+  (or (member value '(0 1)) (error "illegal SET-FLAG value" value))
+  (multiple-value-bind (ignore subfield field dest ignore1) (split-path path)
+    (let (temp)
+      (or (= (setq temp (width-of-field (append subfield field))) 1)
+	  (error "field width error -- SET-FLAG-CONDITIONAL"
+		 (list subfield field temp))))
+    `(set-flag-conditional-subfield ,subfield ,field ,dest ,value ,condition)))
+
+;;; fetch.
+
+(eval-when (eval load)
+  (defmacro fetch (rx)
+    (multiple-value-bind (internal? subfield field source real) (split-path rx)
+      (direct 'fetch-subfield source subfield field internal? real))))
+
+(defun (*the-default* fetch-preparation) (ignore) nil)
+
+(defun (*the-default* fetch-subfield) (source subfield field internal? real)
+  (cond ((not internal?)
+	 `(progn-value (fetch-preparation ,real)
+		       ,(funcall (get '*the-default* 'fetch-subfield)
+				 source subfield field t real)))
+	(subfield `(extract ,subfield ,field
+			    ,(direct 'fetch source field internal?)))
+	(t (direct 'fetch source field internal?))))
+
+(defun (*the-default* fetch) (source field ignore)
+  `(read-reg ,field ,source))
+
+(defun (adder fetch) (ignore field x) `(add-field ,(enlist field) ,@(cddr x)))
+
+
+
+
+;;; assignments without values.
+
+(eval-when (eval load)
+  (defmacro assign (rx value)
+    (multiple-value-bind (internal? subfield field dest real) (split-path rx)
+      (direct 'assign-subfield dest subfield field internal? real value))))
+
+(defun (*the-default* assign-subfield) (dest subfield field internal? real value)
+  (cond ((not internal?)
+	 `(progn (assign-preparation ,real)
+		 ,(funcall (get '*the-default* 'assign-subfield)
+			   dest subfield field t real value)))
+	(subfield `(write-subfield ,subfield ,field ,dest ,value))
+	(t (direct 'assign dest field internal? value))))
+
+(defun (*the-default* assign) (dest field ignore value)
+  `(write-reg ,field ,dest ,value))
+
+(defun (*the-default* assign-preparation) (ignore) nil)
+
+
+;;; assignments with values.
+
+(eval-when (eval load)
+  (defmacro assign-value (rx value)
+    (multiple-value-bind (internal? subfield field dest real) (split-path rx)
+      (direct 'assign-subfield-value dest subfield field internal? real value))))
+
+(defun (*the-default* assign-subfield-value) (dest subfield field internal? real value)
+  (cond ((not internal?)
+	 `(progn-value (assign-value-preparation ,real)
+		       ,(funcall (get '*the-default* 'assign-subfield-value)
+				 dest subfield field t real value)))
+	(subfield `(write-subfield-value ,subfield ,field ,dest ,value))
+	(t (direct 'assign-value dest field internal? value))))
+
+(defun (*the-default* assign-value) (dest field ignore value)
+  `(write-reg-value ,field ,dest ,value))
+
+(defun (*the-default* assign-value-preparation) (ignore) nil)
+
+;;; local operations.
+
+(eval-when (eval load)
+  (defmacro right-shift-with-0 (target)
+    (multiple-value-bind (ignore subfield field dest ignore1) (split-path target)
+      `(right-shift-with-0-subfield ,subfield ,field ,dest))))
+
+(eval-when (eval load)
+  (defmacro left-shift-with-0 (target)
+    (multiple-value-bind (ignore subfield field dest ignore1) (split-path target)
+      `(left-shift-with-0-subfield ,subfield ,field ,dest))))
+
+(eval-when (eval load)
+  (defmacro left-shift-with-1 (target)
+    (multiple-value-bind (ignore subfield field dest ignore1) (split-path target)
+      `(left-shift-with-1-subfield ,subfield ,field ,dest))))
+
+(eval-when (eval load)
+  (defmacro add-to (target quantity)
+    (multiple-value-bind (ignore subfield field dest ignore1) (split-path target)
+      `(add-to-subfield ,subfield ,field ,dest ,quantity))))
+
+;;; Rack-only operations.
+
+(eval-when (eval load)
+
+(defmacro set-state (reg state) (direct 'set-state reg state))
+
+(defmacro save-after-assign (reg assignment)
+  `(same-state-prog ,assignment
+		    (bummed-save ,reg)))
+
+(defmacro assign-after-restore (reg assignment)
+  `(progn (restore ,reg)
+	  (assign-preparation-after-restore ,reg)
+	  (assign (subpart-internal buffer ,(cadr assignment))
+		  ,(caddr assignment))))
+
+(defmacro duplicate (reg) `(save ,reg))
+
+(defmacro push-rack (r)
+  (let* ((n (get r 'reg-number))
+	 (p `(assign (subpart-internal stack ,r)
+		     (pcons (fetch (subpart-internal buffer ,r))
+			    (fetch (subpart stack ,r))))))
+	(cond (*reg-stats?
+	       `(progn (rplacx ,n *reg-stats (1+ (cxr ,n *reg-stats)))
+		       ,p))
+	      (t p))))
+
+(defmacro pop-rack (r)
+  ;; don't change the write-reg into an assign!
+  ;; the assign-preparation does a save!
+  `(ucall ,(get r 'pop-routine)))
+
+(defmacro pclsr-save (regname)
+  `(pclsr-save-1 ,(real-regname regname)))
+
+(defmacro pclsr-restore (regname)
+  `(pclsr-restore-1 ,(real-regname regname)))
+
+(defun real-regname (rx)
+  (let (name)
+    (multiple-value (ignore ignore ignore name ignore) (split-path rx))
+    name))
+)
+
+;;; push optimizer primitives.
+
+(eval-when (eval load)
+
+(defmacro free-rack? (r)
+  `(not (test-bit (fetch (subpart flag ,r)))))
+
+(defmacro free-rack! (r)
+  `(set-flag (subpart-internal flag ,r) 0))
+
+(defmacro mark-saved! (r)
+  `(set-flag (subpart-internal flag ,r) 1))
+)
+
+(defun (push-optimizer define) (name field)
+  (let ((stack-name (cons-name name 'stack))
+	(flag-name (cons-name name 'flag)))
+    (defreg-builder stack-name 'simple-register field
+      (and (memq 'pclsr (get name 'register-attributes)) '(pclsr)))
+    (defreg-builder flag-name 'simple-register 'bit nil)
+    (putprop name `((stack . ,stack-name)
+		    (flag . ,flag-name)
+		    (buffer . ,name))
+	     'parts)
+    (putprop name (cons-name 'pop name) 'pop-routine)
+    (putprop flag-name name 'buffer)
+    (putprop stack-name name 'buffer)))
+
+(defun (push-optimizer assign-preparation) (r)
+  `(if (same-state-prog1 (not (free-rack? ,r)) (free-rack! ,r))
+       (push-rack ,r)))
+
+(defun (push-optimizer assign-preparation-after-restore) (ignore) nil)
+
+(defun (push-optimizer save) (r)
+  `(if (same-state-prog1 (not (free-rack? ,r)) (mark-saved! ,r))
+       (push-rack ,r)))
+
+;;Used right after an ASSIGN.  Equivalent to SAVE but better.
+
+(defun (push-optimizer bummed-save) (r) `(mark-saved! ,r))
+
+
+;; Equivalent to SAVE, then ASSIGN-PREPARATION, but bummed.
+
+(defun (push-optimizer force-save) (r)
+  `(progn (assign-preparation ,r)
+	  (push-rack ,r)))
+
+(defun (push-optimizer restore) (r)
+  `(if (same-state-prog1 (free-rack? ,r) (free-rack! ,r))
+       (pop-rack ,r)))
+
+(defun (push-optimizer set-state) (r s)
+  `(same-state (free-rack! ,r)
+	       (assign (subpart-internal stack ,r) ,s)))
+
+(defun (push-optimizer get-state) (r)
+  `(progn-value (assign-preparation ,r)
+		(fetch (subpart stack ,r))))
+
+(defun (push-optimizer reset-rack) (r)
+  `(same-state (assign (subpart-internal stack ,r)
+		       (make-pointer *nil 0))
+	       (assign (subpart-internal buffer ,r)
+		       (make-pointer *nil 0))
+	       (free-rack! ,r)))
+
+;;; Push counter primitives.
+
+(defun (push-counter define) (name field)
+  (let ((stack-name (cons-name name 'stack)))
+    (defreg-builder stack-name 'simple-register field
+      (and (memq 'pclsr (get name 'register-attributes)) '(pclsr)))
+    (putprop name `((stack . ,stack-name) (buffer . ,name)) 'parts)
+    (putprop name (cons-name 'pop name) 'pop-routine)
+    (putprop stack-name name 'buffer)))
+
+(defun (push-counter assign-preparation) (r)
+  `(if (not (zero-count? ,r))
+       (push-rack ,r)))
+
+(defun (push-counter assign-preparation-after-restore) (r)
+  `(if (not (zero-count? ,r))
+       (push-rack ,r)))
+
+(defun (push-counter save) (r)
+  `(if (same-state-prog1 (rack-count-full? ,r)
+			 (increment-count ,r))	;must not overflow field
+       (push-rack ,r)))
+
+;; Equivalent to a SAVE if done right after an ASSIGN.
+
+(defun (push-counter bummed-save) (r)
+  `(increment-count ,r))
+
+;; Equivalent to SAVE, then ASSIGN-PREPARATION, but bummed.
+
+(defun (push-counter force-save) (r)
+  `(progn (increment-count ,r)
+	  (push-rack ,r)))
+
+(defun (push-counter restore) (r)
+  `(if (same-state-prog1 (zero-count? ,r)
+			 (decrement-count ,r))	;must not overflow field
+	    (pop-rack ,r)))
+
+(defun (push-counter set-state) (r s)
+  `(assign (subpart-internal stack ,r) ,s))
+
+(defun (push-counter get-state) (r)
+  `(progn-value (assign-preparation ,r)
+		(fetch (subpart stack ,r))))
+
+(defun (push-counter reset-rack) (r)
+  `(same-state (assign (subpart-internal stack ,r)
+		       (make-pointer *nil 0))
+	       (assign (subpart-internal buffer ,r)
+		       (make-pointer *nil 0))))
+
+;;; these functions are useful for debugging the code.
+
+(defvar *pc-list* nil)
+
+(defun pass1 ()
+  (pass1-start)
+  (mapc #'pass1-2 *pc-list*)
+  'done)
+
+(defun pass1-1 (cname)
+  (defpc-codewalk
+    `(defpc-body ,cname
+       (progn ,@(copytree (get cname 'pc-original-def))))))
+
+(defun pass1-2 (name)
+  (let ((newbody (pass1-1 name)))
+    (putprop name newbody 'pc-definition)
+    newbody))
+
+(eval-when (eval load)
+(defmacro repass (name) `(progn (pass1-2 ',name) 'replaced))
+(defmacro told (x) `(pretty-print (pass1-1 ',x)))
+(defmacro orig (x) `(pretty-print (get ',x 'pc-original-def)))
+(defmacro old (x) `(pretty-print (get ',x 'pc-definition)))
+)
+
+;;; microcode definitions.
+
+;;; Virtual machine PCs are defined with the following macro.
+;;; Absolutely ALL microcode gets passed through here.
+
+;;; A fundamental question not yet addressed is at what level the multiply-
+;;; named PC will share its code!  This can perhaps be ignored due to the
+;;; size of the shared code pieces in this particular microcode, however
+;;; it is a useful enough construct that it might be fruitful to explore
+;;; it more thoroughly.
+
+(defvar *compiler-debugging* nil)
+(defvar *the-enclosing-pc* nil)
+
+(eval-when (eval load)
+  (defmacro defpc (cnames &rest body)
+    (setq cnames (enlist cnames))
+    `(progn 'compile
+	    ,@(let-mapcar ((cname cnames))
+		(putprop cname 'pc 'ctype)
+		(set-addq cname *pc-list*)
+		(putprop cname body 'pc-original-def)
+		(set cname cname)
+		(and *the-enclosing-pc* (putprop cname *the-enclosing-pc*
+						 'enclosing-pc))
+		(if *compiler-debugging* `'cname
+
+		    ;; note uses different copy so original still
+		    ;; readable when debugging code.
+		    `(defun ,cname ()
+		       ,(copytree (pass1-2 cname))))))))
+
+;;; this is the main codewalking function.
+
+(defun defpc-codewalk (body)
+  (codewalk body nil nil 'transform 'codewalk-1 'codewalk-expand-clobber nil))
+
+;;; this function is called on an expression after the expression
+;;; has been macroexpanded and the subexpressions already transformed.
+;;; the first subexpression is not transformed unless done explicitly.
+
+(defun transform (form)
+  (let (tem)
+    (if (and (not (atom form))
+	     (atom (car form))
+	     (setq tem (get (car form) 'transform)))
+	(funcall tem form)
+	form)))
+
+;; DEFDISPATCH.
+
+;;; Virtual machine PCs which are the targets of a dispatch are defined with:
+
+(eval-when (eval load)
+  (defmacro defdispatch (cnames dispatch-subclass tables &rest body)
+    (setq tables (enlist tables))
+    (setq cnames (enlist cnames))
+    `(defpc ,(let-mapcar ((cname cnames))
+	       (let (preferred-code)
+		 (or (atom cname) (progn (setq preferred-code (cadr cname))
+					 (setq cname (car cname))))
+		 (let ((fname (cons-name cname 'pc))
+		       (code (cond (preferred-code
+				    (do ((p tables (cdr p))) ((null p))
+				      (and (aref (symeval (car p)) preferred-code)
+					   (error
+					     "Preassigned dispatch code already in use"
+					     cname))
+				      (aset t (symeval (car p)) preferred-code))
+				    preferred-code)
+				   (t (allocate-type-code dispatch-subclass
+							  tables)))))
+		   (putprop fname 'dispatch 'pc-kind)
+		   (putprop fname cname 'dispatch-type)
+		   (mapc #'(lambda (table)
+			     (aset fname (symeval table) code)
+			     (putprop fname code table))
+			 tables)
+		   (set cname `((type word) . ,code))
+		   (putprop cname code 'defdispatch-type-code)
+		   fname)))
+       ,@body)))
+
+;;; allocation of the type codes used by defdispatch.
+
+(defun allocate-type-code (specified-subclass *dispatch-tables*)
+  (let* ((dispatch-class (get (car *dispatch-tables*) 'dispatch-class))
+	 (fieldpath (get dispatch-class 'dispatch-field))
+	 (dispatch-subclass (assq specified-subclass
+				  (get dispatch-class 'dispatch-subclasses))))
+    (or fieldpath (error "Undefined dispatch class -- defdispatch"
+			 dispatch-class))
+    (or dispatch-subclass (error "Undefined dispatch subclass -- defdispatch"
+				 (list dispatch-class specified-subclass)))
+    ;; Find the range of acceptable values.
+    (let (min
+	  (max (expt 2 (width-of-field fieldpath))))
+      
+      (setq min (modify-variable-field (enlist (cadr dispatch-subclass)) fieldpath 0
+				       (caddr dispatch-subclass)))
+      (setq max (min max
+		     (1- (modify-variable-field
+			  (enlist (cadr dispatch-subclass))
+			  fieldpath
+			  0
+			  (or (cadddr dispatch-subclass)
+			      (caddr dispatch-subclass))))))
+      ;; Search for a free code in the acceptable range.
+      ;; It must be free for all the dispatch-tables we want to use it for.
+      (do ((i min (1+ i)))
+	  ((= i max) (error "Ran out of dispatch codes in type "
+			    dispatch-class))
+	;; If it is not in use by anybody, return it.
+	(or (dolist (p *dispatch-tables*)
+	      ;; If somebody has been found using it, return t to the or.
+	      (and (aref (symeval p) i) (return t)))
+	    ;; We found a code free for all our dispatch-tables.
+	    ;; Mark it in use and return it.
+	    (progn (dolist (p *dispatch-tables*)
+			   (aset 'allocated-type-not-used?! (symeval p) i))
+		   (return i)))))))
+
+;;; microcode translation.
+
+;;; Simplify PROGNs and all things like PROGNs.
+;;; NILs as args are flushed, PROGNs of one arg are flushed,
+;;; and PROGNs inside PROGNs are collapsed.
+
+;For PROGN in particular, we also check for trailing GOTOs
+;and SAME-STATE-PROG them with whatever they follow.
+
+(defun (progn transform) (form)
+  (same-state-tail-jump (simplify-progn (car form) (cdr form))))
+
+(defun (progn-value transform) (form)
+  (simplify-progn (car form) (cdr form)))
+
+(defun (same-state transform) (form)
+  (simplify-progn (car form) (cdr form)))
+
+(defun (same-state-prog transform) (form)
+  (simplify-progn (car form) (cdr form)))
+
+(defun (same-cycle transform) (form)
+  (simplify-progn (car form) (cdr form)))
+
+(defun (same-cycle-value transform) (form)
+  (simplify-progn (car form) (cdr form)))
+
+;Given a PROGN form, put the last two elements into a SAME-STATE-PROG
+;and resimplify.  But not if it already ends in a SAME-STATE-PROG.
+;Also avoid hacking things like (progn 'free nnn).
+
+(defun same-state-tail-jump (form)
+  (cond ((atom form) form)
+	((not (eq (car form) 'progn)) form)
+	((eq (car (cadr form)) 'quote) form)
+	((not (memq (caar (last form)) '(goto ureturn reply))) form)
+	(t (let ((2tail (nthcdr (- (length form) 2) form)))
+	     (rplaca 2tail (simplify-progn 'same-state-prog
+					   `(,(car 2tail) ,(cadr 2tail))))
+	     (rplacd 2tail nil))
+	   (simplify-progn (car form) (cdr form)))))
+
+;; Pass information on where values go
+;; down into the operations that produce the values.
+;; Give targets to microfun calls,
+;; and push store operations in through sequencing control structures.
+
+(defvar progn-value-alist
+  '((progn-value . progn)
+    (same-cycle-value . same-cycle)
+    (same-state-progn-value . same-state-progn)))
+
+(eval-when (eval compile)
+  (defmacro process-progn-value (discard-p valexp newform value formptr)
+    `(cond ((and (not (atom (setq ,value (car ,valexp))))
+		 (assq (car ,value) progn-value-alist))
+	    (and ,discard-p
+		 (rplaca ,value (cdr (assq (car ,value) progn-value-alist))))
+	    (rplaca ,valexp (car (last ,value)))
+	    (rplaca (last ,value) ,newform)
+	    (or ,formptr (setq ,formptr (last ,value)))
+	    (setq ,newform ,value)))))
+
+;;; Given an expression, if it is not a call to a microfun, return it.
+;;; Otherwise replace it with a ucall-value and supply either the target
+;;; which is our argument, or, if that is nil, the next temp register.
+
+(defun process-possible-microfun-call (call target)
+  (if (or (atom call) (not (get (car call) 'microfun))) call
+      (transform `(ucall-value ,(or target (next-temp)) ,@call))))
+
+(defvar used-temps)
+(defvar last-temp)
+
+(defun next-temp ()
+  (setq last-temp (max last-temp used-temps))
+  (or (nth used-temps temp-regs)
+      (error "Ran out of temp registers")))
+
+;; Check an argument to a microfun to see if it is another microfun call.
+;; If so, replace the arg with a fetch of a suitable temp register,
+;; and return code to compute the arg and at run time put it in that temp.
+
+(defun process-arg (argslot)
+  (let ((argexp (process-possible-microfun-call (car argslot) nil)))
+    (cond ((eq argexp (car argslot))
+	   (cond ((memq (car argexp) '(read-reg read-reg-n read-arg-reg))
+		  nil)
+		 ((eq (car argexp) 'fetch)
+		  (and (memq (get (cadr argexp) 'reg-type)
+			     '(push-optimizer push-counter))
+		       `(fetch-preparation ,(cadr argexp))))
+		 ((and (eq (car argexp) 'merge-fields)
+		       (do ((l (cddr argexp) (cddr l)))
+			   ((null l) t)
+			 (or (atom (cadr l)) (return nil))))
+		  nil)
+		 ((not (equal argexp (setq argexp (macroexpand-1 argexp))))
+		  (rplaca argslot argexp)
+		  (process-arg argslot))
+		 (t (error "Unhandleable argument to microfun" argexp))))
+	  (t (rplaca argslot (codewalk-1 `(fetch ,(next-temp))))
+	     (setq used-temps (1+ used-temps))
+	     argexp))))
+
+;Push a write-reg into its second arg.
+;We use a different function here because we handle microfun calls.
+
+(defun write-reg-push-in (form)
+  (let* ((value (cadddr form))
+	 (newval (process-possible-microfun-call value (caddr form))))
+    (cond ((not (eq newval value)) newval)
+	  (t (let ((newform form) value formptr)
+	       (process-progn-value t (cdddr form) newform value formptr)
+	       (and formptr (rplaca formptr (write-reg-push-in (car formptr))))
+	       (cond (formptr (transform newform))
+		     (t newform)))))))
+
+;Push a function into a fixed set of args.
+;Positions should be a list of fixnums
+;saying which arg positions should be pushed into.
+;Barf if any arg pushed into is a microfun call.
+;Discard-p is t if the function being pushed in does
+;not itself return a value.
+
+(defun fixed-args-push-in (form positions discard-p)
+  (let ((newform form) value formptr)
+    (dolist (i positions)
+      (or (eq (nth i form) (process-possible-microfun-call (nth i form) nil))
+	  (error "Illegal use of microfun call" form))
+      (process-progn-value discard-p (nthcdr i form) newform value formptr))
+    (and formptr (rplaca formptr
+			 (fixed-args-push-in (car formptr)
+					     positions discard-p)))
+    (cond (formptr (transform newform))
+	  (t newform))))
+
+;Push a function into a variable number of args, of which every
+;second (starting at the starting-position) should be pushed into.
+;Discard-p is t if the function being pushed in does
+;not itself return a value.
+
+(defun alternate-args-push-in (form start-position discard-p)
+  (let ((newform form) value formptr)
+    (do ((i start-position (+ i 2)) (stop (length form)))
+	((= i stop))
+      (or (eq (nth i form) (process-possible-microfun-call (nth i form) nil))
+	  (error "Illegal use of microfun call" form))
+      (process-progn-value discard-p (nthcdr i form) newform value formptr))
+    (and formptr (rplaca formptr
+			 (alternate-args-push-in (car formptr)
+						 start-position discard-p)))
+    (cond (formptr (transform newform))
+	  (t newform))))
+
+;Push a function into a variable number of args,
+;starting at starting-position.
+;Do nothing about microfun calls since this is intended
+;for ucall and ucall-value, which will process those when they expand.
+;Discard-p is t if the function being pushed in does
+;not itself return a value.
+;If we have nothing to push into, macroexpand the ucall.
+
+(defun many-args-push-in (form start-position discard-p)
+  (let ((newform form) value formptr)
+    (do ((i start-position (1+ i)) (stop (length form)))
+	((= i stop))
+      (process-progn-value discard-p (nthcdr i form) newform value formptr))
+    (cond (formptr (rplaca formptr
+			   (macroexpand
+			    (many-args-push-in (car formptr)
+					       start-position discard-p)))
+		   (transform newform))
+	  (t (transform (macroexpand newform))))))
+
+;; Each operation that can STORE a value should be represented here.
+
+; Make sure microfun calls turn into UCALL-VALUEs.
+; Also push it down thru PROGN-VALUEs.
+
+(defun (write-reg transform) (form)
+  (write-reg-push-in `(write-reg ,(cadr form)
+				 ,(caddr form)
+				 ,(copytop (cadddr form)))))
+
+(defun (write-subfield transform) (form)
+  (fixed-args-push-in `(,(car form)
+			,(cadr form)
+			,(caddr form)
+			,(cadddr form)
+			,(copytop (cadddr (cdr form))))
+		      '(4) t))
+
+(defun (write-subfield-value transform) (form)
+  (fixed-args-push-in `(,(car form)
+			,(cadr form)
+			,(caddr form)
+			,(cadddr form)
+			,(copytop (cadddr (cdr form))))
+		      '(4) t))
+
+;;; some functions need to have their bitvec specifications normalized.
+
+(defun (merge-fields transform) (form)
+  (alternate-args-push-in `(,(car form)
+			    ,(enlist (cadr form))
+			    ,@(merge-fields-1 (cddr form)))
+			  2 nil))
+
+(defun merge-fields-1 (forms)
+  (cond ((null forms) nil)
+	((null (cdr forms)) (error "badly-formed merge-fields" forms))
+	(t `(,(enlist (car forms)) ,(cadr forms)
+	     ,@(merge-fields-1 (cddr forms))))))
+
+(defun (vnot transform) (form)
+  `(,(car form) ,(enlist (cadr form)) ,@(cddr form)))
+
+(defun (vall transform) (form)
+  `(,(car form) ,(enlist (cadr form)) ,@(cddr form)))
+
+(defun (=? transform) (form)
+  (fixed-args-push-in `(,(car form)
+			,(copytop (cadr form))
+			,(copytop (caddr form)))
+		      '(1 2) nil))
+
+;Prevent macroexpansion!
+(defprop if codewalk-args codewalk)
+
+(defun (if transform) (form)
+  (fixed-args-push-in `(,(car form)
+			,(copytop (cadr form))
+			,(copytop (caddr form))
+			,(copytop (cadddr form)))
+		      '(1) nil))
+
+(defun (add-values transform) (form)
+  (fixed-args-push-in `(,(car form)
+			,(copytop (cadr form))
+			,(copytop (caddr form))
+			,(cadddr form))
+		      '(1 2) nil))
+
+(defun (ucall transform) (form)
+  (many-args-push-in `(,(car form)
+		       ,(cadr form)
+		       ,@(mapcar 'copytop (cddr form)))
+		     2 t))
+
+(defun (ucall-value transform) (form)
+  (many-args-push-in `(,(car form)
+		       ,(cadr form)
+		       ,(caddr form)
+		       ,@(mapcar 'copytop (cdddr form)))
+		     3 nil))
+
+;; Expand microfun and microsubr calls and definitions.
+
+;This is a list of the names of the arg stacks for the argument registers.
+;It is provided by the specific use.  They have names like arg1-stack.
+
+(defvar arg-stack-names)
+
+;This has as its value the name of the arg register for targets.
+
+(defvar target-stack-name)
+
+(eval-when (eval load)
+
+(defmacro ucall (microsubr &rest args)
+  (or (= (or (get microsubr 'nargs) 0) (length args))
+      (error "Wrong number of arguments to microsubr" (cons microsubr args)))
+  (let ((used-temps used-temps))
+    `(progn ,@(maplist #'process-arg (setq args (copylist args)))
+	    (send ,microsubr
+		  ,@(mapcar #'(lambda (arg stack)
+				(record-arg arg)
+				`(,stack (arg-stack-read-only ,arg)))
+			    args arg-stack-names)))))
+
+(defmacro ucall-value (target microfun &rest args)
+  (record-arg target)
+  (or (= (get microfun 'nargs) (length args))
+      (error "Wrong number of arguments to microfun" (cons microfun args)))
+  (let ((used-temps used-temps))
+    (setq target (real-regname target))
+    `(progn ,@(maplist #'process-arg (setq args (copylist args)))
+	    (send ,(cons-name microfun 'pc)
+		  ,@(mapcar #'(lambda (arg stack)
+				(record-arg arg)
+				`(,stack (arg-stack-read-only ,arg)))
+			    args arg-stack-names)
+		  (,target-stack-name (arg-stack-read-write ,target))))))
+)
+
+;; Accumulate list of all argument expressions that we put on the stack.
+
+(defvar arg-expressions)
+
+(defun record-arg (arg)
+  (push arg arg-expressions)
+  arg)
+
+(eval-when (eval load)
+
+(defmacro defmicrofun (function args targetname &rest body)
+  (or (symbolp function) (error "illegal microfun name" function))
+  (let ((pc-name (cons-name function 'pc))
+	internal-defpcs)
+    (and (> (length args) (length arg-stack-names))
+	 (error "Microfun wants too many args" (cons function args)))
+    (setq body (sublis (cons (cons targetname target-stack-name)
+			     (mapcar 'cons args arg-stack-names))
+		       (copylist body)))
+    (do ((elts body (cdr elts))) ((null elts))
+      (cond ((eq (caar elts) 'defpc)
+	     (push (car elts) internal-defpcs)
+	     (let-mapc ((name (enlist (cadar elts))))
+	       (putprop name pc-name 'enclosing-pc))
+	     (setq body (delq (car elts) body)))))
+    `(progn 'compile
+	    ,@internal-defpcs
+	    (defpc ,pc-name ,@body)
+	    (defprop ,pc-name microfun pc-kind)
+	    (defprop ,pc-name ,function microfun-name)
+	    (eval-when (compile eval load)
+	      (defprop ,function ,pc-name microfun)
+	      (defprop ,function ,(length args) nargs)))))
+
+(defmacro defmicrosubr (function args &rest body)
+  (or (symbolp function) (error "illegal microsubr name" function))
+  (let (internal-defpcs)
+    (and (> (length args) (length arg-stack-names))
+	 (error "Microfun wants too many args" (cons function args)))
+    (setq body (sublis (mapcar 'cons args arg-stack-names)
+		       (copylist body)))
+    (do ((elts body (cdr elts))) ((null elts))
+      (cond ((eq (caar elts) 'defpc)
+	     (push (car elts) internal-defpcs)
+	     (let-mapc ((name (enlist (cadar elts))))
+	       (putprop name function 'enclosing-pc))
+	     (setq body (delq (car elts) body)))))
+    `(progn 'compile
+	    ,@internal-defpcs
+	    (defpc ,function ,@body)
+	    (eval-when (compile eval load)
+	      (defprop ,function microsubr pc-kind)
+	      (defprop ,function ,(length args) nargs)))))
+
+;Specify the arg names, so we can generate code to pop the arg stacks.
+
+(defmacro microsubr-return (args) `(reply ,@args))
+
+;Specify the arg names, so we can generate code to pop the arg stacks.
+;If a value is specified, we return it in the target.
+;Otherwise we assume the target is already set.
+
+(defmacro microfun-return (args &optional value)
+  (cond (value `(same-state-prog (assign ,target-stack-name ,value)
+				 (reply ,target-stack-name ,@args)))
+	(t `(reply ,target-stack-name ,@args))))
+
+(defmacro ureturn () '(reply))
+)
+
+;;; the initialization function.  the file being loaded has a hook for this.
+
+(defun pass1-start ()
+       (setq used-temps 0)
+       (setq last-temp 0)
+       (setq arg-expressions nil)
+       (reset-dispatch-tables))
+
+(defun reset-loading ()
+  (setq *pc-list* nil
+	*reg-list* nil
+	*the-stacks* nil
+	*pads* nil
+	*black-boxes* nil
+	*logic-flags* nil
+	temp-regs nil
+	arg-stack-names nil
+	reg-number 0)
+  (pass1-start))

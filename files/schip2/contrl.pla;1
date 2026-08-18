@@ -1,0 +1,40 @@
+;;;Control pla  -*- Mode:Lisp; -*-
+(make-pla control
+  10.				;AND field
+  7.				;OR field
+  10.				;# lines
+
+((field 001 (dispatch bit 1 0 un-clocked))
+ (field 002 (nano-run bit 1 1 un-clocked))
+ (field 004 (external-freeze bit 1 2 un-clocked))
+ (field 010 (external-read-state bit 1 3 un-clocked))
+ (field 020 (external-load-state bit 1 4 un-clocked))
+ (field 040 (allow-interrupts bit 1 5 un-clocked))
+ (field 100 (external-interrupt-request bit 1 6 un-clocked))
+ (field 200 (read bit 1 7 un-clocked))
+ (field 400 (ph1 bit 1 8. un-clocked))
+ (field 1000 (read-interrupt bit 1 9 un-clocked)))	;not used
+
+
+((field 01 (micro-from-next bit 1 0 un-clocked))
+ (field 02 (micro-hold bit 1 1 un-clocked))
+ (field 04 (micro-from-dispatch bit 1 2 un-clocked))
+ (field 10 (micro-from-interrupt bit 1 3 un-clocked))
+ (field 20 (micro-MSB-from-bus bit 1 4 un-clocked))
+ (field 40 (micro-MSB-from-0 bit 1 5 un-clocked))
+ (field 100 (pads-in bit 1 6 un-clocked)))
+
+((400 407) (-dispatch -freeze -nano-run)	01 micro-from-next)
+((404 424) (freeze -ext-load-state)		02 micro-hold)
+((402 422) (nano-run -ext-load-state)		02 micro-hold)
+((410 410) (ext-read-state)			26 micro-hold micro-from-dispatch micro-MSB-from-bus)
+((420 420) (ext-load-state)			24 micro-from-dispatch micro-MSB-from-bus)
+((401 447) (dispatch -nano-run -freeze -allow-ints)
+						44 micro-from-dispatch micro-MSB-from-0)
+((401 507) (dispatch -nano-run -freeze -ext-int-req)
+						44 micro-from-dispatch micro-MSB-from-0)
+((541 547) (dispatch -nano-run -freeze allow-ints ext-int-req)
+						10 micro-from-interrupt)
+((0020 0020) (-ph1 ext-load-state)		100 pads-in)
+((0200 0204) (-ph1 read -freeze)		100 pads-in))
+

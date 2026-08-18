@@ -1,0 +1,727 @@
+;;; -*-LISP-*-
+
+(defun standard-next-state (stmt)
+  (let (((rn rof) (right-neighbor stmt)))
+    (if (not (null rn))
+	(progn (install '(predicate true))
+	       (install-control '(explicit next-state-select true)
+				`(,rn explicit true)))))
+  (putprop stmt 'standard 'next-state))
+
+(defun (predicate hardware-control-mapper) (stmt)
+  (let (((cn cof) (consequent-neighbor stmt))
+	((an aof) (alternative-neighbor stmt)))
+    (if (not (null cn))
+	(install-control '(explicit next-state-select true)
+			 `(,cn explicit true)))
+    (if (not (null an))
+	(install-control '(explicit next-state-select false)
+			 `(,an explicit false)))
+    (putprop stmt 'if 'next-state)))
+
+(defun (same-cycle hardware-control-mapper) (stmt)
+  (mapc #'(lambda (s) (map-suboperation s stmt))
+	(get stmt 'single-cycled-statements))
+  (let ((p (get stmt 'single-cycle-predicate)))
+    (if (not (null p))
+	(progn (map-operation p)
+	       (delprop stmt 'predicate 'statement-type)
+	       (compress-data-acts p stmt)
+	       (addprop stmt 'predicate 'statement-type)
+	       (compress-protection-acts p stmt)))))
+
+(defun (wait hardware-control-mapper) (stmt)
+  (let ((s (get stmt 'wait-predicate)))
+    (map-operation s)
+    (compress-protection-acts s stmt)
+    (mapc #'(lambda (op)
+	      (if (predicate-selection? op)
+		  (install-control `(,(cadadr op) wait-outputs))
+		  (install op)))
+	  (get s 'primitive-data-actions))))
+
+;;; note that this is exactly like GOTO except that there are stacks.
+;;; in fact, GOTO should take stacks, and the differences should disappear,
+;;; were this to be done right. -- hanson
+
+(defun (call hardware-control-mapper) (stmt)
+  (install '(predicate true))
+  (install-control '(explicit next-state-select true)	;make target of call be ns
+		   `(,(get (get stmt 'target-pc) 'entry-hook) explicit true))
+  (mapc #'(lambda (arg)
+	    (let* ((name (call-stack-name arg))
+		   (source (call-stack-source arg))
+		   (true (if (eq name 'pc-stack) '() '(true))))
+	      (if (not (or (register? source)
+			   (statement? source)))	;functional argument!!!
+		  (break "Funny ucode argument -- CALL HARDWARE-CONTROL-MAPPER"))
+	      (cond ((equal source name)
+		     (install-control `(self push-arg-stack ,name true)))
+		    ((arg-stack? source)
+		     (install-control `(,source transfer-bus true)
+				      `(transfer-bus push-arg-stack ,name true)))
+		    (t (install-control `(,source uarg-data ,name ,@true)
+					`(uarg-data push-arg-stack ,name true))))))
+	(get stmt 'call-stacks))
+  (putprop stmt 'call 'next-state))
+
+(defun (return hardware-control-mapper) (stmt)
+  (install '(predicate true))
+  (install-control '(pc-stack next-state-select true))
+  (mapc #'(lambda (arg)
+	    (install-control `(pop-arg-stack ,arg true)))
+	(get stmt 'return-stacks))
+  (putprop stmt 'return 'next-state))
+
+(defun (dispatch hardware-control-mapper) (stmt)
+  (install '(predicate true))
+  (install-control `(,(get stmt 'target-class) next-state-select true))
+  (map-suboperation (get stmt 'dispatch-source) stmt)
+  (putprop stmt 'dispatch 'next-state))
+
+(defun (goto hardware-control-mapper) (stmt)
+  (install '(predicate true))
+  (install-control '(explicit next-state-select true)
+		   `(,(get (get stmt 'target-pc) 'entry-hook) explicit true))
+  (putprop stmt 'goto 'next-state))
+
+(setq *the-hardware-mapping-rules* '(
+
+;;; PREDICATES
+
+(rule (=? (read-subfield (type) (word) (? reg)) (? typenum))
+      (and (type-number? (? typenum)) (not (= (? typenum) 0)) (register? (? reg)))
+      (install `(read ,(? reg) global-control)
+	       '(enable type-source)
+	       `(,(? typenum) value type-source)
+	       `(predicate (sense bus= type ,(? reg)))))
+
+(rule (=? (read-subfield (type) (word) (? reg)) 0)
+      (register? (? reg))
+      (install `(read ,(? reg) global-control)
+	       '(predicate (sense =0 type main-bus))))
+
+(rule (=? (read-subfield (datum) (word) (? reg)) 0)
+      (register? (? reg))
+      (install `(read ,(? reg) global-control)
+	       '(predicate (sense =0 datum main-bus))))
+
+(rule (read-subfield nil (bit) (? flag))
+      (memq (? flag)
+	    '(relocate-request-to-me -somebody-needs-gc sbus-error-flag
+	      -somebody-isnt-ready-to-gc cont-flag thargs-flag))
+      (progn (install `(predicate (sense ,(? flag))))
+	     (protect `(load ,(? flag) flag-control))))
+
+(rule (read-subfield nil (bit) -memory-done)
+      t
+      (install '(predicate (sense wait-for-memdone))))
+
+(rule (relocate-requested-or-returned)			;special case electrical logic.
+      t
+      (install '(predicate (sense relocate-requested-or-returned?))))
+
+(rule (read-subfield ((? bit) datum) (word) (? reg))
+      (register? (? reg))
+      (progn (install `(predicate (sense ,(? bit) datum ,(? reg))))
+	     (protect `(load datum ,(? reg) global-control))))
+
+(rule (=? (read-subfield (high-bits datum) (word) exp) 0)
+      t
+      (progn (install '(predicate (sense =0 high-bits datum exp)))
+	     (protect '(load datum exp global-control))))
+
+(rule (=? (read-subfield (class type) (word) (? reg)) #o17)	;array pointer test
+      (register? (? reg))
+      (install `(read ,(? reg) global-control)
+	       '(predicate (sense =17 class main-bus))))
+
+(rule (list-pointer (? reg))
+      (register? (? reg))
+      (install `(read ,(? reg) global-control)
+	       '(predicate (and (sense pointer-bit main-bus)
+				(not (sense =17 class main-bus))))))
+
+(rule (=? (read-subfield (count) (word) env-stack) 0)
+      t
+      (progn (install '(predicate (sense =0 count env-stack)))
+	     (protect '(load type env-stack global-control))))
+
+(rule (=? (read-subfield (count) (word) env-stack) #o36)	;max(count) - 1
+      t
+      (progn (install '(predicate (sense =36 count env-stack)))
+	     (protect '(load type env-stack global-control))))
+
+(rule (=? (read-subfield (datum) (word) free)
+	  (read-subfield (datum) (word) memtop))
+      t
+      (progn (install '(predicate (sense free=memtop)))
+	     (protect '(load datum free global-control))
+	     (protect '(load datum memtop global-control))))
+
+
+;;; Special stuff for I-need-gc
+
+(rule (set-flag-conditional-subfield nil (bit) I-need-gc 1
+				     (=? (read-subfield (datum) (word) free)
+					 (read-subfield (datum) (word) memtop)))
+      t
+      (progn (install '(predicate (sense free=memtop))
+		      '(set-if I-need-gc flag-control)
+		      '(1 flag-bit-value flag-control))
+	     (protect '(load datum free global-control))
+	     (protect '(load datum memtop global-control))))
+
+(rule (=? (read-subfield () (memory-address) scan)
+	  (merge (memory-address) ((datum) free) ((low-bit) 0)))
+      t
+      (install '(read free global-control)
+	       '(zero low-bit global-control)
+	       '(predicate (sense bus= scan))))
+
+(rule (=? (read-subfield nil (word) val) (read-subfield nil (word) thargs))
+      t
+      (install '(read thargs global-control)
+	       '(predicate (and (sense bus= type val) (sense bus= datum val)))))
+
+(rule (not-pointer-or-pure-pointer old)
+      t
+      (progn (install '(predicate (or (not (sense pointer-bit type old))
+				      (sense =-1 machine-number datum old))))
+	     (protect '(load old global-control))))
+
+(rule (my-pointer old)
+      t
+      (progn (install '(predicate (and (sense pointer-bit type old)
+				       (sense machine-number= machine-number datum old))))
+	     (protect '(load old global-control))))
+
+(rule (dma-interrupt-pending)
+      t
+      (progn (install '(predicate (and (sense dma-interrupt-request)
+				       (sense dma interrupt-enables))))
+	     (protect '(load interrupt-enables global-control))))
+
+(rule (cons-server-interrupt-pending)
+      t
+      (progn (install '(predicate (and (sense cons-server-interrupt-request)
+				       (sense cons-server interrupt-enables))))
+	     (protect '(load interrupt-enables global-control))))
+
+(rule (gc-interrupt-pending)
+      t
+      (progn (install '(predicate (and (sense gc-interrupt-request)
+				       (sense gc interrupt-enables))))
+	     (protect '(load interrupt-enables global-control))))
+
+(rule (interrupt-pending)
+      t
+      (progn (install '(predicate (or (and (sense gc-interrupt-request)
+					   (sense gc interrupt-enables))
+				      (and (sense cons-server-interrupt-request)
+					   (sense cons-server interrupt-enables))
+				      (and (sense dma-interrupt-request)
+					   (sense dma interrupt-enables))
+				      (and (sense external-interrupt-request)
+					   (sense external interrupt-enables)))))
+	     (protect '(load interrupt-enables global-control))))
+
+(rule (array-index-ok compare-reg val)
+      t
+      (progn (install '(enable type-source)
+		      `(2 value type-source)
+		      '(array-index-test local-control)
+		      `(predicate (and (sense bus= type compare-reg)
+				       (not (sense sign-bit datum compare-reg))
+				       (not (sense sign-bit datum adder)))))
+	     (protect '(load compare-reg global-control))
+	     (protect '(load val global-control))))
+
+;;; STATEMENTS
+;;; General case of register to register transfer.
+
+(rule (write-subfield (? load-subfield) (word) (? load-reg)
+		(read-subfield (? read-subfield) (? read-field) (? read-reg))) 
+      (and (register? (? load-reg)) (register? (? read-reg)))
+      (install `(load ,@(? load-subfield) ,(? load-reg) global-control)
+	       `(read ,(? read-reg) global-control)))
+
+
+;;; Smashing a type into a sourced datum.
+
+;;; Special case of clobbering only the type field of a register.
+
+(rule (write-subfield nil (word) (? targ-reg)
+		      (merge (word) ((type) (? typenum)) ((datum) (? targ-reg))))
+      (and (type-number? (? typenum)) (register? (? targ-reg)))
+      (install `(load type ,(? targ-reg) global-control)
+	       '(enable type-source)
+	       `(,(? typenum) value type-source)))
+
+;;; General case.
+
+(rule (write-subfield nil (word) (? targ-reg)
+		      (merge (word) ((type) (? typenum)) ((datum) (? source-reg))))
+      (and (type-number? (? typenum)) (not (eq (? source-reg) (? targ-reg)))
+	   (register? (? targ-reg))(register? (? source-reg)))
+      (install `(load ,(? targ-reg) global-control)
+	       `(read datum ,(? source-reg) global-control)
+	       '(enable type-source)
+	       `(,(? typenum) value type-source)))
+
+;;; Same thing, except when type comes from constant-register.
+
+(rule (write-subfield nil (word) (? targ-reg)
+		      (merge (word) ((type) (? type-reg)) ((datum) (? source-reg))))
+      (and (not (eq (? source-reg) (? targ-reg)))
+	   (constant-register? (? type-reg))
+	   (register? (? targ-reg))
+	   (register? (? source-reg)))
+      (install `(load ,(? targ-reg) global-control)
+	       `(read datum ,(? source-reg) global-control)
+	       `(read type ,(? type-reg) global-control)))
+
+;;; Sourcing for DISPATCH.
+
+(rule (read-subfield (type) (word) (? source-reg))
+      (register? (? source-reg))
+      (install `(read type ,(? source-reg) global-control)))
+
+;;; Full word constant sources
+
+(rule (write-subfield nil (word) (? reg)
+		      (merge (word) ((type) (? typenum)) ((datum) (? datumnum))))
+      (and (type-number? (? typenum)) (datum-number? (? datumnum)) (register? (? reg)))
+      (install '(enable type-source)
+	       `(,(? typenum) value type-source)
+	       '(enable datum-source)
+	       `(,(? datumnum) value datum-source)
+	       `(read zeros-in-datum-except-bottom-three-bits global-control)
+	       `(load ,(? reg) global-control)))
+
+;;; Making up addresses -- only to scan, read-mar, write-mar
+
+(rule (write-subfield nil (memory-address) (? address-register)
+		      (merge (memory-address) ((datum) (? source)) ((low-bit) (? value))))
+      (memq (? address-register) '(scan read-mar write-mar))
+      (install `(load ,(? address-register) global-control)
+	       `(read ,(? source) global-control)
+	       `(,(if (= (? value) 0) 'zero 'one) low-bit global-control)))
+
+
+;;; Output of addresses.
+
+(rule (write-subfield nil (memory-address) (? address-register)
+		      (read-subfield nil (memory-address) scan))
+      (memq (? address-register) '(read-mar write-mar))
+      (install `(load ,(? address-register) global-control)
+	       '(read scan global-control)))
+
+
+;;; Special case rules for special purpose registers.
+
+(rule (write-subfield nil (word) new
+		      (merge (word) ((type) old) ((datum) (? datum-source))))
+      (memq (? datum-source) '(free count))
+      (install '(load new global-control)
+	       '(read type old global-control)
+	       `(read datum ,(? datum-source) global-control)))
+
+(rule (write-subfield nil (machine-number) machine-number
+		      (read-subfield (machine-number datum) (word) val))
+      t
+      (install '(load machine-number global-control)
+	       '(read val global-control)))
+
+;;; Used only in primitive-type-pc
+
+(rule (write-subfield nil (word) val
+		      (merge (word) ((type) 2)
+			     ((rest datum) (? zero-source)) ((typenum datum) val)))
+      t
+      (install '(enable type-source)
+	       `(2 value type-source)
+	       '(load type val global-control)
+	       '(type-to-datum val local-control)))
+
+;;; Primitive array indexing
+
+(rule (WRITE-SUBFIELD NIL (MEMORY-ADDRESS) (? mar)
+		      (ADD-FIELD (MEMORY-ADDRESS)
+				 (RIGHT-SHIFT-WITH-0-VALUE (MERGE (MEMORY-ADDRESS)
+								  ((DATUM) COMPARE-REG)
+								  ((LOW-BIT) 0)))
+				 (MERGE (MEMORY-ADDRESS) ((DATUM) VAL) ((LOW-BIT) 1))))
+      (memq (? mar) '(read-mar write-mar))
+      (install `(load ,(? mar) global-control)
+	       '(read array-index-adder global-control)))		;See howie.
+
+
+;;; primitive subtract.
+
+(rule (WRITE-SUBFIELD NIL (WORD) VAL
+		      (MERGE (WORD)
+			     ((TYPE) 2)
+			     ((DATUM) (ADD-FIELD (MEMORY-ADDRESS)
+						 (VNOT (MEMORY-ADDRESS)
+						       (MERGE (MEMORY-ADDRESS)
+							      ((DATUM) COMPARE-REG)
+							      ((LOW-BIT) 0)))
+						 (MERGE (MEMORY-ADDRESS) ((DATUM) VAL)
+									 ((LOW-BIT) 1))))))
+      t
+      (install '(enable type-source)
+	       `(2 value type-source)
+	       '(read subtractor global-control)	;See howie.
+	       '(load val global-control)))
+
+
+;;; Local bus operations
+
+(rule (add-to-subfield (? subfield) (? field) (? reg) 1)
+      (register? (? reg))
+      (install `(increment ,@(? subfield) ,(? reg) local-control)))
+
+(rule (add-to-subfield (? subfield) (? field) (? reg) -1)
+      (register? (? reg))
+      (install `(decrement ,@(? subfield) ,(? reg) local-control)))
+
+(rule (left-shift-with-1-subfield (datum) (word) val)
+      t
+      (install '(left-shift-1 datum val local-control)))
+
+(rule (left-shift-with-0-subfield (datum) (word) val)
+      t
+      (install '(left-shift-0 datum val local-control)))
+
+(rule (right-shift-with-0-subfield (datum) (word) exp)
+      t
+      (install '(right-shift-0 datum exp local-control)))
+
+;;; Flag registers
+
+(rule (write-subfield nil (bit) (? bit-flag) (read-subfield nil (bit) (? bit-value)))
+      (memq (? bit-flag) '(thargs-flag cont-flag i-am-ready-to-gc i-need-gc))
+      (install `(set ,(? bit-flag) flag-control)
+	       `(,(? bit-value) flag-bit-value flag-control)))
+
+
+;;; Output status pads
+
+(rule (write-subfield nil (bit) (? grant-pad) 1)
+      (memq (? grant-pad) '
+	    (dma-interrupt-grant cons-server-interrupt-grant external-interrupt-grant halted))
+      (install `(,(? grant-pad) random-signals)))
+
+
+
+;;; Kludge for building constant sources
+
+(rule (write-subfield (type) (word) (? reg) (? typenum))
+      (and (type-number? (? typenum)) (register? (? reg)))
+      (install '(enable type-source)
+	       `(,(? typenum) value type-source)
+	       `(load type ,(? reg) global-control)))
+
+
+(rule (pclsr-save-2 (? reg))
+      (and (register? (? reg)) (memq 'pclsr (get (? reg) 'register-attributes)))
+      (progn (install `(pclsr-save ,(? reg) local-control))
+	     (protect `(load ,(? reg) global-control))))
+
+(rule (pclsr-restore-2 (? reg))
+      (and (register? (? reg)) (memq 'pclsr (get (? reg) 'register-attributes)))
+      (install `(pclsr-restore ,(? reg) local-control)))
+
+
+;;; A hardwarily useless operation which makes simulator happy and which
+;;; should have been flushed in pass2.  It will not make it through the
+;;; optimizer.
+
+(rule (clear-controller-stacks*)
+      t
+      nil)
+
+)) 
+
+(setq *resource-marking-rules* '(
+
+;;; Main datapath resources.
+
+(rule (read (? reg) global-control)
+      (equal (field-type-of (? reg)) '(word))
+      (progn (gobble 'type-bus 'datum-bus)
+	     (if (second-cycle?)
+		 (gobble (cons-name 'type (? reg))
+			 (cons-name 'datum (? reg))))))
+
+(rule (read type (? reg) global-control)
+      (equal (field-type-of (? reg)) '(word))
+      (progn (gobble 'type-bus)
+	     (if (second-cycle?)
+		 (gobble (cons-name 'type (? reg))))))
+
+(rule (read datum (? reg) global-control)
+      t
+      (progn (gobble 'datum-bus)
+	     (if (second-cycle?)
+		 (gobble (cons-name 'datum (? reg))))))
+
+(rule (read zeros-in-datum-except-bottom-three-bits global-control)	;needs mediator.
+      t
+      (gobble 'datum-bus))
+
+(rule (read (? reg) global-control)
+      (memq (? reg) '(array-index-adder subtractor))
+      (progn (gobble 'datum-bus)
+	     (if (second-cycle?)
+		 (gobble (cons-name 'datum 'val)
+			 (cons-name 'datum 'compare-reg)))))
+
+(rule (read scan global-control)
+      t
+      (progn (gobble 'datum-bus 'low-bit-bus)
+	     (if (second-cycle?)
+		 (gobble 'scan))))
+
+(rule (read count env-stack global-control)
+      t
+      (progn (gobble 'type-bus)
+	     (if (second-cycle?)
+		 (gobble (cons-name 'env-stack 'type)))))
+
+(rule (enable . (? tail))				;required, but uses nothing.
+      t
+      ())
+
+(rule ((? n) value type-source)
+      t
+      (gobble 'type-bus))
+
+(rule ((? n) value datum-source)
+      t
+      (gobble 'datum-bus))
+
+(rule (load (? reg) global-control)
+      (equal (field-type-of (? reg)) '(word))
+      (gobble (cons-name (? reg) 'type)
+	      (cons-name (? reg) 'datum)))
+
+(rule (load type (? reg) global-control)
+      (equal (field-type-of (? reg)) '(word))
+      (gobble (cons-name (? reg) 'type)))
+
+(rule (load datum (? reg) global-control)
+      (equal (field-type-of (? reg)) '(word))
+      (gobble (cons-name (? reg) 'datum)))
+
+(rule (load (? reg) global-control)
+      (equal (field-type-of (? reg)) '(memory-address))
+      (gobble (cons-name (? reg) 'datum)
+	      (cons-name (? reg) 'low-bit)))
+
+(rule (load count env-stack global-control)
+      t
+      (gobble (cons-name 'env-stack 'type)))
+
+(rule (load machine-number global-control)
+      t
+      (gobble (cons-name 'machine-number 'datum)))
+
+(rule (type-to-datum val local-control)
+      t
+      (gobble (cons-name 'val 'datum)))
+
+
+(rule (one low-bit global-control)
+      t
+      (gobble 'low-bit-bus))
+
+(rule (zero low-bit global-control)
+      t
+      (gobble 'low-bit-bus))
+
+;;; local operations.
+
+(rule (decrement (? field) (? reg) local-control)
+      t
+      (gobble (cons-name (? reg) (? field))))		 
+
+(rule (increment (? field) (? reg) local-control)
+      t
+      (gobble (cons-name (? field) (? reg))))
+
+(rule (increment scan local-control)
+      t
+      (gobble 'scan))
+
+(rule (left-shift-0 datum val local-control)
+      t
+      (gobble 'datum-val))
+
+(rule (left-shift-1 datum val local-control)
+      t
+      (gobble 'datum-val))
+
+(rule (right-shift-0 datum exp local-control)
+      t
+      (gobble 'datum-exp))
+
+(rule (array-index-test local-control)
+      t
+      ())
+
+(rule (pclsr-save (? reg) local-control)
+      t
+      ())
+
+(rule (pclsr-restore (? reg) local-control)
+      t
+      (gobble (cons-name (? reg) 'datum) (cons-name (? reg) 'type)))
+
+
+;;; predicates.
+
+(rule (predicate (? wire))
+      t
+      (gobble 'predicate-select))
+
+(rule ((? wait) wait-outputs)
+      t
+      ())
+
+;;; flags.
+
+(rule (set (? flag) flag-control)
+      (memq (? flag) '(cont-flag thargs-flag I-need-gc I-am-ready-to-gc))
+      (gobble (? flag)))
+
+(rule (set-if I-need-gc flag-control)
+      t
+      (gobble 'I-need-gc))
+
+
+;;; For protection only -- next 3 rules:
+
+(rule (load (? flag) flag-control)
+      t
+      (if (second-cycle?)
+	  (gobble (? flag))
+	  (break "Load flag?")))
+
+
+	     
+
+(rule ((? value) flag-bit-value flag-control)	;required by above.
+      t
+      (gobble 'flag-bit-bus))
+
+(rule (cons-server-interrupt-grant random-signals)
+      t
+      nil)
+
+(rule (dma-interrupt-grant random-signals)
+      t
+      ())
+
+(rule (external-interrupt-grant random-signals)
+      t
+      ())
+
+(rule (halted random-signals)
+      t
+      ())
+))
+
+
+(defun (type-bus mediator) (resource challenger incumbents)
+  (bus-mediator resource challenger incumbents))
+
+(defun (datum-bus mediator) (resource challenger incumbents)
+  (bus-mediator resource challenger incumbents))
+
+(defun bus-mediator (bus ch ins)
+  (and (eq (car ch) 'read) (equal ch (car ins))))
+
+(setq *control-merge-rules* '(
+
+(rule ((? new-source) next-state-select (? p))				;Trigger pattern
+      t
+      (if (and (exists-assertion? ((? old-source) next-state-select (? p))))
+	  (progn (remove-assertion ((? old-source) next-state-select (? p)))
+		 (remove-assertion ((? value) (? old-source) (? p))))))
+
+(rule ((? new-value) explicit (? p))
+      t
+      ())
+
+(rule ((? new-bus) push-arg-stack (? stack-name) (? p))
+      t
+      (if (and (exists-assertion? ((? old-bus) push-arg-stack (? stack-name) (? p)))
+	       (not (equal (? old-bus) (? new-bus))))
+	  (conflict (? stack-name))))
+
+(rule (pop-arg-stack (? stack-name) (? p))
+      t
+      ())
+
+(rule ((? new-source) transfer-bus (? p))
+      t
+      (if (and (exists-assertion? ((? old-source) transfer-bus (? p)))
+	       (not (equal (? old-source) (? new-source))))
+	  (conflict 'transfer-bus)))
+
+(rule ((? new-data) uarg-data (? stack-name) (? p))
+      t
+      (if (and (exists-assertion? ((? old-data) uarg-data (? stack-name) (? p)))
+	       (not (equal (? old-data) (? new-data))))
+	  (conflict (cons-name (? stack-name) 'uarg-data))))
+
+(rule ((? new-data) uarg-data pc-stack)
+      t
+      (if (and (exists-assertion? ((? old-data) uarg-data pc-stack))
+	       (not (equal (? old-data) (? new-data))))
+	  (conflict (cons-name 'pc-stack 'uarg-data))))
+
+(rule ((? name) wait-outputs)
+      t
+      ())
+))
+
+(defun type-number? (typenum)
+  (and (fixp typenum) (< (haulong typenum) 8.)))
+
+(defun datum-number? (typenum)
+  (and (fixp typenum) (< (haulong typenum) 4.)))
+
+
+
+
+(defvar *constant-type-codes* nil)
+
+(defun get-type-constant (type)
+  (let ((type-code-cell (assoc type *constant-type-codes*)))
+    (if (not (null type-code-cell))
+	(cadr type-code-cell)
+	(let ((n (length *constant-type-codes*)))
+	  (setq *constant-type-codes*
+		(cons (list type n)
+		      *constant-type-codes*))
+	  n))))
+
+
+
+(defvar *constant-datum-codes* nil)
+
+(defun get-datum-constant (datum)
+  (let ((datum-code-cell (assoc datum *constant-datum-codes*)))
+    (if (not (null datum-code-cell))
+	(cadr datum-code-cell)
+	(let ((n (length *constant-datum-codes*)))
+	  (setq *constant-datum-codes*
+		(cons (list datum n)
+		      *constant-datum-codes*))
+	  n))))
+
+(defun expression (statement)
+  (get statement 'expression))

@@ -1,0 +1,328 @@
+Possible errors:
+
+
+Turds:
+
+node: Unused node (1122,2045), m=0, p=16, d=0
+node: Unused node (2511,2034), m=66, p=0, d=0
+
+
+Bnodes that missed:
+
+node: ua-regs-load-local-arg-1 (4149,3073) has no value
+node: ua-regs-read-arg-1 (4149,3042) has no value
+node: ua-regs-push-stack-0-arg-1 (4149,2930) has no value
+node: ua-regs-push-stack-1-arg-1 (4149,2870) has no value
+node: ua-regs-read-arg-2 (4149,2795) has no value
+node: ua-regs-read-explicit-arg-2 (4149,2769) has no value
+node: uarg-op-push-arg-stack-arg1-stack-uarg-stacks (4358,2655) has no value
+node: uarg-op-read-transfer-bus-arg1-stack-uarg-stacks (4358,2641) has no value
+node: ua-regs-push-stack-1-arg-2 (4149,2616) has no value
+node: uarg-op-load-uarg-data-push-source-arg1-stack-uarg-stacks (4358,2604) has no value
+node: uarg-op-pop-arg-stack-arg2-stack-uarg-stacks (4358,2590) has no value
+node: ua-regs-load-global-target (4149,2561) has no value
+node: lsd-phi-2 (3068,2549) has no value
+node: uarg-op-load-transfer-bus-push-source-arg2-stack-uarg-stacks (4358,2539) has no value
+node: lsd-phi-1 (3068,2527) has no value
+node: uarg-op-load-uarg-data-push-source-arg2-stack-uarg-stacks (4358,2525) has no value
+node: ua-regs-read-explicit-target (4149,2515) has no value
+node: uarg-op-load-transfer-bus-push-source-target-stack-uarg-stacks (4358,2488) has no value
+node: uarg-op-read-transfer-bus-target-stack-uarg-stacks (4358,2474) has no value
+node: ua-regs-pop-stack-0-target (4149,2433) has no value
+node: uarg-op-nth-0-code (4345,2377) has no value
+node: ua-regs-phi2 (4149,2363) has no value
+node: ua-regs-pop-stack-1-target (4149,2348) has no value
+node: uarg-op-nth-3-code (4345,2327) has no value
+node: ua-regs-right-bus-5 (3668,2314) has no value
+node: ua-regs-right-bus-4 (3715,2314) has no value
+node: ua-regs-right-bus-3 (3762,2314) has no value
+node: ua-regs-right-bus-2 (3809,2314) has no value
+node: ua-regs-right-bus-1 (3856,2314) has no value
+node: ua-regs-right-bus-0 (3903,2314) has no value
+node: pred-nth-4-select (2866,286) has no value
+node: pred-nth-1-select (2866,252) has no value
+node: pred-nth-0-select (2866,230) has no value
+node: pred-low-bit-datum-exp-data-senses (2866,168) has no value
+node: pred-=0-high-bits-datum-exp-data-senses (2866,146) has no value
+node: pred-sign-bit-array-index-adder-data-senses (2866,112) has no value
+node: pred-bus=-type-val-data-senses (2866,90) has no value
+node: pred-=-1-machine-number-datum-temporary-data-senses (2866,56) has no value
+node: pred-gc-interrupt-enables-data-senses (2866,6) has no value
+
+
+This is the same as that:
+
+constant-nth-0-datum-source and main-regs-input-2-datum-source
+constant-nth-0-type-source and main-regs-input-6-type-source
+constant-nth-1-datum-source and main-regs-input-1-datum-source
+constant-nth-1-type-source and main-regs-input-5-type-source
+constant-nth-2-datum-source and main-regs-input-0-datum-source
+constant-nth-2-type-source and main-regs-input-4-type-source
+constant-nth-3-type-source and main-regs-input-3-type-source
+constant-nth-4-type-source and main-regs-input-2-type-source
+constant-nth-5-type-source and main-regs-input-1-type-source
+constant-nth-6-type-source and main-regs-input-0-type-source
+cont-bot-nth-0-op-decoder and ns-op-nth-0-code
+cont-bot-nth-1-op-decoder and ns-op-nth-1-code
+cont-bot-nth-2-op-decoder and ns-op-nth-2-code
+cont-bot-nth-3-op-decoder and ns-op-nth-3-code
+cont-bot-nth-4-op-decoder and ns-op-nth-4-code
+cont-nth-0-false-explicit-ns and ns-regs-input-8-false
+cont-nth-0-pc-explicit-ns and ns-regs-input-8-explicit-pc-stack
+cont-nth-0-true-explicit-ns and ns-regs-input-8-true
+cont-nth-1-false-explicit-ns and ns-regs-input-7-false
+cont-nth-1-pc-explicit-ns and ns-regs-input-7-explicit-pc-stack
+cont-nth-1-true-explicit-ns and ns-regs-input-7-true
+cont-nth-2-false-explicit-ns and ns-regs-input-6-false
+cont-nth-2-pc-explicit-ns and ns-regs-input-6-explicit-pc-stack
+cont-nth-2-predicate-select and pred-nth-2-select
+cont-nth-2-true-explicit-ns and ns-regs-input-6-true
+cont-nth-3-false-explicit-ns and ns-regs-input-5-false
+cont-nth-3-pc-explicit-ns and ns-regs-input-5-explicit-pc-stack
+cont-nth-3-predicate-select and pred-nth-3-select
+cont-nth-3-true-explicit-ns and ns-regs-input-5-true
+cont-nth-4-false-explicit-ns and ns-regs-input-4-false
+cont-nth-4-pc-explicit-ns and ns-regs-input-4-explicit-pc-stack
+cont-nth-4-true-explicit-ns and ns-regs-input-4-true
+cont-nth-5-false-explicit-ns and ns-regs-input-3-false
+cont-nth-5-pc-explicit-ns and ns-regs-input-3-explicit-pc-stack
+cont-nth-5-true-explicit-ns and ns-regs-input-3-true
+cont-nth-6-false-explicit-ns and ns-regs-input-2-false
+cont-nth-6-pc-explicit-ns and ns-regs-input-2-explicit-pc-stack
+cont-nth-6-true-explicit-ns and ns-regs-input-2-true
+cont-nth-7-false-explicit-ns and ns-regs-input-1-false
+cont-nth-7-pc-explicit-ns and ns-regs-input-1-explicit-pc-stack
+cont-nth-7-true-explicit-ns and ns-regs-input-1-true
+cont-nth-8-false-explicit-ns and ns-regs-input-0-false
+cont-nth-8-pc-explicit-ns and ns-regs-input-0-explicit-pc-stack
+cont-nth-8-true-explicit-ns and ns-regs-input-0-true
+cont-state-0 and ns-regs-right-bus-0
+cont-state-1 and ns-regs-right-bus-1
+cont-state-2 and ns-regs-right-bus-2
+cont-state-3 and ns-regs-right-bus-3
+cont-state-4 and ns-regs-right-bus-4
+cont-state-5 and ns-regs-right-bus-5
+cont-state-6 and ns-regs-right-bus-6
+cont-state-7 and ns-regs-right-bus-7
+cont-state-8 and ns-regs-right-bus-8
+disp-nth-0-body and main-regs-right-bus-30
+disp-nth-0-extra-type-cont and ns-regs-cross-bus-8-extra-type-cont
+disp-nth-0-user-type and ns-regs-cross-bus-8-user-type
+disp-nth-1-body and main-regs-right-bus-31
+disp-nth-1-extra-type-cont and ns-regs-cross-bus-7-extra-type-cont
+disp-nth-1-user-type and ns-regs-cross-bus-7-user-type
+disp-nth-2-body and main-regs-right-bus-32
+disp-nth-2-extra-type-cont and ns-regs-cross-bus-6-extra-type-cont
+disp-nth-2-user-type and ns-regs-cross-bus-6-user-type
+disp-nth-3-body and main-regs-right-bus-33
+disp-nth-3-extra-type-cont and ns-regs-cross-bus-5-extra-type-cont
+disp-nth-3-user-type and ns-regs-cross-bus-5-user-type
+disp-nth-4-body and main-regs-right-bus-34
+disp-nth-4-extra-type-cont and ns-regs-cross-bus-4-extra-type-cont
+disp-nth-4-user-type and ns-regs-cross-bus-4-user-type
+disp-nth-5-body and main-regs-right-bus-35
+disp-nth-5-extra-type-cont and ns-regs-cross-bus-3-extra-type-cont
+disp-nth-5-user-type and ns-regs-cross-bus-3-user-type
+disp-nth-6-body and main-regs-cross-bus-0-pointer-bit
+disp-nth-6-body and main-regs-right-bus-36
+disp-nth-6-body and pred-pointer-bit-main-bus-data-senses
+disp-nth-6-extra-type-cont and ns-regs-cross-bus-2-extra-type-cont
+disp-nth-6-user-type and ns-regs-cross-bus-2-user-type
+disp-nth-7-extra-type-cont and ns-regs-cross-bus-1-extra-type-cont
+disp-nth-7-user-type and ns-regs-cross-bus-1-user-type
+disp-nth-8-extra-type-cont and ns-regs-cross-bus-0-extra-type-cont
+disp-nth-8-user-type and ns-regs-cross-bus-0-user-type
+gnd and main-regs-load-local-datum-temp-reg-0
+gnd and main-regs-load-local-errcode
+gnd and main-regs-load-local-interrupt-enables
+gnd and main-regs-load-local-machine-number
+gnd and main-regs-load-local-memtop
+gnd and main-regs-load-local-type-free
+gnd and main-regs-load-local-type-temp-reg-0
+gnd and main-regs-load-local-type-temporary
+load-uarg-cdr-bit-cont-stack-main-registers and main-regs-load-global-cdr-bit-cont-stack
+load-uarg-cdr-bit-thargs-stack-main-registers and main-regs-load-global-cdr-bit-thargs-stack
+load-uarg-cont-main-registers and main-regs-load-global-cont
+load-uarg-datum-cont-stack-main-registers and main-regs-load-global-datum-cont-stack
+load-uarg-datum-exp-main-registers and main-regs-load-global-datum-exp
+load-uarg-datum-free-main-registers and main-regs-load-global-datum-free
+load-uarg-datum-temp-reg-0-main-registers and main-regs-load-global-datum-temp-reg-0
+load-uarg-datum-temporary-main-registers and main-regs-load-global-datum-temporary
+load-uarg-datum-val-main-registers and main-regs-load-global-datum-val
+load-uarg-env-main-registers and main-regs-load-global-env
+load-uarg-env-stack-main-registers and main-regs-load-global-env-stack
+load-uarg-errcode-main-registers and main-regs-load-global-errcode
+load-uarg-interrupt-enables-main-registers and main-regs-load-global-interrupt-enables
+load-uarg-machine-number-main-registers and main-regs-load-global-machine-number
+load-uarg-memtop-main-registers and main-regs-load-global-memtop
+load-uarg-nth-0-body and lsd-sb-11
+load-uarg-nth-1-body and lsd-sb-12
+load-uarg-nth-2-body and lsd-sb-13
+load-uarg-nth-3-body and lsd-sb-14
+load-uarg-nth-4-body and lsd-sb-15
+load-uarg-nth-5-body and lsd-sb-16
+load-uarg-scan-main-registers and main-regs-load-global-scan
+load-uarg-thargs-main-registers and main-regs-load-global-thargs
+load-uarg-type-cont-stack-main-registers and main-regs-load-global-type-cont-stack
+load-uarg-type-exp-main-registers and main-regs-load-global-type-exp
+load-uarg-type-free-main-registers and main-regs-load-global-type-free
+load-uarg-type-temp-reg-0-main-registers and main-regs-load-global-type-temp-reg-0
+load-uarg-type-temporary-main-registers and main-regs-load-global-type-temporary
+load-uarg-type-val-main-registers and main-regs-load-global-type-val
+load-uarg-wind-forms-main-registers and main-regs-load-global-wind-forms
+load-uarg-word-thargs-stack-main-registers and main-regs-load-global-word-thargs-stack
+lsd-sb-0 and constant-nth-0-body
+lsd-sb-1 and constant-nth-1-body
+lsd-sb-2 and constant-nth-2-body
+lsd-sb-3 and constant-nth-3-body
+lsd-sb-4 and constant-nth-4-body
+main-regs-cross-bus-2-output-bits-interrupt-enables and pred-dma-interrupt-enables-data-senses
+main-regs-cross-bus-3-output-bits-interrupt-enables and pred-external-interrupt-enables-data-senses
+main-regs-phi1 and ns-regs-phi1
+main-regs-phi1 and phi1
+main-regs-phi1 and ua-regs-phi1
+main-regs-signal-=17 and pred-=17-class-main-bus-data-senses
+main-regs-signal-bus=-scan and pred-bus=-scan-data-senses
+main-regs-signal-datum-=0 and pred-=0-datum-main-bus-data-senses
+main-regs-signal-type-=0 and pred-=0-type-main-bus-data-senses
+non-uarg-cdr-bit-val-main-registers and main-regs-cdr-bit-cdr-bit-val
+non-uarg-load-local-cdr-bit-cont-stack-main-registers and main-regs-load-local-cdr-bit-cont-stack
+non-uarg-load-local-cdr-bit-thargs-stack-main-registers and main-regs-load-local-cdr-bit-thargs-stack
+non-uarg-load-local-cont-main-registers and main-regs-load-local-cont
+non-uarg-load-local-datum-cont-stack-main-registers and main-regs-load-local-datum-cont-stack
+non-uarg-load-local-datum-exp-main-registers and main-regs-load-local-datum-exp
+non-uarg-load-local-datum-free-main-registers and main-regs-load-local-datum-free
+non-uarg-load-local-datum-temporary-main-registers and main-regs-load-local-datum-temporary
+non-uarg-load-local-datum-val-main-registers and main-regs-load-local-datum-val
+non-uarg-load-local-env-main-registers and main-regs-load-local-env
+non-uarg-load-local-env-stack-main-registers and main-regs-load-local-env-stack
+non-uarg-load-local-scan-main-registers and main-regs-load-local-scan
+non-uarg-load-local-thargs-main-registers and main-regs-load-local-thargs
+non-uarg-load-local-type-cont-stack-main-registers and main-regs-load-local-type-cont-stack
+non-uarg-load-local-type-exp-main-registers and main-regs-load-local-type-exp
+non-uarg-load-local-type-val-main-registers and main-regs-load-local-type-val
+non-uarg-load-local-wind-forms-main-registers and main-regs-load-local-wind-forms
+non-uarg-load-local-word-thargs-stack-main-registers and main-regs-load-local-word-thargs-stack
+non-uarg-load-shadow-cont-main-registers and main-regs-load-shadow-cont
+non-uarg-load-shadow-cont-stack-main-registers and main-regs-load-shadow-cont-stack
+non-uarg-load-shadow-env-main-registers and main-regs-load-shadow-env
+non-uarg-load-shadow-env-stack-main-registers and main-regs-load-shadow-env-stack
+non-uarg-load-shadow-exp-main-registers and main-regs-load-shadow-exp
+non-uarg-load-shadow-thargs-main-registers and main-regs-load-shadow-thargs
+non-uarg-load-shadow-thargs-stack-main-registers and main-regs-load-shadow-thargs-stack
+non-uarg-load-shadow-val-main-registers and main-regs-load-shadow-val
+non-uarg-load-shadow-wind-forms-main-registers and main-regs-load-shadow-wind-forms
+non-uarg-negate-index-preparer-exp-main-registers and main-regs-negate-index-preparer-exp
+non-uarg-nth-0-body and lsd-sb-5
+non-uarg-nth-1-body and lsd-sb-6
+non-uarg-nth-2-body and lsd-sb-7
+non-uarg-nth-3-body and lsd-sb-8
+non-uarg-nth-4-body and lsd-sb-9
+non-uarg-nth-5-body and lsd-sb-10
+non-uarg-read-global-datum-source-main-registers and main-regs-read-datum-source
+non-uarg-read-global-index-adder-main-registers and main-regs-read-array-index-adder
+non-uarg-read-global-one-cdr-bit-main-registers and main-regs-input-1-cdr-bit
+non-uarg-read-global-type-source-main-registers and main-regs-read-type-source
+non-uarg-read-global-zero-cdr-bit-main-registers and main-regs-input-2-cdr-bit
+non-uarg-read-local-decrement-count-env-stack-main-registers and main-regs-input-decrement-count-env-stack
+non-uarg-read-local-decrement-val-main-registers and main-regs-input-decrement-val
+non-uarg-read-local-increment-count-env-stack-main-registers and main-regs-input-increment-count-env-stack
+non-uarg-read-local-increment-free-main-registers and main-regs-input-increment-free
+non-uarg-read-local-increment-scan-main-registers and main-regs-input-increment-scan
+non-uarg-read-local-increment-temporary-main-registers and main-regs-input-increment-temporary
+non-uarg-read-local-increment-val-main-registers and main-regs-input-increment-val
+non-uarg-read-local-left-shift-0-val-main-registers and main-regs-read-left-shift-0-val
+non-uarg-read-local-left-shift-1-val-main-registers and main-regs-read-left-shift-1-val
+non-uarg-read-local-right-shift-0-exp-main-registers and main-regs-read-right-shift-0-exp
+non-uarg-read-local-shadow-cont-main-registers and main-regs-read-shadow-cont
+non-uarg-read-local-shadow-cont-stack-main-registers and main-regs-read-shadow-cont-stack
+non-uarg-read-local-shadow-env-main-registers and main-regs-read-shadow-env
+non-uarg-read-local-shadow-env-stack-main-registers and main-regs-read-shadow-env-stack
+non-uarg-read-local-shadow-exp-main-registers and main-regs-read-shadow-exp
+non-uarg-read-local-shadow-thargs-main-registers and main-regs-read-shadow-thargs
+non-uarg-read-local-shadow-thargs-stack-main-registers and main-regs-read-shadow-thargs-stack
+non-uarg-read-local-shadow-val-main-registers and main-regs-read-shadow-val
+non-uarg-read-local-shadow-wind-forms-main-registers and main-regs-read-shadow-wind-forms
+non-uarg-read-local-type-to-datum-val-main-registers and main-regs-read-type-to-datum-val
+non-uarg-shift-index-preparer-exp-main-registers and main-regs-shift-index-preparer-exp
+ns-op-read-pc-stack-next-state-machine and ns-regs-read-stack
+ns-regs-freeze and pc-freeze
+ns-regs-pop-stack-2-stack and ns-op-pop-arg-stack-pc-stack-next-state-machine
+ns-regs-pop-stack-2-stack and ns-regs-pop-stack-1-stack
+ns-regs-push-stack-2-stack and ns-op-push-arg-stack-pc-stack-next-state-machine
+ns-regs-push-stack-2-stack and ns-regs-load-stack
+ns-regs-push-stack-2-stack and ns-regs-push-stack-1-stack
+ns-regs-push-stack-2-stack and ns-regs-read-explicit-pc-stack
+ns-regs-read-extra-type-cont and ns-op-read-extra-type-cont-next-state-machine
+ns-regs-read-false and ns-op-read-false-explicit-ns-next-state-machine
+ns-regs-read-true and ns-op-read-true-explicit-ns-next-state-machine
+ns-regs-read-user-type and ns-op-read-user-type-next-state-machine
+phi2 and main-regs-phi2
+phi2 and ns-regs-phi2
+pred--somebody-isnt-ready-to-gc-control-inputs-pad-senses and -somebody-isnt-ready-to-gc-control-inputs
+pred--somebody-needs-gc-control-inputs-pad-senses and -somebody-needs-gc-control-inputs
+pred-=0-count-env-stack-data-senses and main-regs-signal-zero-count?-env-stack
+pred-=2-type-exp-data-senses and main-regs-signal-=2-type-exp
+pred-=36-count-env-stack-data-senses and main-regs-signal-rack-count-full?-env-stack
+pred-bus=-datum-val-data-senses and main-regs-signal-datum-bus=-val
+pred-cdr-bit-cont-stack-data-senses and main-regs-cross-bus-0-rack-flag-cont-stack
+pred-cdr-bit-thargs-stack-data-senses and main-regs-cross-bus-0-rack-flag-thargs-stack
+pred-cons-server-interrupt-enables-data-senses and main-regs-cross-bus-1-output-bits-interrupt-enables
+pred-free=memtop-data-senses and main-regs-signal-free=memtop
+pred-sign-bit-datum-exp-data-senses and main-regs-cross-bus-0-sign-bit-exp
+pred-sign-bit-datum-val-data-senses and main-regs-cross-bus-0-sign-bit-val
+pred-temporary=machine-number-data-senses and main-regs-signal-temporary-equal-machine-number
+read-uarg-cdr-bit-cont-stack-main-registers and main-regs-read-cdr-bit-cont-stack
+read-uarg-cdr-bit-thargs-stack-main-registers and main-regs-read-cdr-bit-thargs-stack
+read-uarg-constant-register-2-main-registers and main-regs-read-constant-register-2
+read-uarg-cont-main-registers and main-regs-read-cont
+read-uarg-datum-constant-register-0-main-registers and main-regs-read-datum-constant-register-0
+read-uarg-datum-constant-register-1-main-registers and main-regs-read-datum-constant-register-1
+read-uarg-datum-cont-stack-main-registers and main-regs-read-datum-cont-stack
+read-uarg-datum-exp-main-registers and main-regs-read-datum-exp
+read-uarg-datum-free-main-registers and main-regs-read-datum-free
+read-uarg-datum-temp-reg-0-main-registers and main-regs-read-datum-temp-reg-0
+read-uarg-datum-temporary-main-registers and main-regs-read-datum-temporary
+read-uarg-datum-val-main-registers and main-regs-read-datum-val
+read-uarg-env-main-registers and main-regs-read-env
+read-uarg-env-stack-main-registers and main-regs-read-env-stack
+read-uarg-errcode-main-registers and main-regs-read-errcode
+read-uarg-interrupt-enables-main-registers and main-regs-read-interrupt-enables
+read-uarg-machine-number-main-registers and main-regs-read-machine-number
+read-uarg-memtop-main-registers and main-regs-read-memtop
+read-uarg-nth-0-body and lsd-sb-17
+read-uarg-nth-1-body and lsd-sb-18
+read-uarg-nth-2-body and lsd-sb-19
+read-uarg-nth-3-body and lsd-sb-20
+read-uarg-nth-4-body and lsd-sb-21
+read-uarg-nth-5-body and lsd-sb-22
+read-uarg-scan-main-registers and main-regs-read-scan
+read-uarg-thargs-main-registers and main-regs-read-thargs
+read-uarg-type-constant-register-0-main-registers and main-regs-read-type-constant-register-0
+read-uarg-type-constant-register-1-main-registers and main-regs-read-type-constant-register-1
+read-uarg-type-cont-stack-main-registers and main-regs-read-type-cont-stack
+read-uarg-type-exp-main-registers and main-regs-read-type-exp
+read-uarg-type-free-main-registers and main-regs-read-type-free
+read-uarg-type-temp-reg-0-main-registers and main-regs-read-type-temp-reg-0
+read-uarg-type-temporary-main-registers and main-regs-read-type-temporary
+read-uarg-type-val-main-registers and main-regs-read-type-val
+read-uarg-wind-forms-main-registers and main-regs-read-wind-forms
+read-uarg-word-thargs-stack-main-registers and main-regs-read-word-thargs-stack
+ua-regs-freeze and main-regs-freeze
+ua-regs-load-global-arg-1 and uarg-op-load-transfer-bus-push-source-arg1-stack-uarg-stacks
+ua-regs-load-local-arg-2 and ua-regs-pop-stack-0-arg-2
+ua-regs-load-local-arg-2 and ua-regs-pop-stack-1-arg-2
+ua-regs-load-local-target and uarg-op-pop-arg-stack-target-stack-uarg-stacks
+ua-regs-pop-stack-0-arg-1 and ua-regs-pop-stack-1-arg-1
+ua-regs-pop-stack-0-arg-1 and uarg-op-pop-arg-stack-arg1-stack-uarg-stacks
+ua-regs-push-stack-0-arg-2 and uarg-op-push-arg-stack-arg2-stack-uarg-stacks
+ua-regs-read-read-output-arg-1 and cont-arg1-stack-read-source
+ua-regs-read-read-output-arg-2 and cont-arg2-stack-read-source
+ua-regs-read-write-output-target and cont-target-stack-load-source
+uarg-op-nth-1-code and cont-top-nth-1-op-decoder
+uarg-op-nth-2-code and cont-top-nth-2-op-decoder
+uarg-op-nth-4-code and cont-top-nth-4-op-decoder
+uarg-op-push-arg-stack-target-stack-uarg-stacks and ua-regs-push-stack-0-target
+uarg-op-push-arg-stack-target-stack-uarg-stacks and ua-regs-push-stack-1-target
+uarg-op-true and ns-op-true
+uarg-op-true and true-line

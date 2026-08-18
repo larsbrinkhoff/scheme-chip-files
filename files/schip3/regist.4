@@ -1,0 +1,1978 @@
+;;; -*- Mode: Lisp; Base: 10.; Package: dpl -*-
+
+;;;; basic cells
+
+(deflayout matrix
+   `((primary-parameters
+       ((vdd-stretch 0.) (gnd-stretch 0.) (width 58.) (continue-value? nil))))
+   (part 'bus rectangle (bottom-left (pt -9. 36.)) (length 3.) (width (>> width))
+	 (layer 'metal))
+   (part 'vdd rectangle (bottom-left (pt -9. 23.)) (length 3.) (width (>> width))
+	 (layer 'metal))
+   (part 'gnd rectangle (bottom-left (pt -9. 2.)) (length 3.) (width (>> width))
+	 (layer 'metal))
+   (conditional-part (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt -9 16.)) (length 4.) (width (>> width))
+     (layer 'metal))
+   (conditional-part (>> continue-value?)
+      'local-bus rectangle (bottom-left (pt -9 -5.)) (length 3.) (width (>> width))
+      (layer 'metal))
+   (fracture gnd-stretch horizontal (pt 8. 4.))
+   (fracture vdd-stretch horizontal (pt 42. 25.)))
+
+
+;;; a cell for filling in a column of associates to some unsplit register
+;;; this cell simply feeds value to local bus
+;;; the control line of this guy is named read-to-local-bus
+(deflayout dummy-associate
+  `((primary-parameters 
+    ((top-stretch 0.) (vdd-stretch 0.)
+     (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.))))
+  (part 'bus rectangle (bottom-left (pt 101.0 40.0)) (length 3.0) (width 9.0) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 101.0 27.0)) (length 3.0) (width 9.0) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 101.0 6.0)) (length 3.0) (width 9.0) (layer 'metal))
+  (part 'read-to-local-bus rectangle (bottom-left (pt 102. -3.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (part 'value-in rectangle (bottom-left (pt 101. 21.)) (length 3.0) (width 9.0) 
+    (layer 'metal))
+  (part 'local-bus rectangle (bottom-left (pt 101. -1.)) (length 3.0) (width 9.0) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 105. 20.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 105. -1.)))
+  (part nil rectangle (bottom-left (pt 105. 3.)) (top-right (pt 107. 20.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 104. 15.)) (top-right (pt 109. 17.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 102. 31.))
+  (fracture right-stretch vertical (pt 109. 17.))
+  (fracture bottom-stretch horizontal (pt 147. -2.))
+  (fracture gnd-stretch horizontal (pt 109. 8.))
+  (fracture vdd-stretch horizontal (pt 145. 29.))
+  (fracture top-stretch horizontal (pt 118. 43.)))
+
+;;; a cell for jumping a bus over a power line.  The jumper is on poly.
+;;; bus-space should be set to the width of the power line being jumped.
+;;; bus-connection is where the bus is touched
+;;; output-connection is where to route a connecting signal to
+
+
+(deflayout power-jumper
+   `((primary-parameters 
+       ((bus-space 0.) (left-stretch 0) (layer 'poly)
+	(bridge-width 2)
+	(left-cut? t) (right-cut? t) (bridge? t)))
+     (auxiliary-parameters (bus-space-left bus-space-right (xfrm 'identity)))
+     (constraints ((horizontal-stretch bus-space-left bus-space-right bus-space xfrm))))
+    (part 'left-connector rectangle
+	  (bottom-left (pt 1. -1.)) (top-right (pt 2. 3.)) (layer 'metal))
+    (conditional-part (>> left-cut?)
+       'left-cut square-contact (layer (>> layer)) (bottom-left (pt 2. -1.)))
+    (conditional-part (>> bridge?)
+      'pass-by rectangle (width 6) (length (>> bridge-width))
+      (center-left (>> center-right left-cut)) (layer (>> layer)))
+    (conditional-part (>> right-cut?)
+       'right-cut square-contact (layer (>> layer)) (bottom-left (pt 12. -1.)))
+    (setq-my bus-connection (pt 1 1.5))
+    (setq-my output-connection (pt 16. 1.))
+    (fracture bus-space vertical (pt 9. 2.))
+    (setq-my bus-space-left (pt 9. 2.))
+    (fracture left-stretch vertical (>> (*pt-to-right* 1) bottom-left left-connector)))
+
+
+
+;;;; basic normal register
+
+;;; if neither continue-value? nor left-local-connect are present then there is
+;;; no need for the load-local control line and it is omitted and the width compressed.
+;;; driver for this cell should also know about this.
+
+
+
+(deflayout normal-register
+  `((primary-parameters 
+    ( (local-bus? t) (left-output-connect nil) (left-local-connect nil) (continue-value? nil)
+       (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+       (right-stretch 0.) (left-stretch 0.))))
+  (part nil rectangle (bottom-left (pt 4.0 30.0)) (length 2.0) (width 17.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 37. 35.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -4. 35.)))
+  (part 'bus rectangle (width 54.0) (length 3.0) (bottom-left (pt -9.0 36.0)) (layer 'metal))
+  (part 'vdd rectangle (width 54.0) (length 3.0) (bottom-left (pt -9.0 23.0)) (layer 'metal))
+  (part 'gnd rectangle (width 54.0) (length 3.0) (bottom-left (pt -9.0 2.0)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. 1.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 13. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 25. 21.)))
+  (part nil rectangle (width 9.0) (length 2.0) (bottom-left (pt 31.0 7.0)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 7.0 6.0)) (length 2.0) (width 9.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 10.0 1.0)) (length 9.0) (width 4.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 33.0 2.0)) (length 10.0) (width 4.0) (layer 'diff))
+  (part nil rectangle (width 2.0) (length 23.0) (bottom-left (pt 39.0 12.0)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 21. 29.)))
+  (part nil rectangle (bottom-left (pt 34.0 29.0)) (length 2.0) (width 7.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 26.0 -4.0)) (length 2.0) (width 8.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 1.0 13.0)) (length 18.0) (width 2.0) (layer 'diff))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt 39.0 16.0)) (length 4.0) (width 6.0) 
+    (layer 'metal))
+  (conditional-part
+    (>> local-bus?) 
+     'local-bus rectangle (width 46.0) (length 3.0) (bottom-left (pt -1.0 -5.0)) 
+    (layer 'metal))
+  (conditional-part
+    (>> local-bus?) 
+     nil square-contact (layer 'diff) (bottom-left (pt -5. -5.)))
+  (conditional-part
+    (>> local-bus?) 
+     'load-local rectangle (bottom-left (pt -8. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (conditional-part
+    (>> local-bus?) 
+     nil rectangle (width 5.0) (length 2.0) (bottom-left (pt -6.0 4.0)) (layer 'poly))
+  (conditional-part
+    (>> local-bus?) 
+     nil rectangle (width 2.0) (length 16.0) (top-right (pt -3. 15.)) (layer 'diff))
+  (conditional-part
+    (>> left-output-connect) 
+     'value-out-left rectangle (bottom-left (pt -9. 29.)) (length 3.0) (width 30.0) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 21.0 29.0)) (length 3.0) (width 9.0) (layer 'metal))
+  (conditional-part
+    (>> left-local-connect) 
+     'left-local-bus-connect rectangle (bottom-left (pt -9. -5.)) (top-right (pt -2. -2.)) 
+    (layer 'metal))
+  (part 'read rectangle (width 2.0) (length 47.0) (bottom-left (pt 42.0 -7.0)) (layer 'poly))
+  (part nil rectangle (width 5.0) (length 2.0) (bottom-left (pt 37.0 32.0)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 33. 2.)))
+  (part nil rectangle (bottom-left (pt 38.0 -1.0)) (length 8.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 26.0 -2.0)) (length 14.0) (width 2.0) (layer 'diff))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 13. 11.)) 
+    (xfrm 'negx))
+  (part nil rectangle (top-right (pt 4. 15.)) (bottom-left (pt -3. 13.)) (layer 'diff))
+  (part nil rectangle (width 2.0) (length 6.0) (top-right (pt 6. 35.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 6. 15.)) (length 19.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (top-right (pt 9. 6.)) (length 7.0) (width 2.0) (layer 'poly))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 40. 25.)) 
+    (xfrm 'int-neg))
+  (part nil rectangle (bottom-left (pt 9.0 10.0)) (length 2.0) (width 5.0) (layer 'diff))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 4. 16.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 14. 9.)))
+  (part nil rectangle (top-right (pt 28. 12.)) (length 3.0) (width 23.0) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 26. 8.)))
+  (part nil rectangle (bottom-left (pt 5.0 9.0)) (length 8.0) (width 4.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 25.0 2.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (part nil rectangle (top-right (pt 6. 37.)) (bottom-left (pt 0. 35.)) (layer 'diff))
+  (wire 'load-global (from (pt 2. -7.)) (run-layer 'poly) (jog-y (pt 0. 10.)) 
+      (run-layer 'metal) (jog-x (pt -2. 18.)) (run-layer 'poly) (jog-y (pt 2. 33.)) 
+      (to-y (pt 1. 40.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 34. 15.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 35. 10.)))
+  (part nil rectangle (top-right (pt 39. 20.)) (length 6.0) (width 4.0) (layer 'metal))
+  (part nil buried-contact (bottom-left (pt 5. -5.)))
+  (part nil buried-contact (bottom-left (pt 34. -5.)))
+  (part nil rectangle (bottom-left (pt 36. -2.)) (top-right (pt 38. 1.)) (layer 'poly))
+  (wire 'restore (from (pt 19. 40.)) (run-layer 'poly) (jog-y (pt 20. 15.)) 
+      (jog-y (pt 19. -3.)) (to-y (pt 23. -7.)))
+  (part nil rectangle (bottom-left (pt 1. 29.)) (top-right (pt 4. 31.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 9. 22.)) (top-right (pt 13. 24.)) (layer 'diff))
+  (wire 'phi-2 (from (pt 24. 40.)) (run-layer 'poly) (jog-y (pt 27. 35.)) 
+      (jog-y (pt 23. 27.)) (jog-y (pt 24. 19.)) (to-y (pt 23. -7.)))
+  (fracture left-stretch vertical (pt -8. 32.))
+  (fracture right-stretch vertical (pt 44. 26.))
+  (fracture bottom-stretch horizontal (pt 43. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 4.))
+  (fracture vdd-stretch horizontal (pt 42. 25.))
+  (fracture top-stretch horizontal (pt 34. 39.)))
+
+
+
+;;;; backup register 
+
+
+
+
+(deflayout shadow-register
+  `((primary-parameters 
+    ((top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+     (right-stretch 0.) (left-stretch 0.))))
+  (part 'bus rectangle (layer 'metal) (width 48.0) (length 3.0) (bottom-left (pt 0.0 36.0)))
+  (part 'vdd rectangle (layer 'metal) (width 48.0) (length 3.0) (bottom-left (pt 0.0 23.0)))
+  (part 'gnd rectangle (layer 'metal) (width 48.0) (length 3.0) (bottom-left (pt 0.0 2.0)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 14. 1.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 13. 23.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 23.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 31. 1.)))
+  (part 'value-bar rectangle (width 18.0) (length 3.0) (bottom-left (pt 8.0 12.0)) 
+    (layer 'metal))
+  (part nil rectangle (layer 'poly) (bottom-left (pt 9.0 6.0)) (length 2.0) (width 8.0))
+  (part nil rectangle (layer 'diff) (bottom-left (pt 11.0 2.0)) (length 8.0) (width 4.0))
+  (part nil rectangle (layer 'diff) (width 2.0) (length 31.0) (bottom-left (pt 42.0 -2.0)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 10.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 40. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 29.)))
+  (part nil rectangle (layer 'metal) (width 15.0) (length 3.0) (bottom-left (pt 26. 30.)))
+  (part nil rectangle (layer 'diff) (top-right (pt 17. 33.)) (bottom-left (pt 17. 33.)))
+  (part nil rectangle (layer 'diff) (bottom-left (pt 0.0 31.0)) (length 2.0) (width 22.0))
+  (part nil rectangle (layer 'metal) (top-right (pt 13. 26.)) (bottom-left (pt 13. 26.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 0. 29.)))
+  (part nil rectangle (layer 'diff) (bottom-left (pt 5.0 -3.0)) (length 28.0) (width 2.0))
+  (part 'local-bus rectangle (layer 'metal) (width 41.0) (length 3.0) 
+    (bottom-left (pt 0.0 -5.0)))
+  (part nil rectangle (layer 'diff) (width 11.0) (length 4.0) (bottom-left (pt 32.0 3.0)))
+  (part nil rectangle (layer 'poly) (width 5.0) (length 2.0) (bottom-left (pt 40.0 0.0)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 40. -5.)))
+  (wire 'phi-2 (from (pt 28. 40.)) (run-layer 'poly) (to-y (pt 21. -7.)))
+  (part 'read rectangle (layer 'poly) (width 2.0) (length 47.0) (bottom-left (pt 45.0 -7.0)))
+  (part nil rectangle (layer 'diff) (width 2.0) (length 5.0) (top-right (pt 32. 23.)))
+  (part nil rectangle (width 8.0) (length 2.0) (bottom-left (pt 26.0 10.0)) (layer 'diff))
+  (part nil rectangle (layer 'diff) (width 2.0) (length 6.0) (bottom-left (pt 33.0 1.0)))
+  (part nil rectangle (layer 'poly) (width 2.0) (length 8.0) (bottom-left (pt 36.0 1.0)))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 11. 24.)) 
+    (xfrm 'negy))
+  (part nil rectangle (layer 'poly) (bottom-left (pt 8.0 0.0)) (length 8.0) (width 2.0))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 8. 14.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 11. 9.)))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 43. 16.)) 
+    (xfrm 'rot90))
+  (part nil buried-contact (bottom-left (pt 6. -4.)))
+  (part nil buried-contact (bottom-left (pt 34. 9.)))
+  (part nil buried-contact (bottom-left (pt 43. 23.)) (xfrm 'negx))
+  (part nil rectangle (layer 'poly) (top-right (pt 41. 24.)) (bottom-left (pt 39. 22.)))
+  (part nil rectangle (top-right (pt 10. 31.)) (bottom-left (pt 8. 23.)) (layer 'diff))
+  (wire 'load (from (pt 2. 40.)) (run-layer 'poly) (jog-y (pt 6. 35.)) (jog-y (pt 2. 27.)) 
+      (to-y (pt 3. -7.)))
+  (part nil rectangle (top-right (pt 9. 25.)) (bottom-left (pt 6. 23.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 15. 12.)) (bottom-left (pt 13. 9.)) (layer 'diff))
+  (part 'restore rectangle (top-right (pt 21. 40.)) (bottom-left (pt 19. -7.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 1. 8.))
+  (fracture right-stretch vertical (pt 47. 6.))
+  (fracture bottom-stretch horizontal (pt 40. -6.))
+  (fracture gnd-stretch horizontal (pt 34. 3.))
+  (fracture vdd-stretch horizontal (pt 39. 25.))
+  (fracture top-stretch horizontal (pt 40. 39.)))
+
+
+
+;;; a register to hold the pc in the next state machine
+;;; it never restores and must load every phi-1
+
+(deflayout pc-reg
+  `((primary-parameters 
+    ( (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+       (right-stretch 0.) (left-stretch 0.))))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 39. 35.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 12. 35.)))
+  (part 'bus rectangle (bottom-left (pt 8.0 36.0)) (length 3.0) (width 40.0) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 8.0 23.0)) (length 3.0) (width 40.0) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 8.0 2.0)) (length 3.0) (width 40.0) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 17. 1.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 29. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 36. 2.)))
+  (part nil rectangle (bottom-left (pt 22.0 -2.0)) (length 8.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 31.0 7.0)) (length 2.0) (width 11.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 29.0 17.0)) (length 6.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 15.0 6.0)) (length 2.0) (width 9.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 17.0 1.0)) (length 9.0) (width 4.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 37.0 10.0)) (length 2.0) (width 6.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 36.0 2.0)) (length 10.0) (width 4.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 41.0 10.0)) (length 25.0) (width 2.0) (layer 'diff))
+  (part 'phi-2 rectangle (bottom-left (pt 26.0 -7.0)) (length 47.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 17.0 10.0)) (length 2.0) (width 16.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 12.0 -5.0)) (length 40.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 11. 32.)) (length 2.0) (width 5.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 39.0 32.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (part 'load rectangle (bottom-left (pt 9. -7.)) (top-right (pt 11. 40.)) (layer 'poly))
+  (part 'read rectangle (bottom-left (pt 44.0 -7.0)) (length 47.0) (width 2.0) (layer 'poly))
+  (part nil buried-contact (bottom-left (pt 13. -6.)))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 42. 15.)) 
+    (xfrm 'rot90))
+  (part nil buried-contact (bottom-left (pt 41. 21.)) (xfrm 'negx))
+  (part nil buried-contact (bottom-left (pt 34. 11.)) (xfrm 'int-neg))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 19. 29.)))
+  (part nil rectangle (bottom-left (pt 17. 10.)) (top-right (pt 19. 29.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 15. -2.)) (top-right (pt 24. 0.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 19. 23.)) (top-right (pt 23. 29.)) (layer 'metal))
+  (part nil side-winder-buried-contact-pullup (bottom-left (pt 23. 13.)) (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt 17. 28.)) (top-right (pt 23. 30.)) (layer 'diff))
+  (fracture left-stretch vertical (pt 9. 21.))
+  (fracture right-stretch vertical (pt 46. 12.))
+  (fracture bottom-stretch horizontal (pt 43. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 4.))
+  (fracture vdd-stretch horizontal (pt 42. 25.))
+  (fracture top-stretch horizontal (pt 34. 39.)))
+
+
+
+
+
+;;;; incrementer or decrementer
+
+
+(deflayout incrementer-decrementer
+  `((primary-parameters 
+    ((increment-or-decrement 'increment) (bottom-bit? nil) (top-stretch 0.) (vdd-stretch 0.)
+     (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.))))
+  (part 'bus rectangle (bottom-left (pt 101.0 40.0)) (length 3.0) (width 54.0) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 101.0 27.0)) (length 3.0) (width 54.0) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 101.0 6.0)) (length 3.0) (width 54.0) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 116. 5.)))
+  (part nil rectangle (bottom-left (pt 108.0 11.0)) (length 9.0) (width 2.0) (layer 'poly))
+  (part 'read-to-local-bus rectangle (bottom-left (pt 102. -3.)) (length 47.) (width 2.) 
+    (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 105. 41.)) (length 2.0) (width 15.0) (layer 'diff))
+  (part 'value-in rectangle (bottom-left (pt 101.0 20.0)) (length 3.0) (width 54.0) 
+    (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 108. 20.)))
+  (part nil rectangle (top-right (pt 118. 8.)) (bottom-left (pt 113. 6.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 108.0 9.0)) (length 2.0) (width 7.0) (layer 'poly))
+  (part nil rectangle (layer 'diff) (bottom-left (pt 134.0 4.0)) (length 10.0) (width 2.0))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 135. 27.)))
+  (part 'carry-out-bar rectangle (bottom-left (pt 144.0 -3.0)) (length 15.0) (width 2.0) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt 140.0 10.0)) (length 2.0) (width 4.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 143.0 6.0)) (length 2.0) (width 6.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 147.0 6.0)) (length 9.0) (width 2.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 118. 26.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 139. 5.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 152. 37.)) (bottom-left (pt 148. 35.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 145. 42.)) (bottom-left (pt 128. 40.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 144. 35.)) (length 2.0) (width 13.0) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 144. 37.)) (bottom-left (pt 112. 34.)) (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 108. 33.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 144. 33.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'carry-in rectangle (bottom-left (pt 150.0 35.0)) (length 9.0) (width 2.0) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'carry-in-bar rectangle (bottom-left (pt 144.0 40.0)) (length 4.0) (width 2.0) 
+    (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'carry-bar-pass pass-transistor (bottom-left (pt 116. 36.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 115. 41.)) (bottom-left (pt 113. 38.)) (layer 'diff))
+  (part 'local-bus rectangle (bottom-left (pt 101. -1.)) (length 3.0) (width 54.0) 
+    (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'carry-flash rectangle (layer 'poly) (bottom-left (pt 131.0 2.0)) (length 31.0) 
+    (width 2.0))
+  (conditional-part
+    (eq (>> increment-or-decrement) (quote increment)) 
+     'value-flash rectangle (layer 'poly) (bottom-left (pt 126.0 2.0)) (length 22.0) 
+    (width 2.0))
+  (part nil rectangle (layer 'diff) (bottom-left (pt 105. 0.)) (length 32.0) (width 2.0))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 107. -1.)))
+  (part nil rectangle (bottom-left (pt 104.0 4.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part
+    (not (and (>> bottom-bit?) (eq (>> increment-or-decrement) (quote decrement)))) 
+     nil square-contact (layer 'poly) (bottom-left (pt 125. 20.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 124. 22.)) (length 10.0) (width 2.0) (layer 'poly))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 116. 15.)))
+  (part nil rectangle (bottom-left (pt 118. 14.)) (top-right (pt 120. 17.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 113. 12.)) (length 2.0) (width 7.0) (layer 'diff))
+  (conditional-part
+    (eq (>> increment-or-decrement) (quote decrement)) 
+     'value-bar-flash rectangle (layer 'poly) (bottom-left (pt 121.0 2.0)) (length 9.0) 
+    (width 2.0))
+  (part nil rectangle (bottom-left (pt 111. 6.)) (top-right (pt 113. 14.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 113. 14.)) (top-right (pt 115. 32.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 101. 20.)) (top-right (pt 105. 24.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 150. 20.)) (length 4.0) (width 5.0) (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 122. 38.)) (top-right (pt 130. 40.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 118. 33.)) (length 2.0) (width 4.0) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 118. 33.)) (top-right (pt 120. 37.)) (layer 'diff))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 135. 16.)))
+  (part nil rectangle (bottom-left (pt 140. 12.)) (top-right (pt 142. 20.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 146. 13.)) (top-right (pt 148. 18.)) (layer 'diff))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 150. 28.)) 
+    (xfrm 'rot180))
+  (part nil rectangle (bottom-left (pt 134. 13.)) (length 2.0) (width 5.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 137. 13.)) (top-right (pt 139. 18.)) (layer 'diff))
+  (part 'carry-out rectangle (bottom-left (pt 150. -3.)) (top-right (pt 152. 20.)) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt 139. 27.)) (top-right (pt 148. 29.)) (layer 'diff))
+  (part nil buried-contact (bottom-left (pt 119. 11.)))
+  (part nil rectangle (bottom-left (pt 121. 15.)) (top-right (pt 123. 19.)) (layer 'poly))
+  (part nil buried-contact (bottom-left (pt 138. 12.)))
+  (part nil buried-contact (bottom-left (pt 148. 12.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil buried-contact (bottom-left (pt 122. 32.)))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (layer 'diff) (bottom-left (pt 107.0 30.0)) (length 2.0) (width 6.0))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (layer 'diff) (top-right (pt 107. 42.)) (length 10.0) (width 2.0))
+  (part nil rectangle (layer 'diff) (bottom-left (pt 116. 4.)) (top-right (pt 134. 6.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil pass-transistor (center (pt 114. 35.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (layer 'diff) (bottom-left (pt 120. 6.)) (top-right (pt 134. 8.)))
+  (fracture left-stretch vertical (pt 102. 31.))
+  (fracture right-stretch vertical (pt 153. 17.))
+  (fracture bottom-stretch horizontal (pt 147. -2.))
+  (fracture gnd-stretch horizontal (pt 109. 8.))
+  (fracture vdd-stretch horizontal (pt 145. 29.))
+  (fracture top-stretch horizontal (pt 118. 43.)))
+
+
+
+(defdefault eq-test-hack (right-source continue-value?)
+  (continue-value? (right-source) (not (eq right-source 'neighbor)))
+  (right-source (continue-value?) (if (eq continue-value? t) 'global 'bail-out)))
+
+(deflayout eq-test
+  `((primary-parameters 
+    ( (right-source 'global) (continue-value? t) (bottom-bit? t) (top-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.)
+       (left-stretch 0.))))
+  (part nil rectangle (layer 'poly) (bottom-left (pt 106. 40.)) (length 2.0) (width 14.0))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 107. 5.)))
+  (part nil rectangle (bottom-left (pt 120.0 27.0)) (length 6.0) (width 4.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 110.0 11.0)) (length 9.0) (width 2.0) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 108. 20.)))
+  (part nil rectangle (bottom-left (pt 114.0 6.0)) (length 2.0) (width 7.0) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 107. 27.)))
+  (part nil rectangle (width 2.0) (length 11.0) (bottom-left (pt 107.0 6.0)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 108.0 -1.0)) (length 2.0) (width 29.0) (layer 'diff))
+  (conditional-part
+    (eq (>> right-source) (quote global)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 139. 39.)))
+  (part nil rectangle (bottom-left (pt 120.0 2.0)) (length 2.0) (width 23.0) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 133. 27.)))
+  (part nil rectangle (bottom-left (pt 128.0 21.0)) (length 13.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 118.0 29.0)) (length 2.0) (width 8.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 123.0 32.0)) (length 2.0) (width 6.0) (layer 'diff))
+  (part 'signal rectangle (bottom-left (pt 104.0 -3.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (part 'value-in rectangle (width 5.0) (length 3.0) (top-right (pt 108. 24.)) (layer 'metal))
+  (part 'bus rectangle (bottom-left (pt 103.0 40.0)) (length 3.0) (width 41.0) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 103.0 27.0)) (length 3.0) (width 41.0) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 103.0 6.0)) (length 3.0) (width 41.0) (layer 'metal))
+  (conditional-part
+    (and (>> continue-value?) (not (eq (>> right-source) (quote neighbor)))) 
+     'value-out rectangle (bottom-left (pt 112. 21.)) (length 3.0) (width 32.0) 
+    (layer 'metal))
+  (conditional-part
+    (>> continue-value?) 
+     'local-bus rectangle (bottom-left (pt 103.0 -1.0)) (length 3.0) (width 41.0) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 121.0 33.0)) (length 7.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 141.0 2.0)) (length 22.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 133.0 0.0)) (length 6.0) 
+    (width (if (eq (>> right-source) (quote neighbor)) 2. 4.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 122.0 1.0)) (length 5.0) 
+    (width (if (eq (>> right-source) (quote neighbor)) 4. 8.)) (layer 'diff))
+  (conditional-part
+    (eq (>> right-source) (quote neighbor)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 139. 20.)))
+  (conditional-part
+    (eq (>> right-source) (quote neighbor)) 
+     'neighbor-connect rectangle (bottom-left (pt 141.0 20.0)) (length 4.0) (width 3.0) 
+    (layer 'metal))
+  (conditional-part
+    (eq (>> right-source) (quote global)) 
+     nil rectangle (bottom-left (pt 141.0 24.0)) (length 15.0) (width 2.0) (layer 'poly))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 112. 26.)))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 131. 16.)))
+  (part nil rectangle (top-right (pt 115. 17.)) (bottom-left (pt 109. 15.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 109. 9.)) (bottom-left (pt 107. -1.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 117.0 19.0)) (length 11.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (top-right (pt 116. 39.)) (bottom-left (pt 111. 37.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 111. 39.)) (bottom-left (pt 109. 27.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 113. 17.)) (length 7.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 116.0 19.0)) (length 2.0) (width 3.0) (layer 'poly))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 136. 35.)) 
+    (xfrm 'rot90))
+  (part nil rectangle (layer 'diff) (bottom-left (pt 114.0 22.0)) (length 17.0) (width 2.0))
+  (part nil rectangle (bottom-left (pt 115. 9.)) (top-right (pt 122. 11.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 115. 1.)) (top-right (pt 119. 10.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 122. 6.)) (top-right (pt 124. 27.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 133. 6.)) (top-right (pt 135. 16.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 128.0 13.0)) (length 5.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 112. 6.)) (top-right (pt 114. 13.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 124. 21.)) (top-right (pt 129. 25.)) (layer 'diff))
+  (part nil rectangle (top-right (pt 134. 12.)) (length 2.0) (width 3.0) (layer 'diff))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (bottom-left (pt 135. 27.)) (top-right (pt 137. 39.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 125. 18.)) (top-right (pt 127. 27.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 127. 18.)) (top-right (pt 131. 20.)) (layer 'poly))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (bottom-left (pt 121. 37.)) (top-right (pt 126. 39.)) (layer 'diff))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (bottom-left (pt 124. 40.)) (top-right (pt 134. 42.)) (layer 'poly))
+  (part nil buried-contact (bottom-left (pt 132. 9.)) (xfrm 'negx))
+  (part nil buried-contact (bottom-left (pt 114. 15.)))
+  (part nil buried-contact (bottom-left (pt 124. 38.)) (xfrm 'rot90))
+  (fracture left-stretch vertical (pt 104. 5.))
+  (fracture right-stretch vertical (pt 143. 17.))
+  (fracture bottom-stretch horizontal (pt 103. -2.))
+  (fracture gnd-stretch horizontal (pt 117. 8.))
+  (fracture vdd-stretch horizontal (pt 118. 28.))
+  (fracture top-stretch horizontal (pt 120. 43.)))
+
+
+
+;;;; Arbitary bit pattern tester
+
+(defdefault global-continue-hack (local-or-global continue-value?)
+  (continue-value? (local-or-global) (if (eq local-or-global 'global) () 'bail-out))
+  (local-or-global (continue-value?) (if (null continue-value?) 'local 'bail-out)))
+
+
+(deflayout bit-tester
+  `((primary-parameters 
+      ((zero-or-one 'zero) (local-or-global 'global) (continue-value? nil) (bottom-bit? t)
+       (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+       (right-stretch 0.) (left-stretch 0.)))
+    (constraints ((global-continue-hack local-or-global continue-value?))))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (bottom-left (pt 125.0 14.0)) (length 8.0) (width 2.0) (layer 'poly))
+  (conditional-part
+    (and (eq (>> local-or-global) (quote local)) (eq (>> zero-or-one) (quote one))) 
+     nil square-contact (layer 'poly) (bottom-left (pt 125. 20.)))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (width 4.0) (length 13.0) (bottom-left (pt 119.0 6.0)) (layer 'diff))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (width 10.0) (length 2.0) (bottom-left (pt 117.0 12.0)) (layer 'poly))
+  (part 'foo rectangle (width 7.0) (length 2.0) (bottom-left (pt 114.0 5.0)) (layer 'diff))
+  (conditional-part
+    (and (eq (>> zero-or-one) (quote zero)) (eq (>> local-or-global) (quote local))) 
+     nil square-contact (layer 'poly) (bottom-left (pt 109. 20.)))
+  (part 'signal rectangle (width 2.0) (length 47.0) (bottom-left (pt 103.0 -3.0)) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     'value-in rectangle (width 10.0) (length 4.0) (bottom-left (pt 102. 20.)) (layer 'metal))
+  (part 'bus rectangle (width 28.) (length 3.) (bottom-left (pt 102. 40.)) (layer 'metal))
+  (part 'vdd rectangle (width 28.) (length 3.) (bottom-left (pt 102. 27.)) (layer 'metal))
+  (part 'gnd rectangle (width 28.) (length 3.) (bottom-left (pt 102. 6.)) (layer 'metal))
+  (part nil rectangle (width 9.0) (length 4.0) (bottom-left (pt 106.0 10.0)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 119. 5.)))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (width 5.0) (length 4.0) (top-right (pt 130. 24.)) (layer 'metal))
+  (conditional-part
+    (or (>> bottom-bit?) (eq (>> zero-or-one) (quote one))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 120. 32.)))
+  (conditional-part
+    (>> continue-value?) 
+     'local-bus rectangle (top-right (pt 130. 2.)) (bottom-left (pt 102. -1.)) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 125. 39.)))
+  (conditional-part
+    
+    (or (>> continue-value?) (and (eq (>> local-or-global) (quote local)) (eq (>> zero-or-one) (quote one)))) 
+     nil rectangle (top-right (pt 125. 24.)) (bottom-left (pt 112. 20.)) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 125.0 22.0)) (length 19.0) (width 2.0) (layer 'poly))
+  (conditional-part
+    (and (eq (>> zero-or-one) (quote zero)) (eq (>> local-or-global) (quote global))) 
+     nil rectangle (width 14.0) (length 2.0) (bottom-left (pt 111.0 22.0)) (layer 'poly))
+  (part nil rectangle (width 2.0) (length 14.0) (bottom-left (pt 111.0 8.0)) (layer 'poly))
+  (part nil buried-contact (bottom-left (pt 109. 13.)) (xfrm 'rot90))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil side-winder-buried-contact-pullup (bottom-left (pt 115. 16.)))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     nil rectangle (top-right (pt 121. 34.)) (bottom-left (pt 119. 27.)) (layer 'diff))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (top-right (pt 122. 39.)) (bottom-left (pt 120. 34.)) (layer 'diff))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     'one-flash rectangle (width 6.0) (length 2.0) (bottom-left (pt 111.0 22.0)) 
+    (layer 'poly))
+  (conditional-part
+    (or (>> bottom-bit?) (eq (>> zero-or-one) (quote one))) 
+     nil rectangle (top-right (pt 124. 36.)) (bottom-left (pt 120. 27.)) (layer 'metal))
+  (part nil rectangle (top-right (pt 116. 14.)) (bottom-left (pt 114. 6.)) (layer 'diff))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 109. 35.)) 
+    (xfrm 'int-pos))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil buried-contact (bottom-left (pt 109. 38.)) (xfrm 'rot90))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (top-right (pt 110. 39.)) (bottom-left (pt 106. 37.)) (layer 'diff))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (top-right (pt 113. 42.)) (bottom-left (pt 105. 40.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 103. 34.))
+  (fracture right-stretch vertical (pt 129. 22.))
+  (fracture bottom-stretch horizontal (pt 109. -2.))
+  (fracture gnd-stretch horizontal (pt 118. 7.))
+  (fracture vdd-stretch horizontal (pt 116. 28.))
+  (fracture top-stretch horizontal (pt 109. 43.)))
+
+
+
+;;;; constant sources
+
+(deflayout constant-source
+  `((primary-parameters 
+      ((zero-or-one 'one) (local-or-global 'local) (continue-value? t) (top-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.)
+       (left-stretch 0.))))
+  (part 'bus rectangle (bottom-left (pt 131. 39.)) (top-right (pt 141. 42.)) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 131. 26.)) (top-right (pt 141. 29.)) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 131. 5.)) (top-right (pt 141. 8.)) (layer 'metal))
+  (part 'read rectangle (bottom-left (pt 132. -4.)) (length 47.) (width 2.) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. 38.)))
+  (conditional-part (or (>> continue-value?) (eq (>> local-or-global) 'local))
+    'local-bus rectangle (bottom-left (pt 131. -2.)) (top-right (pt 141. 1.)) 
+    (layer 'metal))
+  (conditional-part
+    (eq (>> zero-or-one) (quote one)) 
+     'one-contact square-contact (layer 'diff) (bottom-left (pt 135. 26.)))
+  (conditional-part
+    (eq (>> zero-or-one) (quote zero)) 
+     'zero-contact square-contact (layer 'diff) (bottom-left (pt 135. 8.)))
+  (conditional-part
+    (>> continue-value?) 
+     'value rectangle (bottom-left (pt 131. 19.)) (top-right (pt 141. 23.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 136. -2.)) (length 40.) (width 2.) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. -2.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 134. 3.)) (top-right (pt 140. 5.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 134. 35.)) (top-right (pt 140. 37.)) (layer 'poly))
+  (conditional-part
+    (and (eq (>> zero-or-one) (quote one)) (eq (>> local-or-global) (quote value-bus))) 
+     nil rectangle (bottom-left (pt 134. 23.)) (top-right (pt 140. 25.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote value-bus)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. 18.)))
+  (conditional-part
+    (and (eq (>> zero-or-one) (quote zero)) (eq (>> local-or-global) (quote value-bus))) 
+     nil rectangle (bottom-left (pt 134. 15.)) (top-right (pt 140. 17.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 132. 31.))
+  (fracture right-stretch vertical (pt 140. 31.))
+  (fracture bottom-stretch horizontal (pt 140. -3.))
+  (fracture gnd-stretch horizontal (pt 140. 6.))
+  (fracture vdd-stretch horizontal (pt 140. 27.))
+  (fracture top-stretch horizontal (pt 137. 42.)))
+
+
+
+;;;; a source of left addresses and right addresses
+
+;;; local or global can be either local, global or value-bus
+;;; the first two refer to the two standard buses, the third refers
+;;; to the bus attached to the output of a reg.  This is intended for the
+;;; row which is the low bit of address which is not in any actual word.
+
+(deflayout left-right-address-source
+  `((primary-parameters 
+    ((local-or-global 'value-bus) (continue-value? t) (top-stretch 0.) (vdd-stretch 0.)
+       (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.))))
+  (part 'bus rectangle (width 22.) (length 3.) (bottom-left (pt 126. 39.)) (layer 'metal))
+  (part 'vdd rectangle (width 22.) (length 3.) (bottom-left (pt 126. 26.)) (layer 'metal))
+  (part 'gnd rectangle (width 22.) (length 3.) (bottom-left (pt 126. 5.)) (layer 'metal))
+  (part 'right-address rectangle (bottom-left (pt 127.0 -4.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 140. 38.)))
+  (part 'local-bus rectangle (width 22.) (length 3.) (bottom-left (pt 126. -2.)) 
+    (layer 'metal))
+  (part 'one-contact square-contact (layer 'diff) (bottom-left (pt 130. 29.)))
+  (part 'zero-contact square-contact (layer 'diff) (bottom-left (pt 140. 6.)))
+  (conditional-part
+    (or (>> continue-value?) (eq (>> local-or-global) (quote value-bus))) 
+     'value-out rectangle (bottom-left (pt 135.0 19.0)) (length 4.0) (width 13.0) 
+    (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 132. -2.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote value-bus)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 135. 19.)))
+  (part 'left-address rectangle (bottom-left (pt 145.0 -4.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt 130.0 -2.0)) (length 25.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 130.0 21.0)) (length 2.0) (width 14.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 132.0 10.0)) (length 2.0) (width 11.0) (layer 'diff))
+  (conditional-part
+    (and (not (eq (>> local-or-global) (quote value-bus))) (>> continue-value?)) 
+     'value-in rectangle (bottom-left (pt 126. 19.)) (top-right (pt 139. 23.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 133. 14.)) (top-right (pt 145. 16.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 133. 8.)) (top-right (pt 135. 14.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 142. 23.)) (top-right (pt 144. 39.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 134. 31.)) (top-right (pt 142. 33.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 129. 34.)) (top-right (pt 141. 36.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 139. 29.)) (top-right (pt 141. 34.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 127. 27.))
+  (fracture right-stretch vertical (pt 147. 11.))
+  (fracture bottom-stretch horizontal (pt 140. -3.))
+  (fracture gnd-stretch horizontal (pt 140. 6.))
+  (fracture vdd-stretch horizontal (pt 140. 27.))
+  (fracture top-stretch horizontal (pt 137. 42.)))
+
+
+
+;;;; shifters
+
+;;; both have options for local or global bus operation and options for
+;;; shift in value at the extreme.
+
+(deflayout shift-right
+  `((primary-parameters 
+      ((continue-value? t) (top-bit? nil) (shift-in-value 'zero) (bottom-bit? nil)
+       (local-or-global 'local) (top-stretch 0.) (left-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.))))
+  (part 'bus rectangle (bottom-left (pt 1. 36.)) (length 3.) (width 13.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 1. 23.)) (length 3.) (width 13.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 1. 2.)) (length 3.) (width 13.) (layer 'metal))
+  (part 'shift rectangle (bottom-left (pt 2. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part 'value-in rectangle (bottom-left (pt 1. 16.)) (length 4.) (width 8.) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (top-right (pt 7. 39.)) (length 30.) (width 2.) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 9. 16.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 11. 20.)) (length 20.) (width 2.) (layer 'poly))
+  (conditional-part
+    (not (>> top-bit?)) 
+     nil rectangle (bottom-left (pt 11. -7.)) (length 17.0) (width 2.0) (layer 'poly))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt 9. 16.)) (length 4.) (width 5.) (layer 'metal))
+  (part 'local-bus rectangle (bottom-left (pt 1. -5.)) (length 3.) (width 13.) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 5. 35.)))
+  (conditional-part
+    (and (>> top-bit?) (eq (>> shift-in-value) (quote one))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 5. 23.)))
+  (conditional-part
+    (and (>> top-bit?) (eq (>> shift-in-value) (quote zero))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 5. 3.)))
+  (conditional-part
+    (and (>> top-bit?) (eq (>> shift-in-value) (quote zero))) 
+     nil rectangle (bottom-left (pt 5. 2.)) (top-right (pt 7. 13.)) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 5. -5.)) (top-right (pt 7. 27.)) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 5. -5.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 4. 32.)) (top-right (pt 9. 34.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 4. 0.)) (top-right (pt 9. 2.)) (layer 'poly))
+  (part nil buried-contact (bottom-left (pt 6. 10.)))
+  (conditional-part
+    (not (>> top-bit?)) 
+     nil rectangle (bottom-left (pt 8. 8.)) (top-right (pt 13. 10.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 2. 19.))
+  (fracture right-stretch vertical (pt 13. 19.))
+  (fracture bottom-stretch horizontal (pt 1. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 3.))
+  (fracture vdd-stretch horizontal (pt 7. 24.))
+  (fracture top-stretch horizontal (pt 13. 39.)))
+
+
+
+;;; the low order bit can be forced to shift in zero, one, or can be supplied
+;;; by a control line (this option indicated by shift-in-value being 'supplied)
+
+(deflayout shift-left
+  `((primary-parameters 
+    ((top-output-desired? nil) (top-bit? nil) (shift-in-value 'zero)
+       (local-or-global 'local) (continue-value? t) (bottom-bit? nil) (top-stretch 0.)
+       (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.)
+       (left-stretch 0.))))
+  (part 'bus rectangle (bottom-left (pt -5. 36.)) (length 3.) (width 14.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -5. 23.)) (length 3.) (width 14.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt -5. 2.)) (length 3.) (width 14.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 4. 16.)))
+  (part 'shift rectangle (bottom-left (pt 1. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (conditional-part
+    (or (eq (>> local-or-global) (quote local))
+	(and (>> bottom-bit?) (not (eq (>> shift-in-value) (quote supplied))))) 
+     nil rectangle (bottom-left (pt -2. -1.)) (length 40.) (width 2.) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -4. -5.)))
+  (part 'local-bus rectangle (bottom-left (pt -5. -5.)) (length 3.) (width 14.) 
+    (layer 'metal))
+  (part 'value-in rectangle (top-right (pt 4. 20.)) (length 4.) (width 9.) (layer 'metal))
+  (conditional-part
+    (or (not (>> bottom-bit?)) (eq (>> shift-in-value) (quote supplied))) 
+     nil rectangle (bottom-left (pt -2. 37.)) (top-right (pt 6. 39.)) (layer 'diff))
+  (conditional-part
+    (or (not (>> top-bit?)) (>> top-output-desired?)) 
+     nil rectangle (top-right (pt 6. 16.)) (length 23.) (width 2.) (layer 'diff))
+  (conditional-part
+    (and (>> bottom-bit?) (eq (>> shift-in-value) (quote zero))) 
+     nil square-contact (layer 'diff) (bottom-left (pt -4. 4.)))
+  (conditional-part
+    (and (eq (>> bottom-bit?) t) (eq (>> shift-in-value) (quote one))) 
+     nil square-contact (layer 'diff) (bottom-left (pt -4. 23.)))
+  (conditional-part
+    (or (not (>> bottom-bit?)) (eq (>> shift-in-value) (quote supplied))) 
+     nil rectangle (bottom-left (pt 4. 37.)) (length 3.) (width 2.) (layer 'diff))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt 4. 16.)) (length 4.) (width 5.) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -4. 35.)))
+  (conditional-part
+    (and (eq (>> local-or-global) (quote local)) (>> bottom-bit?)
+	 (not (eq (>> shift-in-value) (quote supplied)))) 
+     nil rectangle (bottom-left (pt -4. 0.)) (top-right (pt 1. 2.)) (layer 'poly))
+  (conditional-part
+    (and (eq (>> local-or-global) (quote global)) (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -4. 32.)) (top-right (pt 1. 34.)) (layer 'poly))
+  (setq-my left-shift-left (pt -6. 27.))
+  (setq-my right-shift-left (pt 14. 27.))
+  (fracture left-stretch vertical (pt -4. 29.))
+  (fracture right-stretch vertical (pt 8. 15.))
+  (fracture bottom-stretch horizontal (pt -1. -6.))
+  (fracture gnd-stretch horizontal (pt 4. 4.))
+  (fracture vdd-stretch horizontal (pt 7. 24.))
+  (fracture top-stretch horizontal (pt 7. 39.)))
+
+
+
+;;;; the adder
+
+(deflayout adder-cell
+  `((primary-parameters 
+      ((top-bit? nil) (bottom-bit? nil) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (right-vertical-power-stretch 0.)
+       (left-vertical-power-stretch 0.) (left-stretch 0.)))
+    (constraints 
+      ((c= vdd-stretch right-vertical-power-stretch)
+       (c= vdd-stretch left-vertical-power-stretch))))
+  (do-adder-part-1)
+  (do-adder-part-2)
+  (do-adder-part-3))
+
+(defun do-adder-part-1 ()
+  (part 'gnd rectangle (bottom-left (pt -38.0 2.0)) (length 3.0) (width 88.0) (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'cin rectangle (top-right (pt 18. 12.)) (length 3.0) (width 53.0) (layer 'metal))
+  (part 'b rectangle (bottom-left (pt -23. 15.)) (length 3.0) (width 72.0) (layer 'metal))
+  (part 'a rectangle (top-right (pt 28. 25.)) (length 3.0) (width 68.0) (layer 'metal))
+  (part 'bus rectangle (bottom-left (pt -44.0 43.0)) (length 3.0) (width 99.0) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -41.0 36.0)) (length 3.0) (width 90.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -19.0 26.0)) (length 18.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 6. 2.)) (length 31.0) (width 4.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 13. 2.)) (length 26.0) (width 4.0) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 33. 2.)) (top-right (pt 39. 23.)) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 23. 2.)) (length 20.0) (width 4.0) (layer 'diff))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -23. 15.)))
+  (part nil rectangle (bottom-left (pt -13. 23.)) (top-right (pt 12. 25.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -19. 16.)) (top-right (pt -5. 18.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -19. 10.)) (top-right (pt -12. 12.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt -23. 8.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -3. 10.)) (top-right (pt 5. 12.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 18. 8.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 3. 28.)) (length 2.0) (width 14.0) (layer 'diff))
+  (part 'cout-bar rectangle (bottom-left (pt -16.0 29.0)) (length 2.0) (width 28.0) 
+    (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -1. 2.)) (top-right (pt 3. 28.)) (layer 'diff)))
+
+(defun do-adder-part-2 ()
+  (part nil rectangle (bottom-left (pt -11. 2.)) (top-right (pt -7. 28.)) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -18. 2.)) (top-right (pt -14. 28.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 6.0 26.0)) (length 2.0) (width 11.0) (layer 'diff))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -6. 21.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 41. 11.)) (length 2.0) (width 23.0) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 18. 15.)))
+  (part nil rectangle (bottom-left (pt 11. 16.)) (top-right (pt 19. 18.)) (layer 'poly))
+  (part nil rectangle (top-right (pt 7. 4.)) (length 2.0) (width 33.0) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt -6. 8.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 28. 21.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 28. 19.)) (top-right (pt 41. 21.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 34. 2.)))
+  (part nil rectangle (bottom-left (pt 10. 2.)) (length 2.0) (width 34.0) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt 28. 13.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 31.0 15.0)) (length 2.0) (width 10.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -31.0 43.0)) (length 2.0) (width 19.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -13. 36.)) (length 9.0) (width 2.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -13. 36.)))
+  (part 'cout rectangle (bottom-left (pt -35.0 17.0)) (length 21.0) (width 2.0) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt -39. 12.)) (top-right (pt -37. 47.)) (layer 'poly))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'poly) (bottom-left (pt -35. 8.)))
+  (part nil rectangle (bottom-left (pt 42.0 2.0)) (length 30.0) (width 2.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 47. 42.)))
+  (part 'result-to-bus rectangle (bottom-left (pt 52.0 0.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (part nil rectangle (bottom-left (pt 47.0 39.0)) (length 2.0) (width 6.0) (layer 'poly))
+  (conditional-part
+    (>> top-bit?) 
+     'sign-bit-out rectangle (bottom-left (pt 46.0 0.0)) (length 20.0) (width 2.0) 
+    (layer 'poly))
+  (part 'vdd-right-extend rectangle (bottom-left (pt 49.0 30.0)) (length 9.0) (width 3.0) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 46.0 15.0)) (length 10.0) (width 3.0) (layer 'metal))
+  (part 'vdd-left-extend rectangle (bottom-left (pt -41.0 30.0)) (length 6.0) (width 3.0) 
+    (layer 'metal))
+  (part 'vdd-out-left rectangle (bottom-right (>> bottom-left vdd-left-extend)) 
+    (length (+ 3. (>> vdd-stretch))) (width 3.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 46.0 23.0)) (length 4.0) (width 9.0) (layer 'metal))
+  (part 'vdd-out-right rectangle (bottom-left (>> bottom-right vdd-right-extend)) 
+    (length (+ 3.0 (>> vdd-stretch))) (width 3.0) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 6. 2.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 17.0 20.0)) (length 2.0) (width 6.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -39. 2.)) (length 2.0) (width 10.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -39. 0.)) (length 4.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -32.0 22.0)) (length 23.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -29. 26.)) (length 2.0) (width 9.0) (layer 'poly))
+  (part nil rectangle (top-right (pt -27. 26.)) (length 7.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (top-right (pt -26. 25.)) (length 4.0) (width 6.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -26. 2.)) (top-right (pt -24. 25.)) (layer 'diff))
+  (part nil rectangle (top-right (pt -39. 27.)) (length 4.0) (width 5.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -44.0 23.0)) (length 4.0) (width 7.0) (layer 'metal))
+  (part 'gnd-left-extend rectangle (bottom-left (pt -41.0 2.0)) (length 10.0) (width 3.0) 
+    (layer 'metal))
+  (part 'gnd-out-left rectangle (top-right (>> top-left gnd-left-extend)) 
+    (length (+ 3. (>> gnd-stretch))) (width 3.0) (layer 'metal))
+  (part 'gnd-right-extend rectangle (bottom-left (pt 49.0 2.0)) (length 10.0) (width 3.0) 
+    (layer 'metal))
+  (part 'gnd-out-right rectangle (top-left (>> top-right gnd-right-extend)) 
+    (length (+ 3.0 (>> gnd-stretch))) (width 3.0) (layer 'metal))
+  (part nil side-winder-buried-contact-pullup (bottom-left (pt -23. 28.)))
+  (part nil side-winder-buried-contact-pullup (channel-length 4.) (bottom-left (pt -26. 30.))
+     (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt -16.0 31.0)) (length 5.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -18. 26.)) (top-right (pt -8. 28.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 1. 36.)) (top-right (pt 8. 38.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 6. 33.)) (top-right (pt 8. 36.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -2. 44.)) (top-right (pt 20. 46.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 8. 32.)) (top-right (pt 13. 34.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 13. 31.)) (top-right (pt 15. 34.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 15. 31.)) (top-right (pt 20. 33.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 20. 26.)) (top-right (pt 22. 33.)) (layer 'diff)))
+
+(defun do-adder-part-3 ()
+  (part nil rectangle (bottom-left (pt 22. 26.)) (top-right (pt 33. 28.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 33. 23.)) (top-right (pt 35. 28.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 27. 35.)))
+  (part nil rectangle (bottom-left (pt 23. 37.)) (top-right (pt 25. 44.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 25. 37.)) (top-right (pt 27. 39.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 20. 35.)) (top-right (pt 22. 46.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 20. 34.)) (top-right (pt 26. 36.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 25. 29.)) (length 2.0) (width 21.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 49.0 32.0)) (length 10.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 24. 29.)) (top-right (pt 26. 36.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 27. 36.)) (top-right (pt 29. 39.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 42.0 32.0)) (length 2.0) (width 8.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -29. 2.)) (top-right (pt -27. 17.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -35. 15.)) (top-right (pt -29. 17.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -39. 10.)) (top-right (pt -31. 12.)) (layer 'poly))
+  (conditional-part
+    (>> top-bit?) 
+     nil head-on-buried-contact (bottom-left (pt 50. 20.)) (xfrm 'rot90))
+  (conditional-part
+    (>> top-bit?) 
+     nil rectangle (bottom-left (pt 47. 25.)) (top-right (pt 49. 32.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 42. 34.)) (top-right (pt 44. 42.)) (layer 'diff))
+  (part nil side-winder-buried-contact-pullup (bottom-left (pt 40. 38.)) (xfrm 'rot90))
+  (part nil rectangle (bottom-left (pt 34. 42.)) (top-right (pt 44. 44.)) (layer 'diff))
+  (part nil side-winder-buried-contact-pullup (bottom-left (pt 6. 42.)) (xfrm 'int-neg))
+  (part nil rectangle (bottom-left (pt -2. 34.)) (top-right (pt 0. 46.)) (layer 'poly))
+  (fracture left-stretch vertical (pt -43. 32.))
+  (fracture left-vertical-power-stretch vertical (pt -40. 33.))
+  (fracture right-vertical-power-stretch vertical (pt 51. 33.))
+  (fracture right-stretch vertical (pt 54. 21.))
+  (fracture bottom-stretch horizontal (pt -44. 2.))
+  (fracture gnd-stretch horizontal (pt 39. 4.))
+  (fracture vdd-stretch horizontal (pt 59. 38.))
+  (fracture top-stretch horizontal (pt -44. 46.)))
+
+
+
+;;; this sources a zero or one on value bus to the low bit of the adder
+;;; actually it just feeds an input from its driver directly in.
+
+(deflayout value-bus-left-right-address
+  `((primary-parameters 
+    ( (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.) (bottom-stretch 0.)
+       (right-stretch 0.) (left-stretch 0.))))
+  (part 'bus rectangle (bottom-left (pt -13. 22.)) (top-right (pt -7. 25.)) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -13. 9.)) (top-right (pt -7. 12.)) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt -13. -12.)) (top-right (pt -7. -9.)) (layer 'metal))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -12. 2.)))
+  (part nil rectangle (bottom-left (pt -12.0 2.0)) (length 4.0) (width 5.0) (layer 'metal))
+  (part 'value rectangle (bottom-left (pt -12. -21.)) (top-right (pt -10. 26.)) (layer 'poly))
+  (fracture left-stretch vertical (pt -12. 7.))
+  (fracture right-stretch vertical (pt -8. 4.))
+  (fracture bottom-stretch horizontal (pt -13. -19.))
+  (fracture gnd-stretch horizontal (pt -9. -10.))
+  (fracture vdd-stretch horizontal (pt -8. 11.))
+  (fracture top-stretch horizontal (pt -10. 25.)))
+
+
+;;;; shifter negater for hacking adder into comparator etc.
+
+
+(deflayout shift-negate
+  `((primary-parameters 
+    ((top-value-out? t) (top-bit? nil) (bottom-bit? nil) (top-stretch 0.) (vdd-stretch 0.)
+     (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.))))
+  (part 'bus rectangle (bottom-left (pt -33.0 24.0)) (length 3.0) (width 58.0) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -33.0 11.0)) (length 3.0) (width 58.0) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt -33.0 -10.0)) (length 3.0) (width 58.0) 
+    (layer 'metal))
+  (part 'dont-shift rectangle (width 2.) (length 47.) (bottom-left (pt 16. -19.)) 
+    (layer 'poly))
+  (part 'shift rectangle (width 2.) (length 47.) (bottom-left (pt 7. -19.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -8. 11.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. -3.)))
+  (part nil rectangle (width 7.) (length 3.) (bottom-left (pt 3. -3.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -3.0 -10.0)) (length 12.0) (width 2.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -5. -17.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. 17.)))
+  (part nil rectangle (bottom-left (pt 3.0 -10.0)) (length 31.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 14. -1.)) (length 2.0) (width 7.0) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 12. 28.)) (bottom-left (pt 10. 8.)) (layer 'diff))
+  (part nil rectangle (width 2.) (length 11.) (bottom-left (pt 10. -10.)) (layer 'diff))
+  (part nil rectangle (width 5.) (length 2.) (bottom-left (pt 9. -6.)) (layer 'poly))
+  (conditional-part
+    (>> top-bit?) 
+     nil square-contact (layer 'diff) (bottom-left (pt 10. -11.)))
+  (conditional-part
+    (not (>> top-bit?)) 
+     nil rectangle (top-right (pt 12. -6.)) (bottom-left (pt 10. -19.)) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 19. 4.)))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (bottom-left (pt 19.0 1.0)) (length 7.0) (width 2.0) (layer 'diff))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil rectangle (top-right (pt 24. 8.)) (bottom-left (pt 10. 5.)) (layer 'metal))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 10. 4.)))
+  (conditional-part
+    (and (>> top-bit?) (>> top-value-out?)) 
+     nil rectangle (top-right (pt 21. -1.)) (bottom-left (pt 19. -19.)) (layer 'diff))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil square-contact (layer 'diff) (bottom-left (pt 19. -10.)))
+  (conditional-part
+    (>> bottom-bit?) 
+     nil rectangle (layer 'diff) (top-right (pt 21. -1.)) (length 9.0) (width 2.0))
+  (conditional-part
+    (not (>> bottom-bit?)) 
+     'value-in rectangle (bottom-left (pt 23. 4.)) (top-right (pt 25. 8.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -30. 11.)))
+  (part nil rectangle (bottom-left (pt -30.0 -8.0)) (length 5.0) (width 4.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -32. -11.)))
+  (part nil rectangle (bottom-left (pt -12.0 -8.0)) (length 2.0) (width 9.0) (layer 'diff))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 1. 17.)))
+  (part nil rectangle (top-right (pt 1. 21.)) (length 3.0) (width 13.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -23. 18.)) (top-right (pt -16. 20.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -25.0 -16.0)) (length 3.0) (width 9.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -32.0 -6.0)) (length 2.0) (width 10.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -33.0 3.0)) (length 4.0) (width 6.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -23. -13.)) (length 12.0) (width 2.0) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -25. -17.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 1. -4.)))
+  (part nil rectangle (bottom-left (pt -5. -13.)) (top-right (pt -1. -10.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt -7. -12.)) (top-right (pt 5. -10.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -5. -14.)) (top-right (pt -1. -8.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -16. -17.)))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt -32. 0.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt -27. 3.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -28. -3.)))
+  (part nil buried-contact (bottom-left (pt -21. 17.)) (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt -14. -14.)) (top-right (pt -12. -6.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -30.0 -11.0)) (length 13.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -27.0 -3.0)) (length 10.0) (width 4.0) (layer 'metal))
+  (part nil side-winder-buried-contact-pullup (bottom-left (pt -7. -4.)))
+  (part nil rectangle (bottom-left (pt -4. 11.)) (top-right (pt -1. 13.)) (layer 'diff))
+  (part 'dont-negate rectangle (bottom-left (pt -11. -19.)) (top-right (pt -9. 28.)) 
+    (layer 'poly))
+  (wire 'negate (from (pt -18. 28.)) (run-layer 'poly) (jog-y (pt -14. 15.)) 
+      (jog-y (pt -18. -4.)) (to-y (pt -18. -19.)))
+  (part nil rectangle (bottom-left (pt -23. -1.)) (top-right (pt -17. 1.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -19. 1.)) (top-right (pt -17. 12.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -22. 10.)) (top-right (pt -19. 12.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -23. 10.)) (top-right (pt -21. 15.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -25. 15.)) (top-right (pt -21. 17.)) (layer 'poly))
+  (fracture left-stretch vertical (pt -32. 10.))
+  (fracture right-stretch vertical (pt 24. 8.))
+  (fracture bottom-stretch horizontal (pt 3. -17.))
+  (fracture gnd-stretch horizontal (pt 3. -8.))
+  (fracture vdd-stretch horizontal (pt 3. 13.))
+  (fracture top-stretch horizontal (pt -4. 27.)))
+
+
+
+;;;; stack register
+
+(defdefault stack-continuity (rightmost? continue-value?)
+  (continue-value? (rightmost?) (not rightmost?))
+  (rightmost? (continue-value?) (not continue-value?)))
+
+(deflayout stack-cell
+  `((primary-parameters 
+      ((rightmost? nil) (continue-value? t) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (constraints ((stack-continuity rightmost? continue-value?))))
+  (part 'bus rectangle (bottom-left (pt -14. 36.)) (length 3.) (width 60.) (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt -14. 23.)) (length 3.) (width 60.) (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt -14. 2.)) (length 3.) (width 60.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 4. 1.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 18. 21.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 37. 2.)))
+  (part nil rectangle (bottom-left (pt 34.0 7.0)) (length 2.0) (width 9.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 30. 17.)) (length 6.) (width 2.) (layer 'diff))
+  (part 'value-bar rectangle (bottom-left (pt 16. 9.)) (length 3.) (width 6.) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 7.0 0.0)) (length 4.0) (width 5.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 42.0 12.0)) (length 19.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 39.0 10.0)) (length 2.0) (width 5.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 37.0 2.0)) (length 10.0) (width 4.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 9.)))
+  (part 'phi-2 rectangle (bottom-left (pt 27. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 29.)))
+  (part nil rectangle (bottom-left (pt 26. 10.)) (length 2.) (width 4.) (layer 'diff))
+  (conditional-part
+    (not (>> rightmost?)) 
+     'value-out rectangle (bottom-left (pt 44.0 16.0)) (length 4.0) (width 2.0) 
+    (layer 'metal))
+  (conditional-part
+    (not (>> rightmost?)) 
+     'local-bus rectangle (bottom-left (pt -1. -5.)) (length 3.) (width 47.) (layer 'metal))
+  (conditional-part
+    (not (>> rightmost?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -5. -5.)))
+  (part 'pop rectangle (bottom-left (pt -8. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -6. 6.)) (length 2.) (width 5.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -5.0 1.0)) (length 8.0) (width 2.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -5. 9.)))
+  (part nil rectangle (bottom-left (pt -14. 16.)) (length 4.) (width 9.) (layer 'metal))
+  (part 'value-out-left rectangle (top-right (pt 22. 32.)) (length 3.0) (width 27.0) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 26. 29.)) (length 3.) (width 4.) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -5. 29.)))
+  (part nil rectangle (bottom-left (pt -11. -3.)) (top-right (pt -9. 29.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -13. -5.)))
+  (part nil rectangle (bottom-left (pt -14. -5.)) (top-right (pt -9. -2.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -5. 16.)))
+  (part nil rectangle (bottom-left (pt -1. 17.)) (top-right (pt 5. 19.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 5.0 34.0)) (length 2.0) (width 19.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 5. 19.)) (length 15.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -1. 9.)) (length 4.0) (width 8.0) (layer 'metal))
+  (part 'push rectangle (bottom-left (pt 1. -7.)) (top-right (pt 3. 40.)) (layer 'poly))
+  (conditional-part
+    (>> rightmost?) 
+     nil square-contact (layer 'diff) (bottom-left (pt -5. 1.)))
+  (part nil rectangle (bottom-left (pt 34. 29.)) (length 2.0) (width 8.0) (layer 'diff))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 31. 21.)) 
+    (xfrm 'rot270))
+  (part nil buried-contact (bottom-left (pt 42. 21.)) (xfrm 'negx))
+  (conditional-part
+    (not (>> rightmost?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 40. 10.)))
+  (conditional-part
+    (not (>> rightmost?)) 
+     nil rectangle (bottom-left (pt 40. 14.)) (top-right (pt 44. 20.)) (layer 'metal))
+  (part nil buried-contact (bottom-left (pt 31. -4.)))
+  (part nil rectangle (bottom-left (pt 33. 0.)) (top-right (pt 35. 9.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 30. -3.)) (top-right (pt 32. 12.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 4. 16.)))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 5. 8.)))
+  (part nil rectangle (bottom-left (pt 3. 9.)) (top-right (pt 7. 20.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 9. -2.)) (top-right (pt 11. 8.)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 14. 8.)))
+  (wire 'restore (from (pt 20. 40.)) (run-layer 'poly) (jog-y (pt 24. 27.)) 
+      (jog-y (pt 20. 15.)) (to-y (pt 27. -7.)))
+  (part nil rectangle (bottom-left (pt 11. 29.)) (top-right (pt 18. 31.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 16. 23.)) (top-right (pt 18. 30.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 11. 9.)) (top-right (pt 13. 31.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 5. 6.)) (top-right (pt 9. 8.)) (layer 'poly))
+  (part nil side-winder-buried-contact-pullup (bottom-left (pt 17. 14.)) (xfrm 'negx))
+  (part nil rectangle (bottom-left (pt 12. 0.)) (top-right (pt 14. 12.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 22. 29.)) (top-right (pt 24. 36.)) (layer 'diff))
+  (conditional-part
+    (not (>> rightmost?)) 
+     nil rectangle (bottom-left (pt -5. -2.)) (top-right (pt -3. 2.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt -11. 29.)) (top-right (pt -5. 31.)) (layer 'diff))
+  (fracture left-stretch vertical (pt -13. 30.))
+  (fracture right-stretch vertical (pt 45. 21.))
+  (fracture bottom-stretch horizontal (pt 43. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 4.))
+  (fracture vdd-stretch horizontal (pt 42. 25.))
+  (fracture top-stretch horizontal (pt 34. 39.))) 
+
+
+
+;;;;  stack top cell
+
+;;; a stack top cell which takes the push input from the value bus rather
+;;; than from the global bus
+;;; control lines are push (load-value-bus) pop (load-local) restore (neither)
+;;; phi-2 and read
+
+(deflayout stack-top
+  `((primary-parameters 
+    ((continue-value? t) (local-or-global 'local) (top-stretch 0.) (vdd-stretch 0.)
+     (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.))))
+  (part nil rectangle (bottom-left (pt 4.0 30.0)) (length 2.0) (width 16.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 37. 35.)))
+  (part 'bus rectangle (width 54.0) (length 3.0) (bottom-left (pt -9.0 36.0)) (layer 'metal))
+  (part 'vdd rectangle (width 54.0) (length 3.0) (bottom-left (pt -9.0 23.0)) (layer 'metal))
+  (part 'gnd rectangle (width 54.0) (length 3.0) (bottom-left (pt -9.0 2.0)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. 1.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 9. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 25. 22.)))
+  (part nil rectangle (width 9.0) (length 2.0) (bottom-left (pt 31.0 7.0)) (layer 'poly))
+  (part nil rectangle (width 9.0) (length 2.0) (bottom-left (pt 7.0 5.0)) (layer 'poly))
+  (part nil rectangle (width 4.0) (length 8.0) (bottom-left (pt 10.0 1.0)) (layer 'diff))
+  (part nil rectangle (width 4.0) (length 10.0) (bottom-left (pt 34.0 2.0)) (layer 'diff))
+  (part nil rectangle (width 2.0) (length 23.0) (bottom-left (pt 39.0 12.0)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 30. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 17. 29.)))
+  (part nil rectangle (bottom-left (pt 30.0 29.0)) (length 2.0) (width 11.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 25.0 -3.0)) (length 2.0) (width 4.0) (layer 'diff))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt 39.0 16.0)) (length 4.0) (width 6.0) 
+    (layer 'metal))
+  (part 'local-bus rectangle (width 46.0) (length 3.0) (bottom-left (pt -1.0 -5.0)) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -5. -5.)))
+  (part 'push rectangle (bottom-left (pt -8. -7.)) (length 47.) (width 2.) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 20.0 29.0)) (length 3.0) (width 10.0) (layer 'metal))
+  (part 'read rectangle (width 2.0) (length 47.0) (bottom-left (pt 42.0 -7.0)) (layer 'poly))
+  (part nil rectangle (width 5.0) (length 2.0) (bottom-left (pt 37.0 32.0)) (layer 'poly))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 34. 2.)))
+  (part nil rectangle (bottom-left (pt 31.0 0.0)) (length 8.0) (width 2.0) (layer 'poly))
+  (part nil rectangle (width 2.0) (length 14.0) (bottom-left (pt 25.0 -2.0)) (layer 'diff))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 14. 11.)) 
+    (xfrm 'negx))
+  (part nil rectangle (top-right (pt 9. 6.)) (length 7.0) (width 2.0) (layer 'poly))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 40. 26.)) 
+    (xfrm 'int-neg))
+  (part nil rectangle (bottom-left (pt 10.0 8.0)) (length 2.0) (width 5.0) (layer 'diff))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 12. 14.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 10. 8.)))
+  (part nil rectangle (top-right (pt 28. 12.)) (bottom-left (pt 16. 8.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 25. 8.)))
+  (part nil rectangle (bottom-left (pt 12.0 8.0)) (length 8.0) (width 4.0) (layer 'metal))
+  (part nil rectangle (top-right (pt 29. 4.)) (bottom-left (pt 24. 2.)) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 30. 15.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 35. 12.)))
+  (part nil rectangle (top-right (pt 39. 20.)) (length 5.0) (width 5.0) (layer 'metal))
+  (wire 'restore (from (pt 19. 40.)) (run-layer 'poly) (jog-y (pt 15. 35.)) 
+      (jog-y (pt 19. 27.)) (to-y (pt 21. -7.)))
+  (part nil rectangle (bottom-left (pt 30. 18.)) (top-right (pt 34. 20.)) (layer 'poly))
+  (part nil buried-contact (bottom-left (pt 5. -5.)))
+  (part nil buried-contact (bottom-left (pt 29. -4.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     'value-in rectangle (bottom-left (pt -9. 16.)) (top-right (pt -3. 20.)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt -5. 16.)))
+  (wire 'pop (from (pt 2. 40.)) (run-layer 'poly) (jog-y (pt 1. 14.)) (jog-x (pt 0. 6.)) 
+      (jog-x (pt 2. -7.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 3. 8.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -5. 35.)))
+  (part nil rectangle (bottom-left (pt -5. 20.)) (top-right (pt -3. 32.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 4. -4.)) (top-right (pt 6. 32.)) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 4. 29.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt -6. 21.)) (top-right (pt -1. 23.)) (layer 'poly))
+  (part 'phi-2 rectangle (bottom-left (pt 22. -7.)) (top-right (pt 24. 40.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt -1. -4.)) (top-right (pt 4. -2.)) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt -6. 32.)) (top-right (pt -1. 34.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt -1. 16.)) (top-right (pt 6. 19.)) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 3. 12.)) (top-right (pt 6. 17.)) (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt -5. 32.)) (top-right (pt -3. 36.)) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt -5. 29.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt -1. 29.)) (top-right (pt 4. 33.)) (layer 'metal))
+  (fracture left-stretch vertical (pt -8. 32.))
+  (fracture right-stretch vertical (pt 44. 26.))
+  (fracture bottom-stretch horizontal (pt 43. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 4.))
+  (fracture vdd-stretch horizontal (pt 42. 25.))
+  (fracture top-stretch horizontal (pt 34. 39.)))
+
+
+
+(deflayout one-input-reg
+  `((primary-parameters 
+      ((rightmost? nil) (left-output-connect nil) (continue-value? t)
+       (local-or-global 'local) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (constraints ((stack-continuity rightmost? continue-value?))))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 41. 35.)))
+  (part 'bus rectangle (top-right (pt 49. 39.)) (length 3.0) (width 50.0) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt 49. 26.)) (length 3.0) (width 50.0) (layer 'metal))
+  (part 'gnd rectangle (top-right (pt 49. 5.)) (length 3.0) (width 50.0) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 8. 2.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 19. 21.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 31. 22.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 37. 2.)))
+  (part nil rectangle (bottom-left (pt 34.0 7.0)) (length 2.0) (width 9.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 31.0 17.0)) (length 6.0) (width 2.0) (layer 'diff))
+  (part 'value-bar rectangle (bottom-left (pt 11.0 9.0)) (length 3.0) (width 11.0) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 6.0 7.0)) (length 2.0) (width 9.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 10.0 -1.0)) (length 5.0) (width 7.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 39.0 10.0)) (length 2.0) (width 6.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 37. 6.)) (length 6.) (width 4.) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 40.0 29.0)) (length 2.0) (width 5.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 43.0 10.0)) (length 26.0) (width 2.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 22. 8.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 34. 29.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 23. 29.)))
+  (part nil rectangle (bottom-left (pt 34.0 29.0)) (length 2.0) (width 6.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 26. 10.)) (length 2.) (width 4.) (layer 'diff))
+  (conditional-part
+    (not (>> rightmost?)) 
+     'value-out rectangle (bottom-left (pt 45. 16.)) (top-right (pt 49. 20.)) (layer 'metal))
+  (part 'local-bus rectangle (bottom-left (pt 2. -5.)) (top-right (pt 49. -2.)) 
+    (layer 'metal))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 3. -5.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 3.0 -1.0)) (length 12.0) (width 2.0) (layer 'diff))
+  (conditional-part
+    (>> left-output-connect) 
+     'value-out-left rectangle (bottom-left (pt -1.0 29.0)) (length 3.0) (width 24.0) 
+    (layer 'metal))
+  (part nil rectangle (bottom-left (pt 26. 29.)) (length 3.0) (width 8.0) (layer 'metal))
+  (part 'left-local-bus-connect rectangle (bottom-left (pt -1.0 -5.0)) (length 3.0) 
+    (width 3.0) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 37. 2.)) (top-right (pt 40. 6.)) (layer 'diff))
+  (part 'load rectangle (bottom-left (pt 0. -7.)) (top-right (pt 2. 40.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 2. 0.)) (top-right (pt 7. 2.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 2. 32.)) (top-right (pt 7. 34.)) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 3. 35.)))
+  (part 'read rectangle (bottom-left (pt 46. -7.)) (top-right (pt 48. 40.)) (layer 'poly))
+  (part nil rectangle (top-right (pt 46. 34.)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (top-right (pt 5. 35.)) (length 8.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 3.0 9.0)) (length 22.0) (width 2.0) (layer 'diff))
+  (part nil buried-contact (bottom-left (pt 4. 9.)))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 10. 13.)))
+  (part nil rectangle (bottom-left (pt 13. -3.)) (top-right (pt 15. 8.)) (layer 'poly))
+  (part nil square-contact (layer 'poly) (bottom-left (pt 7. 16.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 14. 10.)))
+  (part nil rectangle (bottom-left (pt 16. -1.)) (top-right (pt 18. 12.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 8. 9.)) (top-right (pt 11. 19.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 5. 29.)) (top-right (pt 23. 31.)) (layer 'diff))
+  (conditional-part
+    (not (>> rightmost?)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 41. 10.)))
+  (conditional-part
+    (not (>> rightmost?)) 
+     nil rectangle (bottom-left (pt 41. 14.)) (top-right (pt 45. 20.)) (layer 'metal))
+  (part nil rect-d-fet (channel-length 8.) (channel-width 2.) (bottom-left (pt 44. 15.)) 
+    (xfrm 'rot90))
+  (part nil buried-contact (bottom-left (pt 44. 21.)) (xfrm 'negx))
+  (part nil buried-contact (bottom-left (pt 32. -5.)))
+  (part nil rectangle (bottom-left (pt 30. -4.)) (top-right (pt 32. 12.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 34. -1.)) (top-right (pt 36. 9.)) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 12. 24.)) (top-right (pt 19. 26.)) (layer 'diff))
+  (wire 'phi-2 (from (pt 28. 40.)) (run-layer 'poly) (jog-y (pt 32. 37.)) 
+      (jog-y (pt 29. 28.)) (jog-y (pt 28. 14.)) (to-y (pt 20. -7.)))
+  (wire 'restore (from (pt 21. 40.)) (run-layer 'poly) (jog-y (pt 25. 27.))
+	(jog-y (pt 20. 18.)) (jog-y (pt 21. 6.)) (to-y (pt 27. -7.)))
+  (part nil rectangle (bottom-left (pt 17. 22.)) (top-right (pt 19. 26.)) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 12. 12.)) (top-right (pt 14. 26.)) (layer 'diff))
+  (fracture left-stretch vertical (pt 0. 19.))
+  (fracture right-stretch vertical (pt 48. 20.))
+  (fracture bottom-stretch horizontal (pt 43. -6.))
+  (fracture gnd-stretch horizontal (pt 8. 4.))
+  (fracture vdd-stretch horizontal (pt 42. 25.))
+  (fracture top-stretch horizontal (pt 34. 39.)))
+
+
+
+
+;;;; interbus connector
+
+
+;;; conditionally gates value bus to cross bus
+;;; and computes bus position from global position
+
+(defconstraint cross-bus-position (position start bus-size connection-position
+					    connection-desired?)
+  (connection-position (start bus-size position)
+		   (if (and ( position start)
+			    (< position (+ start bus-size)))
+		       (- position start)
+		       0))
+  (connection-desired? (start bus-size position)
+	   (and ( position start) (< position (+ start bus-size)))))
+
+(deflayout input-literal-bus
+  `((primary-parameters 
+      ((connection-position 0.) (local-or-global 'global)
+       (continue-value? nil) (connection-desired? t)
+       (bus-size 4.) (fill-in-value 'one) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((position 0) (field-start 0)))
+    (constraints 
+      ((cross-bus-position position field-start bus-size connection-position
+			   connection-desired?))))
+  (replicate 'cross-bus row (list (>> bus-size))
+    (list (part nil rectangle (bottom-left (pt 65. 156.)) (top-right (pt 67. 203.))
+		(layer 'poly)))
+    (h-pitch 5.) (bottom-left (pt 65. 156.)))
+  (part 'connect rectangle (bottom-left (pt 56.0 156.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (setq-my right-extreme (+ 3 (>> right cross-bus)))
+  (setq-my left-extreme (1- (>> x bottom-left connect)))
+  (part 'bus rectangle (top-right (pt (>> right-extreme) 202.)) 
+    (bottom-left (pt (>> left-extreme) 199.)) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt (>> right-extreme) 189.))
+    (bottom-left (pt (>> left-extreme) 186)) (layer 'metal))
+  (part 'gnd rectangle (top-right (pt (>> right-extreme) 168.)) 
+        (bottom-left (pt (>> left-extreme) 165.)) (layer 'metal))
+  (conditional-part (eq (>> local-or-global) 'local)
+    'local-bus rectangle (top-right (pt (>> right-extreme) 161.)) 
+    (bottom-left (pt (>> left-extreme) 158.)) (layer 'metal))  
+  (conditional-part
+    (>> connection-desired?) 
+     'program-connect square-contact (layer 'poly) 
+    (center (pt (>> x center (*rep (max (- (>> bus-size) (>> connection-position) 1.) 0.))
+		    cross-bus)
+		173.)))
+  (conditional-part
+    (>> connection-desired?) 
+     'by-pass-bus rectangle (bottom-left (pt 60.0 172.0)) 
+    (top-right (>> top-right program-connect)) (layer 'metal))
+  (conditional-part
+    (>> connection-desired?) 
+     nil square-contact (layer 'diff) (bottom-left (pt 59. 172.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 59. 198.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 58.0 195.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part
+    (eq (>> local-or-global) (quote global)) 
+     nil rectangle (bottom-left (pt 59.0 193.0)) (length 5.0) (width 2.0) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 59. 158.)))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 58.0 163.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (top-right (pt (>> right-extreme)  183.))
+     (bottom-left (pt (>> left-extreme) 179.)) (layer 'metal))
+  (conditional-part
+    (and (not (>> connection-desired?)) (eq (>> fill-in-value) (quote zero))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 59. 168.)))
+  (conditional-part
+    (and (not (>> connection-desired?)) (eq (>> fill-in-value) (quote one))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 59. 189.)))
+  (conditional-part
+    (or (and (>> connection-desired?) (eq (>> local-or-global) (quote global)))
+	(and (not (>> connection-desired?))
+	     (eq (>> local-or-global) (quote global)) (eq (>> fill-in-value) (quote zero)))
+	(and (not (>> connection-desired?))
+	     (eq (>> local-or-global) (quote local)) (eq (>> fill-in-value) (quote one))))
+     nil rectangle (bottom-left (pt 59.0 172.0)) (length 21.0) (width 2.0) (layer 'diff))
+  (conditional-part
+    (eq (>> local-or-global) (quote local)) 
+     nil rectangle (bottom-left (pt 59.0 162.0)) (length 10.0) (width 2.0) (layer 'diff))
+  (fracture left-stretch vertical (pt 56. 161.))
+  (fracture right-stretch vertical (pt-to-left (>> top-right vdd) 1))
+  (fracture bottom-stretch horizontal (pt 64. 158.))
+  (fracture gnd-stretch horizontal (pt 80. 167.))
+  (fracture vdd-stretch horizontal (pt 60. 187.))
+  (fracture top-stretch horizontal (pt 61. 202.)))
+
+
+
+;;;; a literal with both global and local bus connection
+
+(deflayout two-bus-literal
+  `((primary-parameters 
+      ((connection-position 0.) (continue-value? nil) (connection-desired? t) (bus-size 4.)
+       (top-stretch 0.) (vdd-stretch 0.) (fill-in-value 'zero)
+       (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((position 0) (field-start 0)))
+    (constraints 
+      ((cross-bus-position position field-start bus-size connection-position
+			   connection-desired?))))
+  (replicate 'cross-bus row (list (>> bus-size))
+    (list (part nil rectangle (bottom-left (pt 65. 156.)) (top-right (pt 67. 203.))
+		(layer 'poly)))
+    (h-pitch 5.) (bottom-left (pt 66. 156.)))
+  (part 'connect-global rectangle (bottom-left (pt 52.0 156.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (part 'connect-local rectangle (bottom-left (pt 61. 156.0)) (top-right (pt 63. 203.)) 
+    (layer 'poly))
+  (setq-my right-extreme (+ (>> x bottom-right cross-bus) 2))
+  (setq-my left-extreme (- (>> x bottom-left connect-global) 1))
+  (part 'bus rectangle (top-right (pt (>> right-extreme) 202.))
+	(bottom-left (pt (>> left-extreme) 199.)) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt (>> right-extreme) 189.))
+	(bottom-left (pt (>> left-extreme) 186.)) (layer 'metal))
+  (part 'gnd rectangle (top-right (pt (>> right-extreme) 168.))
+	(bottom-left (pt (>> left-extreme) 165.)) (layer 'metal))
+  (part 'local-bus rectangle (top-right (pt (>> right-extreme) 161.))
+	(bottom-left (pt (>> left-extreme) 158.)) (layer 'metal))
+  (conditional-part
+    (>> connection-desired?) 
+     'program-connect square-contact (layer 'poly) 
+     (center (pt (>> x center (*rep (max (- (>> bus-size) (>> connection-position) 1.) 0))
+		    cross-bus)
+		173.)))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (top-right (pt (>> right-extreme) 183.))
+     (bottom-left (pt (>> left-extreme) 179.)) (layer 'metal))
+  (conditional-part
+    (>> connection-desired?) 
+     'first-contact square-contact (layer 'diff) (bottom-left (pt 56. 171.)))
+  (conditional-part
+    (>> connection-desired?) 
+     nil rectangle (top-right (>> top-right program-connect)) 
+    (bottom-left (>> bottom-left first-contact)) (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 56. 158.)))
+  (part nil rectangle (bottom-left (pt 56.0 163.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (part nil rectangle (bottom-left (pt 58.0 162.0)) (length 9.0) (width 2.0) (layer 'diff))
+  (part nil rectangle (bottom-left (pt 55.0 171.0)) (length 27.0) (width 2.0) (layer 'diff))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 55. 198.)))
+  (part nil rectangle (bottom-left (pt 54.0 195.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part
+    (and (not (>> connection-desired?)) (eq (>> fill-in-value) (quote zero))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 56. 166.)))
+  (conditional-part
+    (and (eq (>> fill-in-value) (quote one)) (not (>> connection-desired?))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 55. 189.)))
+  (conditional-part
+    (not (>> connection-desired?)) 
+     nil rectangle (bottom-left (pt 55. 171.)) (top-right (pt 60. 173.)) (layer 'diff))
+  (fracture left-stretch vertical (pt 52. 162.))
+  (fracture right-stretch vertical (pt-to-right (>> bottom-right cross-bus) 1))
+  (fracture bottom-stretch horizontal (pt 64. 158.))
+  (fracture gnd-stretch horizontal (pt 80. 167.))
+  (fracture vdd-stretch horizontal (pt 60. 187.))
+  (fracture top-stretch horizontal (pt 61. 202.)))
+
+
+
+;;;; output the bits of a register
+
+(deflayout output-cross-bus
+  `((primary-parameters 
+    ((continue-value? nil) (connection-position 0.) (connection-desired? t) (bus-size 4.)
+     (top-stretch 0.) (vdd-stretch 0.)
+     (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters ((field-start 0.) (position 0.)))
+  (constraints 
+    ((cross-bus-position position field-start bus-size connection-position
+			 connection-desired?))))
+  (replicate 'cross-bus row (list (>> bus-size))
+    (list (part nil rectangle (bottom-left (pt 65. 156.)) (top-right (pt 67. 203.))
+		(layer 'poly)))
+    (h-pitch 5.) (bottom-left (pt 65. 156.)))
+  (part 'connect rectangle (bottom-left (pt 55. 156.)) (top-right (pt 57. 203.)) 
+    (layer 'poly)) 
+  (setq-my right-extreme (+ 2 (>> x bottom-right cross-bus)))
+  (setq-my left-extreme (- (>> x bottom-left connect) 1))
+  (part 'bus rectangle (top-right (pt (>> right-extreme) 202.)) 
+    (bottom-left (pt (>> left-extreme) 199.)) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt (>> right-extreme) 189.)) 
+    (bottom-left (pt (>> left-extreme) 186.)) (layer 'metal))
+  (part 'gnd rectangle (top-right (pt (>> right-extreme) 168.)) 
+    (bottom-left (pt (>> left-extreme) 165.)) (layer 'metal))
+  (part 'local-bus rectangle (top-right (pt (>> right-extreme) 161.)) 
+    (bottom-left (pt (>> left-extreme) 158.)) (layer 'metal))
+  (conditional-part
+    (>> connection-desired?) 
+     'program-connect square-contact (layer 'poly) 
+    (center (pt (>> x center (*rep (max (- (>> bus-size) (>> connection-position) 1.) 0.))
+		    cross-bus)
+		173.)))
+  (part 'value-in rectangle (bottom-left (pt 54.0 179.0)) (length 4.0) (width 8.0) 
+    (layer 'metal))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (>> bottom-right value-in)) 
+    (top-right (pt (>> right-extreme) 183.)) (layer 'metal))
+  (part nil rectangle (bottom-left (pt 62. 171.)) (top-right (>> top-right program-connect)) 
+    (layer 'metal))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 58. 179.)))
+  (part nil square-contact (layer 'diff) (bottom-left (pt 58. 171.)))
+  (part nil rectangle (bottom-left (pt 57. 176.)) (top-right (pt 62. 178.)) (layer 'poly))
+  (part nil rectangle (length 4.) (width 2.) (bottom-left (pt 58. 175.)) (layer 'diff))
+  (fracture left-stretch vertical (pt 55. 156.))
+  (fracture right-stretch vertical (pt 83. 156.))
+  (fracture bottom-stretch horizontal (pt 64. 158.))
+  (fracture gnd-stretch horizontal (pt 80. 167.))
+  (fracture vdd-stretch horizontal (pt 60. 187.))
+  (fracture top-stretch horizontal (pt 61. 202.)))
+
+
+
+
+;;;; get bits from cross bus to global bus and from value bus to cross bus
+
+(deflayout two-way-cross-bus
+  `((primary-parameters 
+      ((connection-position 0.) (continue-value? nil) (connection-desired? t) (bus-size 4.)
+       (top-stretch 0.) (vdd-stretch 0.)
+       (gnd-stretch 0.) (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters ((position 0) (field-start 0)))
+    (constraints 
+      ((cross-bus-position position field-start bus-size connection-position
+			   connection-desired?))))
+  (replicate 'cross-bus row (list (>> bus-size))
+    (list (part nil rectangle (bottom-left (pt 65. 156.)) (top-right (pt 67. 203.))
+		(layer 'poly)))
+    (h-pitch 5.) (bottom-left (pt 66. 156.)))
+  (part 'connect-global rectangle (bottom-left (pt 47. 156.)) (top-right (pt 49. 203.)) 
+    (layer 'poly))
+  (setq-my right-extreme (+ (>> x bottom-right cross-bus) 2))
+  (setq-my left-extreme (- (>> x bottom-left connect-global) 1))
+  (part 'connect-value rectangle (bottom-left (pt 61. 156.0))
+	(top-right (pt 63 203.)) (layer 'poly))
+  (part 'bus rectangle (top-right (pt (>> right-extreme) 202.))
+	(bottom-left (pt (>> left-extreme) 199.)) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt (>> right-extreme) 189.))
+	(bottom-left (pt (>> left-extreme) 186.)) (layer 'metal))
+  (part 'gnd rectangle (top-right (pt (>> right-extreme) 168.))
+	(bottom-left (pt (>> left-extreme) 165.)) (layer 'metal))
+  (part 'local-bus rectangle (top-right (pt (>> right-extreme) 161.))
+	(bottom-left (pt (>> left-extreme) 158.)) (layer 'metal))
+  (conditional-part
+    (>> connection-desired?) 
+     'program-connect square-contact (layer 'poly) 
+    (center (pt (>> x center (*rep (max (- (>> bus-size) (>> connection-position) 1.) 0))
+		    cross-bus)
+		173.)))
+  (conditional-part (or (>> connection-desired?) (>> continue-value?))
+     'value-in rectangle (bottom-left (pt 46.0 179.0)) (length 4.0) (width 14.0) 
+    (layer 'metal))
+  (conditional-part (>> continue-value?) 
+     'value-out rectangle (top-right (pt (>> right-extreme) 183.))
+     (bottom-left (>> bottom-right value-in)) (layer 'metal))
+  (conditional-part (>> connection-desired?)
+     'first-contact square-contact (layer 'diff) (bottom-left (pt 56. 171.)))
+  (conditional-part (>> connection-desired?)
+      nil rectangle (top-right (>> top-right program-connect))
+	(bottom-left (>> bottom-left first-contact)) (layer 'metal))
+  (conditional-part (>> connection-desired?)
+     nil square-contact (layer 'diff) (bottom-left (pt 56. 179.)))
+  (conditional-part (>> connection-desired?)
+     nil rectangle (bottom-left (pt 56.0 176.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part (>> connection-desired?)
+     nil rectangle (bottom-left (pt 58.0 175.0)) (length 4.0) (width 2.0) (layer 'diff))
+  (conditional-part (>> connection-desired?)
+     nil rectangle (bottom-left (pt 51. 172.)) (top-right (pt 56. 174.)) (layer 'diff))
+  (conditional-part (>> connection-desired?)
+     nil rectangle (bottom-left (pt 51. 172.)) (top-right (pt 53. 199.)) (layer 'diff))
+  (conditional-part (>> connection-desired?)
+     nil square-contact (layer 'diff) (bottom-left (pt 50. 198.)))
+  (conditional-part (>> connection-desired?)
+     nil rectangle (bottom-left (pt 49. 195.)) (top-right (pt 55. 197.)) (layer 'poly))
+  (fracture left-stretch vertical (pt 47. 174.))
+  (fracture right-stretch vertical (pt-to-right (>> bottom-right cross-bus) 1))
+  (fracture bottom-stretch horizontal (pt 64. 158.))
+  (fracture gnd-stretch horizontal (pt 80. 167.))
+  (fracture vdd-stretch horizontal (pt 60. 187.))
+  (fracture top-stretch horizontal (pt 61. 202.)))
+
+
+
+;;;; get selected bits out from the value bus to the bottom of the register file
+
+(deflayout unconditional-output-cross-bus
+  `((primary-parameters 
+      ((continue-value? nil) (connection-position 0.) (connection-desired? t)
+       (no-left-connect? nil) (bus-size 4.)
+       (local-or-global 'global) (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters (position field-start))
+    (constraints 
+      ((cross-bus-position position field-start bus-size connection-position
+			   connection-desired?))))
+  (replicate 'cross-bus row (list (>> bus-size))
+    (list (part nil rectangle (bottom-left (pt 65. 156.)) (top-right (pt 67. 203.))
+		(layer 'poly)))
+    (h-pitch 5.) (bottom-left (pt 65. 156.)))
+  (setq-my right-extreme (+ (>> x bottom-right cross-bus) 2))
+  (part 'bus rectangle (bottom-left (pt 62.0 199.0)) (top-right (pt (>> right-extreme) 202.))
+     (layer 'metal))
+  (part 'vdd rectangle (bottom-left (pt 62.0 186.0)) (top-right (pt (>> right-extreme) 189.))
+     (layer 'metal))
+  (part 'gnd rectangle (bottom-left (pt 62.0 165.0)) (top-right (pt (>> right-extreme) 168.))
+     (layer 'metal))
+  (conditional-part (and (>> continue-value?) (not (>> no-left-connect?)))
+    'local-bus rectangle (bottom-left (pt 62.0 158.0)) 
+    (top-right (pt (>> right-extreme) 161.)) (layer 'metal))  
+  (conditional-part
+    (and (>> connection-desired?) (eq (>> local-or-global) (quote local)))
+    'program-connect square-contact (layer 'poly) 
+    (center (pt (>> x center (*rep (max (- (>> bus-size) (>> connection-position) 1.) 0.))
+		    cross-bus)
+		181.)))
+  (conditional-part
+    (or (and (eq (>> local-or-global) 'local) (>> connection-desired?)
+	     (not (>> no-left-connect?)))
+	(>> continue-value?))
+    'value-in rectangle (top-right (pt (>> x bottom-right program-connect) 183.)) 
+    (bottom-left (pt 62. 179.)) (layer 'metal))
+  (conditional-part
+    (or (>> continue-value?) (>> no-left-connect?) )
+    'value-out rectangle (bottom-left (pt (>> x bottom-left program-connect) 179.)) 
+    (top-right (pt (>> right-extreme) 183.)) (layer 'metal))
+  (conditional-part
+    (and (>> connection-desired?) (eq (>> local-or-global) (quote global))) 
+     'global-program-connect square-contact (layer 'poly) 
+    (center (pt (>> x center (*rep (max (- (>> bus-size) (>> connection-position) 1.) 0.))
+		    cross-bus)
+		(1+ (>> y bottom-right bus)))))
+  (fracture left-stretch vertical (pt 63. 184.))
+  (fracture right-stretch vertical (pt-to-right (>> bottom-right cross-bus) 1))
+  (fracture bottom-stretch horizontal (pt 64. 158.))
+  (fracture gnd-stretch horizontal (pt 80. 167.))
+  (fracture vdd-stretch horizontal (pt 60. 187.))
+  (fracture top-stretch horizontal (pt 61. 202.)))
+
+
+
+;;;; field to field connector to shift type to datum for example
+
+;;; This can be used to shift one field of a register into another, filling the unused
+;;; part of the destination if its bigger than the source.
+;;; It uses only local busses.
+;;; there are three area of interest
+;;; the first is the source field it begins at souce-start and is bus-size long
+;;; the second is the target of the source bits, begins at target-start and is bus-size long
+;;; enclosing the target area is the desination area 
+;;;   beginning at destination start and is destination-size bits long
+;;; the part of destination which is not target had destination-fill supplied
+;;; as its value.  Destination-fill is either zero or one.
+;;; For example shift type to datum zero filling the extra bits.
+;;; This does not load anything into the bits in the source field (but allows
+;;; someone else to, in fact source and target can overlap)
+
+(defconstraint field-shift-source (position source-start source-size source-position source?)
+  (source-position (source-start source-size position)
+		   (if (and ( position source-start)
+			    (< position (+ source-start source-size)))
+		       (- position source-start)
+		       0))
+  (source? (source-start source-size position)
+	   (and ( position source-start) (< position (+ source-start source-size)))))
+
+(defconstraint field-shift-destination (destination-source destination-position position
+						   destination-start destination-size
+						   target-start bus-size destination-fill)
+  (destination-source (destination-start destination-size target-start bus-size position
+					 destination-fill)
+		      (cond ((or (< position destination-start)
+				 ( position (+ destination-start destination-size))) 'none)
+			    ((and ( position target-start)
+				  (< position (+ target-start bus-size)))
+			     'bus)
+			    (t destination-fill)))
+  (destination-position (target-start bus-size position)
+			(cond ((and ( position target-start)
+				    (< position (+ target-start bus-size)))
+			       (- position target-start))
+			      (t 0))))
+
+(deflayout field-shifter
+  `((primary-parameters 
+      ((source? t) (bus-size 4.) (source-position 0.) (destination-position 0.)
+       (destination-source 'bus) (continue-value? nil)
+       (top-stretch 0.) (vdd-stretch 0.) (gnd-stretch 0.)
+       (bottom-stretch 0.) (right-stretch 0.) (left-stretch 0.)))
+    (auxiliary-parameters 
+      ((source-start 0) (destination-start 0) (destination-size 0)
+       (target-start 0) (destination-fill 'zero) (position 0)))
+    (constraints 
+      ((field-shift-source position source-start bus-size source-position source?)
+       (field-shift-destination destination-source destination-position position
+				destination-start destination-size target-start bus-size
+				destination-fill))))
+  (replicate 'cross-bus row (list (>> bus-size))
+    (list (part nil rectangle (bottom-left (pt 65. 156.)) (top-right (pt 67. 203.))
+		(layer 'poly)))
+    (h-pitch 5.) (bottom-left (pt 65. 156.)))
+  (part 'bus rectangle (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 202.)) 
+    (bottom-left (pt 54. 199.)) (layer 'metal))
+  (part 'vdd rectangle (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 189.)) 
+    (bottom-left (pt 54. 186.)) (layer 'metal))
+  (part 'gnd rectangle (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 168.)) 
+    (bottom-left (pt 54. 165.)) (layer 'metal))
+  (part 'local-bus rectangle (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 161.)) 
+    (bottom-left (pt 54. 158.)) (layer 'metal))
+  (part 'load-local rectangle (bottom-left (pt 55.0 156.0)) (length 47.0) (width 2.0) 
+    (layer 'poly))
+  (conditional-part
+    (eq (>> destination-source) (quote bus)) 
+     'program-connect square-contact (layer 'poly) 
+    (center (pt (>> x center (*rep (>> destination-position)) (quote cross-bus)) 173.)))
+  (conditional-part
+    (eq (>> destination-source) (quote bus)) 
+     'by-pass-bus rectangle (bottom-left (pt 60.0 172.0)) 
+    (top-right (pt (>> x bottom-left program-connect) 175.)) (layer 'metal))
+  (conditional-part
+    (eq (>> destination-source) (quote bus)) 
+     nil square-contact (layer 'diff) (bottom-left (pt 58. 171.)))
+  (conditional-part
+    (eq (>> destination-source) (quote one)) 
+     nil rectangle (bottom-left (pt 58.0 170.0)) (length 16.0) (width 2.0) (layer 'diff))
+  (conditional-part
+    (not (eq (>> destination-source) (quote none))) 
+     nil rectangle (bottom-left (pt 58. 158.)) (length 13.0) (width 2.0) (layer 'diff))
+  (conditional-part
+    (not (eq (>> destination-source) (quote none))) 
+     nil square-contact (layer 'diff) (bottom-left (pt 58. 158.)))
+  (conditional-part
+    (not (eq (>> destination-source) (quote none))) 
+     nil rectangle (bottom-left (pt 57.0 163.0)) (length 2.0) (width 5.0) (layer 'poly))
+  (conditional-part
+    (eq (>> destination-source) (quote one)) 
+     'vdd-flash square-contact (layer 'diff) (bottom-left (pt 58. 186.)))
+  (conditional-part
+    (eq (>> destination-source) (quote zero)) 
+     'gnd-flash square-contact (layer 'diff) (bottom-left (pt 58. 167.)))
+  (conditional-part
+    (>> source?) 
+     'value-in-flash square-contact (layer 'poly) 
+    (center (pt (>> x center (*rep (>> source-position)) (quote cross-bus)) 181.)))
+  (conditional-part
+    (or (>> source?) (>> continue-value?)) 
+     'value-in rectangle (top-right (pt (>> x bottom-right value-in-flash) 183.)) 
+    (bottom-left (pt 54. 179.)) (layer 'metal))
+  (conditional-part
+    (>> continue-value?) 
+     'value-out rectangle (bottom-left (pt (>> x bottom-right value-in-flash) 179.)) 
+    (top-right (pt (+ 3. (>> x bottom-right cross-bus)) 183.)) (layer 'metal))
+  (fracture left-stretch vertical (pt 55. 176.))
+  (fracture right-stretch vertical (pt-to-right (>> bottom-right cross-bus) 1))
+  (fracture bottom-stretch horizontal (pt 64. 158.))
+  (fracture gnd-stretch horizontal (pt 80. 167.))
+  (fracture vdd-stretch horizontal (pt 60. 187.))
+  (fracture top-stretch horizontal (pt 61. 202.)))
+

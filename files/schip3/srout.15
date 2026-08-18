@@ -1,0 +1,82 @@
+;;; -*- mode: LISP; package: DPL -*-
+
+(defstruct (connection (:type :list) :conc-name)
+  reg-pt pad-pt)
+
+(defun separate-and-sort-connections (clist)
+  (let ((starts nil)
+	(ends nil))
+    (dolist (conn clist)
+	(if (> (y-of-pt (connection-reg-pt conn))
+	       (y-of-pt (connection-pad-pt conn)))
+	    (push conn ends)
+	    (push conn starts)))
+    (values (sort starts 'start-sorter) (sort ends 'end-sorter))))
+
+
+;;; These sort so that further away points get lower channels
+
+(defun start-sorter (x y)
+  (or (< (x-of-pt (connection-pad-pt y))
+	 (x-of-pt (connection-pad-pt x)))
+      (< (y-of-pt (connection-pad-pt y))
+	 (y-of-pt (connection-pad-pt x)))))
+
+(defun end-sorter (x y)
+  (or (< (x-of-pt (connection-pad-pt y))
+	 (x-of-pt (connection-pad-pt x)))
+      (> (y-of-pt (connection-pad-pt y))
+	 (y-of-pt (connection-pad-pt x)))))
+
+(defun wire-conns (conns x-pos y-pos delta obst-list &optional (*me* *me*))
+  (loop for conn in conns
+	and dd from 0 by *metal-pitch*
+	do
+	(if (> (* delta (y-of-pt (connection-pad-pt conn))) (* delta y-pos))
+	    (wire-h-conn conn x-pos conns delta)
+	    (wire-v-conn conn dd x-pos y-pos delta obst-list))))
+
+
+(defun wire-v-conn (conn dd x-pos y-pos delta obst-list)
+  (wire () (run-layer 'poly)
+	(from (connection-reg-pt conn))
+	(to-x (- x-pos (abs dd)))
+	(run-layer 'metal)
+	(to-y (+ y-pos (* delta dd)))
+	(if (not (null obst-list))
+	    (progn
+	      (run-layer 'poly)
+	      (drop-contact)
+	      (dolist (ob obst-list)
+		(jump-over+x ob (+ *metal-spacing* 1)))
+	      (to-x (max (+ x-pos *metal-pitch*)
+			 (x-of-pt (pt-cp (>> *current-cp*)))))
+	      (run-layer 'metal)))
+	(to-x (connection-pad-pt conn))
+	(run-layer 'poly)
+	(to-y (connection-pad-pt conn))))
+
+(defun wire-h-conn (conn x-pos conns delta)
+  (wire () (run-layer 'poly)
+	(from (connection-reg-pt conn))
+	(to-x (- x-pos (* *metal-pitch*
+			  (find-number-of-free-channel conn conns delta))))
+	(run-layer 'metal)
+	(to-y (connection-pad-pt conn))
+	(run-layer 'poly)
+	(to-x (connection-pad-pt conn))))
+
+(defun find-number-of-free-channel (conn conns delta)
+  (loop for cn in conns
+	and n from 0
+	if (and (not (snarfed? cn))
+		(< (* delta (y-of-pt (connection-reg-pt cn)))
+		   (* delta (y-of-pt (connection-pad-pt conn)))))
+	return (progn (snarf cn) n)
+	finally (return (find-position-in-list conn conns))))
+
+(defun snarf (conn) (rplacd (cdr conn) 'snarfed))
+
+(defun snarfed? (conn) (eq (cddr conn) 'snarfed))
+
+(defun unsnarf (conn) (rplacd (cdr conn) nil))

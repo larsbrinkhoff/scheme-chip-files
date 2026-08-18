@@ -1,0 +1,89 @@
+
+		     (enumeration left-opcode-value
+				  right-opcode-value
+				  set-left-opcode-value
+				  set-right-opcode-value
+				  array-ref-opcode-value
+				  array-set-opcode-value
+				  pcons-opcode-value
+				  pncons-opcode-value
+				  array-cons-opcode-value
+				  set-memtop-opcode-value
+				  set-free-pointers-opcode-value
+				  get-free-opcode-value
+				  relocate-opcode-value
+				  flip-opcode-value
+				  reply-opcode-value
+				  unused-opcode-value)
+
+(defconditions (op)
+	       (machine-specific ((op left-opcode-value))
+				 ((op right-opcode-value))
+				 ((op set-left-opcode-value))
+				 ((op set-right-opcode-value))
+				 ((op array-ref-opcode-value))
+				 ((op array-set-opcode-value))
+				 ((op get-free-opcode-value))
+				 ((op set-memtop-opcode-value))
+				 ((op set-free-pointers-opcode-value))
+				 ((op relocate-opcode-value))
+				 ((op reply-opcode-value)))
+	       (forbids-inum ((op left-opcode-value)))
+	       (requires-pointer ((op right-opcode-value))
+				 ((op set-left-opcode-value))
+				 ((op set-right-opcode-value))
+				 ((op get-free-opcode-value))
+				 ((op set-memtop-opcode-value))
+				 ((op set-free-pointers-opcode-value)))
+	       (requires-array ((op array-ref-opcode-value))
+			       ((op array-set-opcode-value)))
+	       (requires-inum ((op array-cons-opcode-value))))
+
+(defconditions (bit0 bit1)
+	       (pointer-type ((bit0 0)))
+	       (array-type ((bit0 1) (bit1 0)))
+	       (inum-type ((bit0 1) (bit1 1))))
+
+(defconditions (bit0)
+	       (my-pointer ((bit0 0))))
+
+
+;;; Specifications for the storage-allocator/garbage-collector machine.
+
+(defdispatchsource sbus-op a-machine
+		   ((the op sbus) (the (bits 0 1) type sbus) (the 0 address sbus))
+		   (left (left-opcode-value (not inum-type) my-pointer))
+		   (right (right-opcode-value pointer-type my-pointer))
+		   (set-left (set-left-opcode-value pointer-type my-pointer))
+		   (set-right (set-right-opcode-value pointer-type my-pointer))
+		   (array-ref (array-ref-opcode-value array-type my-pointer))
+		   (array-set (array-set-opcode-value array-type my-pointer))
+		   (pcons (pcons-opcode-value * *))
+		   (pncons (pncons-opcode-value * *))
+		   (array-cons (array-cons-opcode-value inum-type *))
+		   (set-memtop (set-memtop-opcode-value (not inum-type) my-pointer))
+		   (set-free-pointers (set-free-pointers-opcode-value
+				       (not inum-type)
+				       my-pointer))
+		   (get-free (get-free-opcode-value (not inum-type) my-pointer))
+		   (relocate (relocate-opcode-value (not inum-type) my-pointer))
+		   (flip (flip-opcode-value * *))
+		   (reply (reply-opcode-value (not inum-type) my-pointer))
+		   (inum-error (forbids-inum inum-type *))
+		   (not-inum-error (requires-inum (not inum-type) *))
+		   (not-pointer-error ((and machine-specific requires-pointer)
+				       (not pointer-type)
+				       my-pointer)
+			       ((and (not machine-specific) requires-pointer)
+				(not pointer-type)
+				*))
+		   (not-array-error ((and machine-specific requires-array)
+				       (not array-type)
+				       my-pointer)
+			       ((and (not machine-specific) requires-array)
+				(not array-type)
+				*))
+		   (notme machine-specific * (not my-pointer))
+		   )
+
+(defdispatchgroup sbus-opcode sbus-op)

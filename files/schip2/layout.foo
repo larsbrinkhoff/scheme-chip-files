@@ -1,0 +1,488 @@
+;;; -*- Mode:Lisp; Base:10.-*-
+
+; Layout Language System   by Jack Holloway and Gerald Jay Sussman
+
+; Cables - route to {left,right} of a wire, 
+; Align - make the transform that aligns a symbol's pt with pt
+; Connect - make connection to wire
+
+;Problems
+;overlap of flashes?
+
+;;;macros
+
+(declare (macros t))
+
+;(declare (eval (read)))
+
+;(cond ((status feature lispm)
+;       (defmacro defun& args `(defun . , args)))
+;      (t
+;       (progn 'compile
+	      (defmacro + args `(plus . ,args))		;sigh
+	      (defmacro - args `(difference . ,args))
+	      (defmacro * args `(times . ,args))
+	      (defmacro // args `(quotient . ,args))
+;)))
+	
+(declare (special *instance* *boxlist* *genvar*
+		  *X *Y *XY *origin *inf
+		  *poly-overhang* *diffusion-overhang*))
+
+(setq base 10. ibase 10. *nopoint t)
+
+(setq *inf 1000000.0)					;a big number
+
+(setq *instance* 'the-top *boxlist* nil
+      *poly-overhang* 2  *diffusion-overhang* 1)
+
+(putprop 'diff 2 'default-width)
+(putprop 'poly 2 'default-width)
+(putprop 'metal 3 'default-width)
+(putprop 'implant 2 'default-width)
+(putprop 'cut 2 'default-width)
+
+(macro first (x) (displace x `(car ,(cadr x))))
+(macro second (x) (displace x `(cadr ,(cadr x)))) 
+(macro third (x) (displace x `(caddr ,(cadr x)))) 
+(macro fourth (x) (displace x `(cadddr ,(cadr x))))
+(macro fifth (x) (displace x `(car (cddddr ,(cadr x)))))
+(macro sixth (x) (displace x `(cadr (cddddr ,(cadr x)))))
+(macro seventh (x) (displace x `(caddr (cddddr ,(cadr x)))))
+
+(macro rest1 (x) (displace x `(cdr ,(cadr x))))
+(macro rest2 (x) (displace x `(cddr ,(cadr x))))
+(macro rest3 (x) (displace x `(cdddr ,(cadr x))))
+(macro rest4 (x) (displace x `(cddddr ,(cadr x))))
+
+(defmacro if (p c . a)
+   `(cond (,p ,c)
+	  (t . ,a)))
+
+(defun concat n
+    (implode (mapcan '(lambda (x) (explode x))
+				    (listify n))))
+
+(defun deflayout fexpr (l)
+    (putprop (car l) `(lambda . ,(cdr l)) 'layout)
+    (car l))
+
+(defmacro pt (x y) `(list* 'pt ,x ,y))
+(defmacro pt? (x) `(and (not (atom ,x)) (eq (car ,x) 'pt)))
+(defmacro x-of (x) `(cadr ,x))
+(defmacro y-of (y) `(cddr ,y))
+(defmacro the-x path `(x-of (the-pt . ,path)))
+(defmacro the-y path `(y-of (the-pt . ,path)))
+
+
+(defmacro set-the (x y)
+   `(let ((obj ,y))
+       (putprop *instance* obj ,x)
+       (if (symbolp obj)
+	   (addprop obj (list ,x *instance*) 'name))))
+
+(defmacro the path
+   `(the-1 ',path))
+
+(defun the-1 (path)
+       (cond ((null (cdr path))
+	      (or (get-the *instance* (car path))
+		  (error '|Losing path| path 'fail-act)))
+	 (t (let* ((instance (the-1 (cdr path)))
+		   (thing (get-the instance (car path))))
+		  (cond ((null thing) (error '|Losing path| path 'fail-act))
+			((atom thing) thing)
+			((pt? thing) (error |Untransformed point?|) thing)
+			(t thing))))))
+
+
+(defun the-pt fexpr (path)
+       (the-pt-1 *instance* (reverse path)))
+
+(defun the-pt-1 (obj rev-path)
+       (cond ((null (cdr rev-path))
+	      (let ((p (get-the-pt obj (car rev-path))))
+		   (if (pt? p) p (error '|Not a pt| (list rev-path obj)))))
+	     (t (let ((part (get-the obj (car rev-path))))
+		     (transform (the-pt-1 part (cdr rev-path))
+			        (get-the part 'transform))))))
+
+(defun get-the (symbol indicator)
+       (or (get symbol indicator)
+	   (let ((p (get symbol 'prototype)))
+		(and p (get p indicator)))))
+
+(setq *origin (pt 0 0))
+
+(defun get-the-pt (obj name)
+       (caseq name
+	      (LOWER-LEFT *origin)
+	      (LOWER-RIGHT
+	       (let ((h-pitch (get-the obj 'h-pitch)))
+		    (if h-pitch (pt h-pitch 0) nil)))
+	      (UPPER-LEFT
+	       (let ((v-pitch (get-the obj 'v-pitch)))
+		    (if v-pitch (pt 0 v-pitch) nil)))
+	      (UPPER-RIGHT
+	       (let ((h-pitch (get-the obj 'h-pitch))
+		     (v-pitch (get-the obj 'v-pitch)))
+		    (if (and h-pitch v-pitch) (pt h-pitch v-pitch) nil)))
+	      (t (get-the obj name))))
+
+(defun make-object () (intern (gensym)))
+
+(defun addprop (sym val prop)
+   (putprop sym (cons val (get sym prop)) prop))
+
+(defmacro objectify stuff
+   `(let ((new-object (make-object)))
+	 (addprop *instance* new-object 'parts)
+	 (putprop new-object *instance* 'parent)
+	 (let ((*instance* new-object)
+	       (*boxlist* nil)
+	       (*genvar* 0))
+	      ,@stuff
+	      (putprop new-object *boxlist* 'boxlist)
+	      new-object)))
+
+;   (call* (proto . args) . xfrms)
+(defmacro call* (name . rest)
+   (let ((fn (if (atom proto) proto (car proto)))
+	 (args (if (atom proto) nil `(list . ,(cdr proto))))
+	 (xlist (convert-xfrm-syntax xfrms)))
+	`(call ',fn ,args . ,xlist)))
+
+(defun& call (proto-name args &rest xfrm-list)
+	(let ((proto (cdr (assoc args (get proto-name 'expansions)))))
+	 (if (null proto)
+		 (let ((*instance* 'defined-symbols))
+		      (setq proto
+			    (objectify (set-the' TYPE proto-name)
+				       (apply (get proto-name 'layout) args)))
+		      (addprop proto-name (cons args proto) 'expansions)))
+	 (objectify (set-the' TYPE proto-name)
+		    (set-the' PROTOTYPE proto)
+		    (set-the' TRANSFORM (collapse-xfrms xfrm-list)))))
+
+; (boxes {layer,(layer width)} starting-pt . transform-list) - creates string of boxes
+
+(defmacro boxes (layer pt . rest)
+   (let ((layer (if (atom layer) layer (car layer)))
+	 (width (if (atom layer) (get layer 'default-width) (cadr layer)))
+	 (path (decode-path-list rest)))
+	`(boxes-1 ',layer ,width ,pt . ,path)))
+
+(defun decode-path-list (path)
+   (and path `(',(caar path) ,(cadar path) . ,(decode-path-list (cdr path)))))
+
+; like (boxes ...) except objectifies the string of boxes
+
+(defmacro wire (layer pt . rest)
+   (let ((layer (if (atom layer) layer (car layer)))
+	 (width (if (atom layer) (get layer 'default-width) (cadr layer)))
+	 (path (decode-path-list rest)))
+	`(wire-1 ',layer ,width ,pt . ,path)))
+
+(defun& wire-1 (layer width pt &rest path)
+   (let ((width (if width width (get layer 'default-width))))
+	(objectify (set-the' start pt)
+		   (set-the' end (wire-path layer width pt path)))))
+
+(defun& boxes-1 (layer width pt &rest path)
+   (let ((width (if width width (get layer 'default-width))))
+	(wire-path layer width pt path)))
+
+(defun wire-path (layer width start path)
+   (let ((x (x-of start))
+	 (y (y-of start)))
+      (do ((x0 x x1)
+	   (y0 y y1)
+	   (x1 x)
+	   (y1 y)
+	   (path path (cddr path))
+	   (w2 (// width 2.0))
+	   (dir))
+	  ((null path) (setq *x x1 *y y1 *xy (pt x1 y1)))
+	  (if (null (cdr path)) (error '|Odd length path| `(,layer ,start . ,path)))
+	  (caseq (car path)
+		 (X (setq x1 (second path)) (setq dir 'X))
+		 (+X (setq x1 (+ x0 (second path))) (setq dir 'X))
+		 (-X (setq x1 (- x0 (second path))) (setq dir 'X))
+		 (Y (setq y1 (second path)) (setq dir 'Y))
+		 (+Y (setq y1 (+ y0 (second path))) (setq dir 'Y))
+		 (-Y (setq y1 (- y0 (second path))) (setq dir 'Y))
+		 (t (error '|Bad path name| path 'fail-act)))
+	  (caseq dir
+	     (Y (box layer
+		     (- x0 w2) (+ x0 w2)
+		     y0 (cond ((null (cddr path)) y1)
+			      ((lessp y1 y0) (- y1 w2))
+			      (t (+ y1 w2)))))
+	     (X (box layer
+		     x0 (cond ((null (cddr path)) x1)
+			      ((lessp x1 x0) (- x1 w2))
+			      (t (+ x1 w2)))
+		     (- y0 w2) (+ y0 w2)))))))
+
+(defun box (layer x0 x1 y0 y1)
+   (push `(box ,layer ,(pt x0 y0) ,(pt x1 y1)) *boxlist*))
+
+(defmacro contact (shape type pt)
+   (caseq shape
+      (S `(contact-1 ',type 2 2 ,pt))
+      (V `(contact-1 ',type 2 4 ,pt))
+      (H `(contact-1 ',type 4 2 ,pt))))
+
+(defun contact-1 (type width height pt)
+   (box 'cuts
+	(- (x-of pt) (// width 2.0))
+	(+ (x-of pt) (// width 2.0))
+	(- (y-of pt) (// height 2.0))
+	(+ (y-of pt) (// height 2.0)))
+   (box 'metal
+	(- (x-of pt) (// width 2.0) 1)
+	(+ (x-of pt) (// width 2.0) 1)
+	(- (y-of pt) (// height 2.0) 1)
+	(+ (y-of pt) (// height 2.0) 1))
+   (box type						;Underlying poly or diffusion
+	(- (x-of pt) (// width 2.0) 1)
+	(+ (x-of pt) (// width 2.0) 1)
+	(- (y-of pt) (// height 2.0) 1)
+	(+ (y-of pt) (// height 2.0) 1)))
+
+;;;Transform
+;(trans pt) (mirror x/y) (rot 0 1) (align internal-pt external-pt)
+
+(defun xfrm (rxx ryx rxy ryy xx yy)
+   `(,rxx ,ryx ,rxy ,ryy ,xx ,yy))
+(defmacro rxx (xfrm) `(car ,xfrm))
+(defmacro ryx (xfrm) `(cadr ,xfrm))
+(defmacro rxy (xfrm) `(caddr ,xfrm))
+(defmacro ryy (xfrm) `(cadddr ,xfrm))
+(defmacro xx (xfrm) `(car (cddddr ,xfrm)))
+(defmacro yy (xfrm) `(cadr (cddddr ,xfrm)))
+
+(defmacro set-rxx (xfrm x) `(rplaca ,xfrm ,x))
+(defmacro set-ryx (xfrm x) `(rplaca (cdr ,xfrm) ,x))
+(defmacro set-rxy (xfrm x) `(rplaca (cddr ,xfrm) ,x))
+(defmacro set-ryy (xfrm x) `(rplaca (cdddr ,xfrm) ,x))
+(defmacro set-xx (xfrm x) `(rplaca (cddddr ,xfrm) ,x))
+(defmacro set-yy (xfrm x) `(rplaca (cdr (cddddr ,xfrm)) ,x))
+
+(defun transform (pt transform)
+       (cond (transform (pt (+ (* (rxx transform) (x-of pt))
+			       (* (rxy transform) (y-of pt))
+			       (xx transform))
+			    (+ (* (ryx transform) (x-of pt))
+			       (* (ryy transform) (y-of pt))
+			       (yy transform))))
+
+	     (t pt)))
+
+(setq xfrm-pattern '(rxx ryx rxy ryy xx yy))
+
+(defun collapse-xfrms (xfrms)
+   (let ((current (xfrm 1 0 0 1 0 0)))
+      (do ((xfrms xfrms (cddr xfrms)))
+	  ((null xfrms) current)
+	  (if (null (cdr xfrms)) (error '|Odd length transform list| xfrms))
+	  (let ((arg (second xfrms)))
+	       (caseq (first xfrms)
+		      (TRANS				;TRANS pt
+		       (set-xx current (+ (xx current) (x-of arg)))
+		       (set-yy current (+ (yy current) (y-of arg))))
+		      (MIRROR				;MIRROR {X,Y}
+		       (caseq arg
+			      (X (set-rxx current (- 0 (rxx current)))
+				 (set-rxy current (- 0 (rxy current)))
+				 (set-xx current (- 0 (xx current))))
+			      (Y (set-ryx current (- 0 (ryx current)))
+				 (set-ryy current (- 0 (ryy current)))
+				 (set-yy current (- 0 (yy current))))))
+		      (ROT				;ROT (x{0,1,-1} y{0,1,-1})
+		       (let ((x (first arg))
+			     (y (second arg)))
+			    (let ((row (do-rot (rxx current) (ryx current) x y)))
+				 (set-rxx current (x-of row))
+				 (set-ryx current (y-of row)))
+			    (let ((row (do-rot (rxy current) (ryy current) x y)))
+				 (set-rxy current (x-of row))
+				 (set-ryy current (y-of row)))
+			    (let ((row (do-rot (xx current) (yy current) x y)))
+				 (set-xx current (x-of row))
+				 (set-yy current (y-of row))))))))))
+
+(defun convert-xfrm-syntax (xfrms)
+    (and xfrms (caseq (caar xfrms)
+		      (TRANS					;TRANS pt
+		       `('TRANS ,(cadar xfrms) . ,(convert-xfrm-syntax (cdr xfrms))))
+		      (MIRROR
+		       `('MIRROR ',(cadar xfrms) . ,(convert-xfrm-syntax (cdr xfrms))))
+		      (ROT
+		       `('ROT (list ,(cadar xfrms) ,(caddar xfrms))
+			      . ,(convert-xfrm-syntax (cdr xfrms)))))))
+
+
+;;; multiply by [rx  ry]
+;;;             [-ry rx]
+;;;	[x y] *
+
+(defun do-rot (x y rx ry)
+   (pt (+ (* x rx) (* y (- 0 ry)))
+       (+ (* x ry) (* y rx))))
+
+(defun align (instance internal-point external-point)
+       (let ((current (get-the instance 'transform)))
+	    (set-xx current (+ (xx current)
+			       (- (x-of external-point) (x-of internal-point))))
+	    (set-yy current (+ (yy current)
+			       (- (y-of external-point) (y-of internal-point))))
+	    instance))
+
+;; Compatibility kludge for Steele System:
+(defun layout fexpr (l)
+       (putprop (car l)
+		`(lambda () 
+			 (set-the' h-pitch ,(caadr l))
+			 (set-the' v-pitch ,(cadadr l))
+			 . ,(cdddr l))
+		'layout)
+       (car l))
+
+(defun poly fexpr (l)
+       (mapc '(lambda (b) (apply 'box (cons 'poly b))) l))
+
+(defun diff fexpr (l)
+       (mapc '(lambda (b) (apply 'box (cons 'diff b))) l))
+
+(defun metal fexpr (l)
+       (mapc '(lambda (b) (apply 'box (cons 'metal b))) l))
+
+(defun cuts fexpr (l)
+       (mapc '(lambda (b)
+		 (let ((x (first b)) (y (second b)) (shape (caddr b)))
+		      (caseq shape
+			     (S (box 'cuts (- x 1) (+ x 1) (- y 1) (+ y 1)))
+			     (H (box 'cuts (- x 2) (+ x 2) (- y 1) (+ y 1)))
+			     (V (box 'cuts (- x 1) (+ x 1) (- y 2) (+ y 2))))))
+	     l))
+
+(defun implant fexpr (l)
+       (mapc '(lambda (b) (apply 'box (cons 'implant b))) l))
+
+;(column <prototype> nil <size> <name> <first-bit> <last-bit>) or
+;(column <layout-fcn> <arg-list> <size> <name-> <first-bit> <last-bit>)
+
+(declare (special *i* *j*))
+
+(deflayout column (proto args size name first last)
+	   (make-column proto args size name first last))
+
+(defun make-column (proto args size name first last)
+    (do ((i 0 (1+ i))
+	 (part-no first (if (< first last) (1+ part-no) (1- part-no)))
+	 (pitch)
+	 (y 0 (if (> size 0) (+ y pitch) (- y pitch))))
+	((= i (abs size))
+	 (set-the' v-pitch y))
+	(setq *j* part-no)
+	(let ((obj (call proto args 'TRANS (pt 0 y))))
+	     (set-the (concat name '- part-no) obj)
+	     (setq pitch (get-the obj 'v-pitch)))))
+    
+
+(deflayout row (proto args size name first last)
+	   (make-row proto args size name first last))
+
+(defun make-row (proto args size name first last)
+    (do ((i 0 (1+ i))
+	 (part-no first (if (< first last) (1+ part-no) (1- part-no)))
+	 (pitch)
+	 (x 0 (if (> size 0) (+ x pitch) (- x pitch))))
+	((= i (abs size))
+	 (set-the' h-pitch x))
+	(setq *i* part-no)
+	(let ((obj (call proto args 'TRANS (pt x 0))))
+	     (set-the (concat name '- part-no) obj)
+	     (setq pitch (get-the obj 'h-pitch)))))
+
+(defun make-display-list (thing)
+    (append (get-the thing 'boxlist)
+	    (mapcan '(lambda (part)
+		       (cond ((get part 'prototype)
+			      `((call ,(get-the part 'prototype)
+				     ,(get-the part 'type)
+				     ,(get-the part 'transform))))
+			     (t (let ((xfrm (get-the part 'transform)))
+				     (mapcar '(lambda (box)
+						 `(box ,(second box)
+						       ,(transform (caddr box) xfrm)
+						       ,(transform (cadddr box) xfrm)))
+					     (make-display-list part))))))
+		    (get-the thing 'parts))))
+
+
+;Window = l, r, b, t
+
+(declare (special *left *right *bottom *top *channel))
+
+
+(defun output-boxes (thing window)
+       (let ((*left (first window)) (*right (second window))
+	     (*bottom (third window)) (*top (fourth window)))
+	    (output-boxes-1 thing nil)))
+
+(defun output-boxes-1 (thing xfrms)
+       (let ((h-pitch (get-the thing 'h-pitch))
+	     (v-pitch (get-the thing 'v-pitch))
+	     b-box left right bottom top)
+	    (cond ((and h-pitch v-pitch)
+		   (setq b-box `(box outline ,*origin ,(pt h-pitch v-pitch))))
+		  (h-pitch (setq b-box `(box outline ,*origin ,(pt h-pitch *inf))))
+		  (v-pitch (setq b-box `(box outline ,*origin ,(pt *inf v-pitch))))
+		  (t (setq b-box `(box outline ,*origin ,(pt *inf *inf)))))
+	    (setq b-box (transform-box b-box xfrms))
+	    (setq left (min (x-of (third b-box)) (x-of (fourth b-box))))
+	    (setq right (max (x-of (third b-box)) (x-of (fourth b-box))))
+	    (setq bottom (min (y-of (third b-box)) (y-of (fourth b-box))))
+	    (setq top (max (y-of (third b-box)) (y-of (fourth b-box))))
+	    (or (lessp right *left) (lessp top *bottom)
+		(greaterp left *right) (greaterp bottom *top)
+		(output-boxes-2 thing xfrms))))
+
+(defun output-boxes-2 (thing xfrms)
+       (mapc '(lambda (box) (funcall *channel (transform-box box xfrms)))
+	     (get-the thing 'boxlist))
+       (mapc '(lambda (part)
+		      (let ((xfrm (get-the part 'transform)))
+			   (if xfrm 
+			       (output-boxes-1 part (cons xfrm xfrms))
+			       (output-boxes-1 part xfrms))))
+	     (get-the thing 'parts)))
+
+(defun transform-box (box xfrms)
+       (let ((p1 (third box)) (p2 (fourth box)))
+	    (mapc '(lambda (xfrm)
+			   (setq p1 (transform p1 xfrm))
+			   (setq p2 (transform p2 xfrm)))
+		  xfrms)
+	    `(box ,(second box) ,p1 ,p2)))
+
+(defun boxes-to-file (thing window filename)
+       (let ((stream (open filename '(out)))
+	     (*channel (function (lambda (box) (print box stream)))))
+	    (output-boxes thing window)
+	    (close stream))
+       'done)
+
+(defun stipple-to-file (thing window filename rotate-p)
+       (let ((left (first window)) (right  (second window))
+	     (bottom (third window)) (top (fourth window)))
+	    (let ((a (create-layer-mask-array left right bottom top))
+		  (*channel (function (lambda (box)
+					 (add-box-to-layer-mask-array a box
+							      left right bottom top)))))
+		 (output-boxes thing window)
+		 (convert-layer-mask-array a)
+		 (output-stipple-char-array a filename rotate-p)
+		 a)))

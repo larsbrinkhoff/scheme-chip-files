@@ -1,0 +1,350 @@
+;;; -*- Package: dpl; Mode: Lisp; Base: 10. -*-
+
+;;;; properties of cells
+
+(defregtype normal-register
+  (control-line-names (load-local load-global restore phi-2 read))
+  (driver normal-reg-driver))
+
+(defregtype pc-register
+  (register-mapping (pc-reg))
+  (control-line-names (load phi-2 read))
+  (driver pc-driver))
+
+(defregtype one-input-reg
+  (register-mapping (one-input-reg))
+  (control-line-names (load restore phi-2 read))
+  (driver shadow-driver)
+  )
+
+(defregtype pc-stack-top
+  (register-mapping (one-input-reg (local-or-global local)))
+  (control-line-names (load restore phi-2 read))
+  (driver pc-stack-top-driver))
+
+(defregtype uarg-stack-top
+  (register-mapping (normal-register))
+  (driver uarg-stack-top-driver))
+
+(defregtype adder
+  (mirror-next-guy t)
+  (connect-to-next-guy t)
+  (connect-to-previous-guy t)
+  (register-mapping (adder-cell))
+  (bottom-bitting? t)
+  (top-bitting? t)
+  (sense-line-names (sign-bit-out))
+  (control-line-names (result-to-bus))
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver)))))
+
+(defregtype eq-test
+  (mirror-next-guy t)
+  (connect-to-next-guy t)
+  (connect-to-previous-guy t)
+  (register-mapping (eq-test (right-source neighbor)))
+  (associate-mapping (eq-test (right-source global)))
+  (bottom-bitting? t)
+  (sense-line-names (signal)))
+
+
+(defregtype constant-source
+  (associate-mapping (constant-source (local-or-global local)))
+  (register-mapping (constant-source (local-or-global global)))
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (control-line-names (read))
+  (bit-patterned? t))
+
+(defregtype shadow
+  (associate-mapping (shadow-register (xfrm negx))))
+
+(defregtype shadow-register
+  (control-line-names (read restore phi-2 load))
+  (driver ((driver shadow-driver (xfrm (compose-unitary-transforms 'negx (>> xfrm)))))))
+
+(defregtype incrementer
+  (associate-mapping (incrementer-decrementer (increment-or-decrement increment)))
+  (self-operator t))
+
+(defregtype decrementer
+  (associate-mapping (incrementer-decrementer (increment-or-decrement decrement)))
+  (self-operator t))
+
+(defregtype incrementer-decrementer
+  (bottom-bitting? t)
+  (control-line-names (read-to-local-bus))
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (self-operator t))
+
+(defregtype shift-negate
+  (associate-mapping (shift-negate (xfrm negx)))
+  (bottom-bitting? t)
+  (top-bitting? t)
+  (driver ((shift-driver complementary-pair-driver)
+	   (negate-driver complementary-pair-driver)))
+  (control-line-names (dont-shift shift negate dont-negate))
+  (external-control-names ((shift (>> input shift-driver))
+			   (negate (>> input negate-driver)))))
+
+(defregtype bit-tester
+  (bit-patterned? t)
+  (register-mapping (bit-tester (local-or-global global)))
+  (associate-mapping (bit-tester (local-or-global local)))
+  (sense-line-names (signal))
+  (bottom-bitting? t))
+
+(defregtype stack
+  (associate-mapping (stack-cell))
+  (control-line-names (push pop restore phi-2))
+  (driver stack-driver))
+
+(defregtype literal
+  (register-mapping (input-literal-bus (local-or-global global)))
+  (associate-mapping (input-literal-bus (local-or-global local)))
+  (control-line-names (connect))
+  (repeated-control-line-names ((bus-size cross-bus)))
+  (driver ((control-driver one-input-driver)
+	   (data-driver literal-driver (number (>> bus-size)))))
+  (external-control-names ((read (>> input control-driver))))
+  (position-programming? t))
+
+(defregtype pass-driven-literal
+  (register-mapping (input-literal-bus (local-or-global global)))
+  (associate-mapping (input-literal-bus (local-or-global local)))
+  (control-line-names (connect))
+  (repeated-control-line-names ((bus-size cross-bus)))
+  (driver ((control-driver one-input-driver)
+	   (data-driver pass-through-literal-driver (number (>> bus-size)))))
+  (external-control-names ((read (>> input control-driver))))
+  (position-programming? t))
+
+(defregtype pass-driven-frozen-literal
+  (register-mapping (input-literal-bus (local-or-global global)))
+  (associate-mapping (input-literal-bus (local-or-global local)))
+  (control-line-names (connect))
+  (repeated-control-line-names ((bus-size cross-bus)))
+  (driver ((control-driver frozen-one-input-driver)
+	   (data-driver pass-through-literal-driver (number (>> bus-size)))))
+  (external-control-names ((read (>> input control-driver))))
+  (position-programming? t))
+
+(defregtype undriven-literal
+  (register-mapping (input-literal-bus (local-or-global global)))
+  (associate-mapping (input-literal-bus (local-or-global local)))
+  (control-line-names (connect))
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (position-programming? t))
+
+(defregtype global-literal
+  (associate-mapping (input-literal-bus (local-or-global global)))
+  (control-line-names (connect))
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (position-programming? t))
+
+(defregtype driven-frozen-literal
+  (register-mapping (input-literal-bus (local-or-global global)))
+  (associate-mapping (input-literal-bus (local-or-global local)))
+  (control-line-names (connect))
+  (repeated-control-line-names ((bus-size cross-bus)))
+  (driver ((control-driver frozen-one-input-driver)
+	   (data-driver literal-driver (number (>> bus-size)))))
+  (external-control-names ((read (>> input control-driver))))
+  (position-programming? t))
+
+(defregtype undriven-frozen-literal
+  (register-mapping (input-literal-bus (local-or-global global)))
+  (associate-mapping (input-literal-bus (local-or-global local)))
+  (control-line-names (connect))
+  (driver frozen-one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (repeated-sense-line-names ((bus-size cross-bus)))
+  (position-programming? t))
+
+(defregtype two-bus-literal
+  (control-line-names (connect-local connect-global))
+  (repeated-control-line-names ((bus-size cross-bus)))
+  (driver ((control-driver frozen-two-input-driver)
+	   (data-driver pass-through-literal-driver (number (>> bus-size)))))
+  (position-programming? t))
+
+(defregtype gated-output-bits
+  (associate-mapping (output-cross-bus))
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (control-line-names (connect))
+  (position-programming? t))
+
+(defregtype ungated-output-bits
+  (associate-mapping (unconditional-output-cross-bus (local-or-global local)))
+  (register-mapping (unconditional-output-cross-bus (local-or-global global)))
+  (repeated-sense-line-names ((bus-size cross-bus)))
+  (position-programming? t))
+
+(defregtype top-level-literal
+  (register-mapping (unconditional-output-cross-bus (local-or-global local)
+						    (no-left-connect? t)))
+  (repeated-sense-line-names ((bus-size cross-bus)))
+  (position-programming? t))
+
+(defregtype two-way-cross-bus
+  (driver two-input-driver)
+  (control-line-names (connect-global connect-value))
+  (external-control-names ((read (>> input-1 driver))
+			   (write (>> input-2 driver))))
+  (position-programming? t))
+
+(defregtype bus-connector
+  (control-line-names (connect))
+  (external-control-names ((connect (>> input driver))))
+  (driver one-input-driver)
+  (position-programming? t))
+
+(defregtype field-shifter
+  (control-line-names (load-local))
+  (external-control-names ((read (>> input driver))))
+  (driver one-input-driver)
+  (position-programming? t))
+
+(defregtype local-car-cdr-address
+  (register-mapping (left-right-address-source (local-or-global value-bus)))
+  (associate-mapping (left-right-address-source (local-or-global local)))
+  (driver two-input-driver)
+  (control-line-names (left-address right-address)))
+
+(defregtype value-bus-car-cdr-address
+  (associate-mapping (value-bus-left-right-address))
+  (driver one-input-driver)
+  (external-control-names ((cdr-bit (>> input driver))))
+  (control-line-names (value)))
+
+(defregtype global-car-cdr-address
+  (register-mapping (left-right-address-source (local-or-global global)))
+  (driver two-input-driver)
+  (control-line-names (left-address right-address)))
+
+(defregtype right-shift-with-0
+  (associate-mapping (shift-right))
+  (self-operator t)
+  (bottom-bitting? t)
+  (top-bitting? ((shift-in-value zero)))
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (control-line-names (shift)))
+
+(defregtype right-shift-with-1
+  (associate-mapping (shift-right))
+  (self-operator t)
+  (bottom-bitting? t)
+  (top-bitting? ((shift-in-value one)))
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (control-line-names (shift)))
+
+(defregtype left-shift-with-0
+  (associate-mapping (shift-left))
+  (self-operator t)
+  (bottom-bitting? ((shift-in-value zero)))
+  (top-bitting? t)
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (control-line-names (shift)))
+
+(defregtype left-shift-with-1
+  (associate-mapping (shift-left))
+  (self-operator t)
+  (bottom-bitting? ((shift-in-value one)))
+  (top-bitting? t)
+  (driver one-input-driver)
+  (external-control-names ((read (>> input driver))))
+  (control-line-names (shift)))
+
+
+
+
+(defdrivertype complementary-pair-driver
+  (contacts ((>> connection-1 driver) (>> connection-2 driver)))
+  (input-names (input)))
+
+(defdrivertype two-input-driver
+  (contacts ((>> connection-1 driver)
+	     (>> connection-2 driver)))
+  (input-names (input-1 input-2)))
+
+(defdrivertype frozen-two-input-driver
+  (contacts ((>> connection-1 driver)
+	     (>> connection-2 driver)))
+  (input-names (input-1 input-2)))
+
+(defdrivertype one-input-driver
+  (contacts ((>> connection-1 driver)))
+  (input-names (input)))
+						
+(defdrivertype frozen-one-input-driver
+  (contacts ((>> connection-1 driver)))
+  (input-names (input)))
+
+
+(defdrivertype inverting-one-input-driver
+  (contacts ((>> connection-1 driver)))
+  (input-names (input)))
+
+(defdrivertype normal-reg-driver
+  (contacts ((>> connection-1 pair-1)
+	     (>> connection-2 pair-1)
+	     (>> connection-1 pair-2)
+	     (>> connection-2 pair-2)
+	     (>> connection-1 single-driver)))
+  (input-names (load-local load-global read)))
+
+(defdrivertype uarg-stack-top-driver
+  (contacts ((>> connection-1 pair-1)
+	     (>> connection-2 pair-1)
+	     (>> connection-1 pair-2)
+	     (>> connection-2 pair-2)
+	     (>> connection-1 single-driver)))
+  (input-names (load-local load-global read)))
+
+(defdrivertype pc-driver
+  (contacts ((>> connection-1 pair-1)
+	     (>> connection-2 pair-1)
+	     (>> connection-1 pair-2)))
+  (input-names (read)))
+
+(defdrivertype shadow-driver
+  (contacts ((>> connection-1 pair-1)
+	     (>> connection-2 pair-1)
+	     (>> connection-1 pair-2)
+	     (>> connection-2 pair-2)))
+  (input-names (load read)))
+
+(defdrivertype pc-stack-top-driver
+  (contacts ((>> connection-1 pair-1)
+	     (>> connection-2 pair-1)
+	     (>> connection-1 pair-2)
+	     (>> connection-2 pair-2)))
+  (input-names (push pop read)))
+
+(defdrivertype stack-driver
+  (contacts ((>> connection-1 pair-1)
+	     (>> connection-2 pair-1)
+	     (>> connection-1 pair-2)
+	     (>> connection-2 pair-2)))
+  (input-names (push pop)))
+
+(defdrivertype clock-freeze-driver
+  (contacts nil))
+
+(defdrivertype literal-driver
+  (repeated-contacts ((number driver-row (>> connection-1 driver) (>> connection-2 driver))))
+  (repeated-input-names
+    ((input (number driver-row (>> input-1) (>> input-2))))))
+
+(defdrivertype pass-through-literal-driver
+  (repeated-contacts ((number driver-row (>> input))))
+  (repeated-input-names
+    ((input (number driver-row (>> input))))))
+

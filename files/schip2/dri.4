@@ -1,0 +1,63 @@
+(deflayout ph2-driver ()
+	   (set-the' v-pitch 22)
+	   (set-the' h-pitch 38)
+	   
+	   (set-the' vdd-height 2)
+	   (set-the' vdd (wire (metal 4) (pt 0 (the vdd-height)) (X (the h-pitch))))
+
+	   (set-the' ph2-in-height 7)
+	   (set-the' ph2-in (wire (metal 3) (pt 0 (the ph2-in-height)) (X (the h-pitch))))
+	   
+	   (set-the' gnd-height 24)
+
+	   (set-the' ph1-to-x 2)			;bussed thru
+	   (set-the' ph1-to (wire poly (pt (the ph1-to-x) 0) (Y (the v-pitch))))
+	   
+	   (set-the' ph1-from-x 36)			;bussed thru
+	   (set-the' ph1-from (wire poly (pt (the ph1-from-x) 0) (Y (the v-pitch))))
+
+	   (set-the' ph2-out-x 28)
+	   (set-the' output-contact (pt (- (the ph2-out-x) 1) 16))
+	   (call 'butting-contact () 'rot '(0 -1) 'trans (the output-contact))
+	   
+	   (set-the' ph2-out (wire poly (pt (the ph2-out-x) (the-y output-contact))
+				   (Y (the v-pitch))))
+
+	   (set-the' pullup-contact (pt (the ph2-out-x) (the ph2-in-height))) ;coincidence
+	   (contact S poly (the pullup-contact))
+
+	   (set-the' output-pullup (pt 23.5 5))
+	   (call 'general-pullup '(6 3) 'trans (the output-pullup))
+
+	   (set-the' q2 (pt 21 20))
+	   (call 'pass-transistor '(2 4) 'trans (the q2))
+
+	   (boxes (diff 3) (the q2)
+		  (Y (the-y output-contact)) (X (the-x output-pullup)) (Y (the vdd-height)))
+	   
+	   (set-the' input-pullup (pt 14 5))
+	   (call 'pullup-without-contact '(4) 'trans (the input-pullup))
+
+	   (boxes poly (pt (+ (the-x input-pullup) 3) (the-y input-pullup))
+		  (Y (+ (the-y q2) 1)))
+
+	   (set-the' input-pullup-contact (pt 15 15))
+	   (call 'butting-contact () 'rot '(0 -1) 'trans (the input-pullup-contact))
+	   
+	   (set-the' q1 (pt 8 15))
+	   (call 'pass-transistor '(2 4) 'rot '(0 1) 'trans (the q1))
+
+	   (set-the'input-contact (pt (- (the-x q1) 1) (the ph2-in-height)))
+	   (contact S poly (the input-contact))
+
+	   (boxes diff (pt 14 (- (the gnd-height) 3)) (X 5) (Y (the-y q1)))
+	   (boxes (diff 4) (the q1) (+X 4))
+	   (boxes (diff 3) (pt (- (the-x input-pullup-contact) 1.5)
+			       (the-y input-pullup-contact))
+		  (-Y 5))
+
+	   (set-the' vd1-contact (pt 10 (the vdd-height)))
+	   (contact H diff (the vd1-contact))
+	   (boxes (diff 4) (the vd1-contact) (+X 14))
+	   (contact H diff *XY))
+

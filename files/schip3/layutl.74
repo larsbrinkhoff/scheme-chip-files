@@ -1,0 +1,376 @@
+;;; -*- package: DPL; mode: LISP -*-
+
+;;; Compiled utility functions for SCHEME-81
+
+(defvar *faking-it* t)
+
+(setq *auto-display-desired* nil)
+(setq *rebuild-types* nil)
+
+(defconst *metal-pitch* 7)
+(defconst *poly-pitch* 4)
+(defconst *metal-spacing* 5)
+(defconst *poly-spacing* 3)
+(defconst *diff-pitch* 5)
+(defconst *diff-spacing* 4)
+
+;;; Numbers to be filled in later
+(defconst *small-number* 10)
+(defconst *medium-number* 30)
+(defconst *big-number* 100)
+
+(defmacro schip-part (name (real-name fake-name) &body args)
+  `(cond ((eq *faking-it* 't)
+	  (itran (partq ,name ,fake-name . ,args)))
+	 (t (itran (partq ,name ,real-name . ,args))
+	    (print ',name))))
+
+(declare (special *pred-field* *disp-input-field* *disp-output-field*
+		  *control-pla-input-field* *control-pla-output-field*
+		  *ns-op-input-field* *uarg-op-input-field* *ns-op-output-field*
+		  *uarg-op-output-field* *constant-decoder-input-field*
+		  *constant-decoder-output-field* *register-field*
+		  *non-uarg-input-field* *non-uarg-output-field*
+		  *uarg-read-input-field* *uarg-load-input-field*
+		  *uarg-read-output-field* *uarg-load-output-field*))
+
+(defun initialize-plas ()
+  (setq *pred-field* (instantiate-field 'pred))
+  (setq *disp-input-field* (instantiate-field 'disp-input))
+  (setq *disp-output-field* (instantiate-field 'disp-output))
+  (setq *ns-op-input-field* (instantiate-field 'ns-op-input))
+  (setq *uarg-op-input-field* (instantiate-field 'uarg-op-input))
+  (setq *ns-op-output-field* (instantiate-field 'ns-op-output))
+  (setq *uarg-op-output-field* (instantiate-field 'uarg-op-output))
+  (setq *constant-decoder-input-field*
+	(instantiate-field 'constant-decoder-input))
+  (setq *constant-decoder-output-field*
+	(instantiate-field 'constant-decoder-output))
+  (setq *register-field* (instantiate-field 'registers))
+  (process-reverse *register-field* t)
+  (setq *non-uarg-input-field* (instantiate-field 'non-uarg-input))
+  (setq *non-uarg-output-field* (instantiate-field 'non-uargs))
+  (setq *uarg-read-input-field* (instantiate-field 'uarg-read-input))
+  (setq *uarg-load-input-field* (instantiate-field 'uarg-load-input))
+  (setq *uarg-read-output-field* (instantiate-field 'read-uargs))
+  (setq *uarg-load-output-field* (instantiate-field 'load-uargs))
+  (setq *control-pla-input-field* (instantiate-field 'control-pla-input))
+  (setq *control-pla-output-field* (instantiate-field 'control-pla-output))
+  (order-partial-field *non-uarg-output-field* *register-field*)
+  (order-partial-field *uarg-load-output-field* *register-field*)
+  (order-partial-field *uarg-read-output-field* *register-field*)
+  't)
+
+(defvar *scheme-81-maker-codes* nil)
+(defvar *all-scheme-81-maker-codes* nil)
+
+(defun reset-scheme-81 ()
+  (setq *scheme-81-maker-codes* nil))
+
+(defun all-scheme-81 ()
+  (setq *scheme-81-maker-codes* *all-scheme-81-maker-codes*)
+  (fix-schip-codes))
+
+(defmacro schip-code (name after &body body)
+  `(let ((*rebuild-types* nil))
+     (remtype 'scheme-81)
+     (defprop ,name ,body schip-code)
+     (defprop ,name ,after schip-code-after)
+     (insert-schip-code ',name ',after)
+     (or (memq ',name *all-scheme-81-maker-codes*)
+	 (push ',name *all-scheme-81-maker-codes*))
+     'scheme-81))
+
+(defun find-sublist-after (after list)
+  (let ((ans list) an)
+    (dolist (af after)
+      (setq an (memq af ans))
+      (if (not (null an)) (setq ans an)))
+    ans))
+
+(defun insert-schip-code (name after)
+  (if (null after)
+      (or (memq name *scheme-81-maker-codes*)
+	  (push name *scheme-81-maker-codes*))
+      (let ((al (find-sublist-after after *scheme-81-maker-codes*)))
+	(or (memq name al)
+	    (progn
+	      (setq *scheme-81-maker-codes*
+		    (delq name *scheme-81-maker-codes*))
+	      (rplacd al (cons name (cdr al))))))))
+
+(defun in-correct-position? (name)
+  (memq name (find-sublist-after (get name 'schip-code-after)
+				 *scheme-81-maker-codes*)))
+
+(defun all-afters-in? (name)
+  (do ((ll (get name 'schip-code-after) (cdr ll)))
+      ((null ll) t)
+    (or (memq (car ll) *scheme-81-maker-codes*)
+	(return nil))))
+
+(defun fix-schip-codes ()
+  (cept-for-1 *scheme-81-maker-codes*)
+  *scheme-81-maker-codes*)
+
+(defmacro cept-for list
+  `(progn
+     (reset-scheme-81)
+     (cept-for-1 ',list)
+     *scheme-81-maker-codes*))
+
+(defun cept-for-1 (list)
+  (if (memq (car list) (cdr list))
+      (setf (cdr list) (delq (car list) (cdr list))))
+  (cond ((null list) 't)
+	((and (all-afters-in? (car list))
+	      (in-correct-position? (car list)))
+	 (cept-for-1 (cdr list)))
+	(t (cept-for-1 (get (car list) 'schip-code-after))
+	   (insert-schip-code (car list) (get (car list) 'schip-code-after))
+	   (cept-for-1 (cdr list)))))
+
+(defmacro insert-for list
+  `(progn
+     (cept-for-1 ',list)
+     *scheme-81-maker-codes*))
+
+(defun jump-over+x (obj &optional (space *metal-spacing*))
+  (to-x (- (the 'apparent-left obj) space))
+  (run-layer 'poly)
+  (to-x (+ (the 'apparent-right obj) space))
+  (drop-contact)
+  (run-layer 'metal))
+
+(defun jump-over-x (obj &optional (space *metal-spacing*))
+  (to-x (+ (the 'apparent-right obj) space))
+  (run-layer 'poly)
+  (to-x (- (the 'apparent-left obj) space))
+  (drop-contact)
+  (run-layer 'metal))
+
+(defun jump-over+y (obj &optional (space *metal-spacing*))
+  (to-y (- (the 'apparent-bottom obj) space))
+  (run-layer 'poly)
+  (to-y (+ (the 'apparent-top obj) space))
+  (drop-contact)
+  (run-layer 'metal))
+
+(defun jump-over-y (obj &optional (space *metal-spacing*))
+  (to-y (+ (the 'apparent-top obj) space))
+  (run-layer 'poly)
+  (to-y (- (the 'apparent-bottom obj) space))
+  (drop-contact)
+  (run-layer 'metal))
+
+(defun jump-over (obj dir)
+  (eval (jump-over-worker obj dir)))
+    
+(defun jump-over-worker (obj dir)
+  (let (to sf ef ss es)
+     (selectq dir
+       (+x (setq to 'to-x sf '- ef '+ ss 'apparent-left es 'apparent-right))
+       (-x (setq to 'to-x sf '+ ef '- ss 'apparent-right es 'apparent-left))
+       (+y (setq to 'to-y sf '- ef '+ ss 'apparent-bottom es 'apparent-top))
+       (-y (setq to 'to-y sf '+ ef '- ss 'apparent-top es 'apparent-bottom)))
+    `(progn
+       (,to (,sf (the ',ss ',obj) *metal-to-metal* 7))
+       (run-layer 'poly)
+       (run-width 4)
+       (,dir 4)
+       (drop-contact)
+       (,to (,ef (the ',es ',obj) *metal-to-metal* 3))
+       (drop-contact)
+       (,dir 4)
+       (drop-contact)
+       (run-layer 'metal))))
+
+(defun itran (instance)
+  (let ((tran (transform instance)))
+    (set-transform instance
+		   (make-transform
+		     (unitary-part tran)
+		     (make-xy-pair (cloint (x-of-xy (cdr tran)))
+				   (cloint (y-of-xy (cdr tran))))))
+    instance))
+
+;;;; Op routing
+
+(defun find-channel-layer (x clist &optional (default-layer 'metal))
+  (cond ((null clist) default-layer)
+	((< x (caar clist)) default-layer)
+	(t (find-channel-layer x (cdr clist) (cadr (car clist))))))
+
+(defun find-clist-extrema (clist func)
+  (loop for conn in clist
+	    minimize (funcall func conn) into min
+	    maximize (funcall func conn) into max
+	    finally
+	    (return min max)))
+
+(defun to--x (x) (to-x x))
+(defun to--y (y) (to-y y))
+
+(defun op-router (connection-list channel height direction)
+  (let (coord to-coord other-to pt-maker)
+    (cond ((eq direction 'horizontal)
+	   (setq coord #'x-of-pt to-coord #'to--x other-to #'to--y
+		 pt-maker #'(lambda (coord ht) (pt coord ht))))
+	  ((eq direction 'vertical)
+	   (setq coord #'y-of-pt to-coord #'to--y other-to #'to--x
+		 pt-maker #'(lambda (coord ht) (pt ht coord))))
+	  (t (error "Unknown direction")))
+    (multiple-value-bind (min max)
+	(find-clist-extrema connection-list coord)
+      (op-rout-skeleton-wire
+	(funcall pt-maker min height) max coord to-coord channel))
+    (loop for conn in connection-list
+	  do
+	  (wire () (run-layer 'poly)
+		(from conn)
+		(funcall other-to height)
+		(if (not (eq 'poly
+			     (find-channel-layer (funcall coord conn) channel)))
+		    (drop-contact)
+		    (flash nil))))))
+
+(defun op-rout-skeleton-wire (start-pt end coord to-coord channel)
+  (let ((start (funcall coord start-pt)))
+    (wire () (run-layer (find-channel-layer start channel))
+	  (from start-pt)
+	  (dolist (pr channel)
+	    (cond ((> start (car pr)))
+		  ((> (car pr) end)
+		   (return t))
+		  (t (funcall to-coord (car pr))
+		     (run-layer (cadr pr)))))
+	  (funcall to-coord end))))
+
+;;;; Flash arrays
+(declare (special *pred-program-array* *disp-program-and-array*
+		  *disp-program-or-array* *ns-and-array* *ns-or-array*
+		  *uarg-op-and-array* *uarg-or-array* *constant-and-array*
+		  *constant-or-array* *uarg-load-and-array* *uarg-load-or-array*
+		  *uarg-read-and-array* *uarg-read-or-array* *non-uarg-and-array*
+		  *non-uarg-or-array* *control-and-array* *control-or-array*))
+
+(defun flash-pred-pla (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane . proto) *pred-program-array*))
+
+(defun flash-disp-pla (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane . proto) *disp-program-and-array*)
+  (flash-plane (>> prototype or-plane . proto) *disp-program-or-array*))
+
+(defun flash-ns-op-decoder (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane . proto) *ns-and-array*)
+  (flash-plane (>> prototype or-plane . proto) *ns-or-array*))
+
+(defun flash-uarg-op-decoder (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane . proto) *uarg-op-and-array*)
+  (flash-plane (>> prototype or-plane . proto) *uarg-or-array*))
+
+(defun flash-constant-decoder (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane . proto) *constant-and-array*)
+  (flash-plane (>> prototype or-plane . proto) *constant-or-array*))
+
+(defun flash-uarg-load (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane . proto) *uarg-load-and-array*)
+  (flash-plane (>> prototype or-plane . proto) *uarg-load-or-array*))
+
+(defun flash-uarg-read (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane . proto) *uarg-read-and-array*)
+  (flash-plane (>> prototype or-plane . proto) *uarg-read-or-array*))
+
+(defun flash-non-uarg (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane . proto) *non-uarg-and-array*)
+  (flash-plane (>> prototype or-plane . proto) *non-uarg-or-array*))
+
+(defun flash-control-pla (proto)
+  (if (instance? proto)
+      (setq proto (instance-prototype proto)))
+  (flash-plane (>> prototype and-plane input-plane . proto) *control-and-array*)
+  (flash-plane (>> prototype or-plane output-plane . proto) *control-or-array*))
+
+(defun flash-scheme-81 ()
+  (or (boundp '*constant-and-array*)
+      (load "schip3;code arrays"))
+  (let ((*me* (>> prototype scheme-81)))
+    (flash-pred-pla (>> predicate-select land-of-ns))
+    (print 'predicate-select)
+    (flash-disp-pla (>> dispatch-decoder land-of-ns))
+    (print 'dispatch-decoder)
+    (flash-ns-op-decoder (>> ns-op-decoder land-of-ns))
+    (print 'ns-op-decoder)
+    (flash-uarg-op-decoder (>> uarg-op-decoder land-of-uarg))
+    (print 'uarg-op-decoder)
+    (flash-constant-decoder (>> constant-decoder decoders))
+    (print 'constant-decoders)
+    (flash-uarg-read (>> uarg-read-decoder decoders))
+    (print 'uarg-read-decider)
+    (flash-uarg-load (>> uarg-load-decoder decoders))
+    (print 'uarg-load-decoder)
+    (flash-non-uarg (>> non-uarg-decoder decoders))
+    (print 'non-uarg-decoder)
+    (flash-control-pla (>> control-pla))
+    (print 'control-pla)))
+
+(defvar *error-goto-scale* 4)
+
+(defun error-goto (x y &optional (scale *error-goto-scale*) (view color-view))
+  (let ((pt (pt x y)))
+    (setq *error-goto-scale* scale)
+    (funcall view 'move-view-marker pt)
+    (rescale-and-recenter-view view scale pt)))
+
+(defun add-logo-to-schip ()
+  (setq *faking-it* nil)
+  (let ((*me* (>> prototype scheme-81)))
+    (mapc 'eval (get 'logo 'schip-code))))
+
+(defun daed-startup ()
+  (let ((parts (prototype-parts *me*)))
+    (setf (prototype-parts *me*) (the-empty-list))
+    (do-it)
+    (funcall (get 'color-only 'buffercom))
+    (setf (prototype-parts *me*) parts)
+    t))
+
+;;; For use on a comtab to view drc errors
+
+;; Example line to parse:
+;; (  878, -367)
+
+zwei:
+(defun grab-drc-xy ()
+  (com-beginning-of-line)
+  (com-set-pop-mark)
+  (com-forward-sexp)
+  (let ((stream (region-stream)) (base 10) (ibase 10) x y)
+    (tyi stream)
+    (setq x (read stream))
+    (tyi stream)
+    (setq y (read stream))
+    (setq *mark-stays* nil)
+    (values x y)))
+
+zwei:
+(defun com-try-comtab ()
+  (multiple-value-bind (x y) (grab-drc-xy)
+    (dpl:error-goto x y)
+    dis-none))

@@ -1,0 +1,461 @@
+;;; -*- mode:LISP; package:SCHIP -*-
+;;; SCHEME chip simulator -- RMS, GJS, HANSON
+
+#M(DECLARE (MACROS T))
+
+#M(eval-when (compile)
+    (load "pass1")
+    (load "xlang")
+    (load "fields")
+    (load "udefs"))
+
+(eval-when (eval load) (defmacro if-not-simulating (&rest ignore) nil))
+
+(DEFMACRO DEFPC-BODY (PCNAME BODY)
+  `(PROG () ,BODY (ERROR "Drop through end of" ',PCNAME)))
+
+(defprop  DEFPC-BODY codewalk-args codewalk)
+
+;;; The following macros allow us to refer to virtual machine PC's as
+;;; functions which are the values of LISP variables.
+
+
+(DEFMACRO SEND (PC . ARGSPECS)
+  `(LET ,(MAPCAR
+	   '(LAMBDA (ARGSPEC)
+	      (LET ((ARGVAL (CADR ARGSPEC)) (STACKNAME (CAR ARGSPEC)))
+		`(,STACKNAME (CONS ,ARGVAL ,STACKNAME))))
+	   ARGSPECS)
+     (MAIN-LOOP ',PC)))
+
+
+(defprop  SEND codewalk-args codewalk)
+
+(DEFMACRO GOTO (PC)
+  `(RETURN ',PC))
+
+(defprop  GOTO codewalk-args codewalk)
+
+(DEFMACRO REPLY (&REST ARGS)
+  ARGS
+  '(GOTO SIMULATED-RETURN-TO-CALLER))
+
+(defprop  REPLY codewalk-args codewalk)
+
+(DEFMACRO DISPATCH (REG PURPOSE)
+  `(RETURN (AREF ,PURPOSE (CDR ,REG))))
+
+(defprop  DISPATCH codewalk-args codewalk)
+
+;;; this is the argument-checking function.  in reality, it wants to
+;;; be more complicated, by doing EQUAL on the arguments, and if that
+;;; fails, checking the SAME-FIELD equivalences in the fields database.
+;;; however, this is used for efficiency as it works in all our cases.
+
+(DEFUN PRIMITIVE-ARG-CHECK (X Y)
+  (EQ (CAR X) (CAR Y)))
+
+(DEFMACRO CHECK-ARG-TYPE (FCN ARG TYPE)
+  `(OR (PRIMITIVE-ARG-CHECK (CAR ,ARG) ',TYPE)
+       (ERROR "Wrong type argument" (LIST ',FCN ',TYPE ,ARG))))
+
+(defprop  CHECK-ARG-TYPE codewalk-args codewalk)
+
+(DEFMACRO CHECK-ARG-VARIABLE-TYPE (FCN ARG TYPE-EXP)
+  `(OR (PRIMITIVE-ARG-CHECK (CAR ,ARG) ,TYPE-EXP)
+       (ERROR "Wrong type argument" (LIST ',FCN ,TYPE-EXP ,ARG))))
+
+(defprop  CHECK-ARG-VARIABLE-TYPE codewalk-args codewalk)
+
+;;; Here is how to fetch and assign arg registers.
+;(defun (arg-register fetch) (rstack)
+;  `(read-arg-reg ',rstack))
+
+(defun read-arg-reg (rstack)
+   (let ((arg (funcall (caar (symeval rstack)))))
+      (check-arg-type (fetch rstack) arg (word))
+      arg))
+
+;(defun (arg-register assign) (rstack value)
+;  `(write-arg-reg ',rstack ,value))
+
+(defun write-arg-reg (rstack value)
+   (check-arg-type (assign rstack) value (word))
+   (funcall (cadar (symeval rstack)) value))
+
+;;; What actually lives on the arg register stacks is not the name
+;;; of a register, but a list of thunks for reading or writing the register
+
+;;; Abstract register/stack operations implemented in hunks.
+
+(DECLARE (SPECIAL *THE-REGISTERS
+		  *PCLSRED-REGISTERS
+		  *FREE-MARKS *REG-STATS))
+
+(SETQ *REG-STATS? NIL)
+
+(DEFMACRO READ-REG (FIELD R)
+  (COND ((EQ (GET R 'REG-TYPE) 'ARG-REGISTER) `(READ-ARG-REG ',R))
+	(T `(READ-REG-N (PROGN ',R ,(GET R 'REG-NUMBER)) ',FIELD))))
+
+(defprop  READ-REG codewalk-args codewalk)
+
+(DEFUN READ-REG-N (REG-NUM FIELD)
+  (CONS FIELD (CXR REG-NUM *THE-REGISTERS)))
+
+(DEFMACRO WRITE-SUBFIELD (SUBFIELD FIELD R V)
+  (COND ((EQ (GET R 'REG-TYPE) 'ARG-REGISTER)
+	 `(WRITE-ARG-REG ',R (MODIFY ',SUBFIELD ',FIELD (FETCH ,R) ,V)))
+	(T `(WRITE-REG ,FIELD ,R (MODIFY ',SUBFIELD ',FIELD (FETCH ,R) ,V)))))
+
+(defprop  WRITE-SUBFIELD codewalk-args codewalk)
+
+(DEFMACRO WRITE-REG (FIELD R V)
+  (COND ((EQ (GET R 'REG-TYPE) 'ARG-REGISTER) `(WRITE-ARG-REG ',R ,V))
+	(T `(WRITE-REG-N ',R ,(GET R 'REG-NUMBER) ',FIELD ,V))))
+
+(defprop  WRITE-REG codewalk-args codewalk)
+
+(DEFUN WRITE-REG-N (REG-NAME REG-NUM FIELD VAL)
+  (COND ((PRIMITIVE-ARG-CHECK (CAR VAL) FIELD)
+	 (RPLACX REG-NUM *THE-REGISTERS (CDR VAL))
+	 (CONS FIELD VAL))			;make sure right value returned.
+	(T (ERROR "Bad field-type in loading a register"
+		  (LIST REG-NAME VAL)))))
+
+(DEFMACRO PCLSR-SAVE-1 (REGNAME)
+  (LET ((N (GET REGNAME 'REG-NUMBER)))
+    `(RPLACX ,N *PCLSRED-REGISTERS (CXR ,N *THE-REGISTERS))))
+
+(defprop  PCLSR-SAVE-1 codewalk-args codewalk)
+
+(DEFMACRO PCLSR-RESTORE-1 (REGNAME)
+  (LET ((N (GET REGNAME 'REG-NUMBER)))
+    `(RPLACX ,N *THE-REGISTERS (CXR ,N *PCLSRED-REGISTERS))))
+
+(defprop  PCLSR-RESTORE-1 codewalk-args codewalk)
+
+(DECLARE (SPECIAL TARGET-STACK-NAME ARG-STACK-NAMES))
+
+(DEFUN CLEAR-CONTROLLER-STACKS ()
+       ;;; Clear out the micro subr stack, and the args stacks.
+       (SET TARGET-STACK-NAME NIL)
+       (MAPC #'(LAMBDA (VAR) (SET VAR NIL)) ARG-STACK-NAMES))
+
+(DEFMACRO PUSH-ARG (REF STACK)
+	  `(PUSH ,REF ,STACK))
+(DEFPROP PUSH-ARG CODEWALK-ARGS CODEWALK)
+
+(DEFMACRO POP-ARG (STACK)
+	 `(POP ,STACK))
+(DEFPROP POP-ARG CODEWALK-ARGS CODEWALK)
+
+;These macros expand into code
+;to produce the object to be pushed onto an arg stack.
+;That object's car is a function to read the argument.
+;That object's cadr is a function of one arg to set the argument.
+;That object's caddr is the expression the caller gave for the argument.
+;It is not used.  It is there for humans looking at the arg stack.
+
+;This version wants an expression (such as (fetch foo))
+;and pushes an object saying how to read it, and not allowing writes.
+(defmacro arg-stack-read-only (arg)
+  (cond ((and (not (atom arg))
+	      (eq (car arg) 'read-reg)
+	      (or (memq (caddr arg) arg-stack-names)
+		  (eq (caddr arg) target-stack-name)))
+	 `(car ,(caddr arg)))
+	(t
+	 `(list (function (lambda () ,arg))
+		'dont-set-arg-reg
+		',arg))))
+
+(defprop  arg-stack-read-only codewalk-args codewalk)
+
+;This version wants a register name
+;and pushes an object saying how to read or write that register.
+(defmacro arg-stack-read-write (target)
+  (cond ((memq target arg-stack-names)
+	 (error "input arg used as target in UCALL"))
+	((eq target target-stack-name)
+	 `(car ,target))
+	(t `(list (function (lambda () (read-reg (word) ,target)))
+		  (function (lambda (value) (write-reg (word) ,target value)))
+		  ',target))))
+
+(defprop  arg-stack-read-write codewalk-args codewalk)
+
+
+;; Fundamental arithmetic primitives.
+
+(defun local-transformation (operation subfield field target &rest stuff)
+  #Q(setq stuff (copylist stuff))
+  (if (null subfield)
+      `(write-reg ,field ,target
+		  (,operation
+		   (read-reg ,field ,target)
+		   ,@stuff
+		   (progn 'width=
+			  ,(width-of-field field))))
+      `(write-subfield ,subfield ,field ,target
+		       (,operation
+			(extract ,subfield ,field (read-reg ,field ,target))
+			,@stuff
+			(progn 'width=
+			       ,(width-of-field (append subfield field)))))))
+
+(defmacro add-to-subfield (subfield field target qty)
+  (local-transformation 'add-to-of subfield field target qty))
+
+(defmacro right-shift-with-0-subfield (subfield field target)
+  (local-transformation 'right-shift-with-0-of subfield field target))
+
+(defmacro left-shift-with-0-subfield (subfield field target)
+  (local-transformation 'left-shift-with-0-of subfield field target))
+
+(defmacro left-shift-with-1-subfield (subfield field target)
+  (local-transformation 'left-shift-with-1-of subfield field target))
+
+(DEFMACRO ADD-FIELD (FIELD X Y)
+  `(ADD-OF ,X ,Y (PROGN 'WIDTH= ,(WIDTH-OF-FIELD FIELD))))
+
+(DEFPROP ADD-FIELD CODEWALK-ARGS CODEWALK)
+
+(DEFUN ADD-OF (ARG1 ARG2 WIDTH)
+  (OR (PRIMITIVE-ARG-CHECK (CAR ARG1) (CAR ARG2))
+      (ERROR "Type mismatch -- ADD-OF" (LIST ARG1 ARG2)))
+  (CONS (CAR ARG1) (LOGAND (+ (CDR ARG1) (CDR ARG2))
+			   (1- (LEFT-SHIFT 1 WIDTH)))))
+
+(DEFUN ADD-TO-OF (ARG INCREMENT WIDTH)
+  (CONS (CAR ARG) (LOGAND (PLUS (CDR ARG) INCREMENT)
+			  (1- (LEFT-SHIFT 1 WIDTH)))))
+
+(DEFUN LEFT-SHIFT-WITH-0-OF (ARG WIDTH)
+  (CONS (CAR ARG) (LOGAND (LEFT-SHIFT (CDR ARG) 1)
+			  (1- (LEFT-SHIFT 1 WIDTH)))))
+
+(DEFUN LEFT-SHIFT-WITH-1-OF (ARG WIDTH)
+  (CONS (CAR ARG) (LOGAND (1+ (LEFT-SHIFT (CDR ARG) 1))
+			  (1- (LEFT-SHIFT 1 WIDTH)))))
+
+(DEFUN RIGHT-SHIFT-WITH-0-OF (ARG WIDTH)
+  (CONS (CAR ARG) (LEFT-SHIFT (CDR ARG) -1)))
+
+
+;;; CROCK!
+
+(DEFUN RIGHT-SHIFT-WITH-0-VALUE (ARG)
+  (CONS (CAR ARG) (LEFT-SHIFT (CDR ARG) -1)))
+
+(defmacro set-flag-subfield (subfield field flag value)
+  (if (null subfield)
+      `(write-reg ,field ,flag '((bit) . ,value))
+      `(write-subfield ,subfield ,field ,flag '((bit) . ,value))))
+
+(defprop set-flag-subfield codewalk-args codewalk)
+
+(defmacro set-flag-conditional-subfield (subfield field flag value condition)
+  `(if ,condition
+       (progn ,(if (null subfield)
+		   `(write-reg ,field ,flag '((bit) . ,value))
+		   `(write-subfield ,subfield ,field ,flag '((bit) . ,value)))
+	      't)
+       'nil))
+
+(defprop set-flag-conditional-subfield codewalk-args codewalk)
+
+(defun primitive-machine-eq (x y)
+  (primitive-arg-check (car x) (car y))
+  (= (cdr x) (cdr y)))
+
+(DEFMACRO =? (X Y)
+  (COND ((NUMBERP X) `(= ,X (CDR ,Y)))
+	((NUMBERP Y) `(= (CDR ,X) ,Y))
+	(T `(primitive-machine-eq ,x ,y))))
+
+(defprop  =? codewalk-args codewalk)
+
+(DEFMACRO SAME-STATE (&REST BODY) `(PROGN . ,BODY))
+
+(defprop  SAME-STATE codewalk-args codewalk)
+
+(DEFMACRO SAME-STATE-PROG1 (&REST BODY) `(PROG1 . ,BODY))
+
+(defprop  SAME-STATE-PROG1 codewalk-args codewalk)
+
+(DEFMACRO SAME-STATE-PROG (&REST BODY) `(PROGN . ,BODY))
+
+(defprop  SAME-STATE-PROG codewalk-args codewalk)
+
+(DEFMACRO SAME-CYCLE (&REST BODY) `(PROGN . ,BODY))
+
+(defprop  SAME-CYCLE codewalk-args codewalk)
+
+(DEFMACRO SAME-CYCLE-PROG1 (&REST BODY) `(PROG1 . ,BODY))
+
+(defprop  SAME-CYCLE-PROG1 codewalk-args codewalk)
+
+;(DEFMACRO PROGN-VALUE (&REST BODY) `(PROGN . ,BODY))
+
+;(defprop  PROGN-VALUE codewalk-args codewalk)
+
+
+(DEFMACRO WAIT-UNTIL (CONDITION) ())
+
+(defprop  WAIT-UNTIL codewalk-args codewalk)
+
+;This is a microcode primitive which does (at hardware runtime) an extract-field.
+;In the simulator, it operates on simulator quantites.
+(DEFMACRO EXTRACT (SUBFIELD FIELD VALUE)
+  `(PROGN (CHECK-ARG-TYPE EXTRACT ,VALUE ,FIELD)
+	  (CONS ',SUBFIELD
+		(EXTRACT-FIELD ,SUBFIELD ,FIELD (CDR ,VALUE)))))
+
+(defprop  EXTRACT codewalk-args codewalk)
+
+
+(defmacro merge-fields (fieldpath &rest subfields)
+  (cond (subfields
+	 `(modify ',(car subfields)
+		  ',fieldpath
+		  (merge-fields ,fieldpath . ,(cddr subfields))
+		  ,(cadr subfields)))
+	(t `'(,fieldpath . 0))))
+
+
+(defprop  merge-fields codewalk-args codewalk)
+
+(defun modify (subfield field value subfield-value)
+  (cond ((not (numberp value))
+	 (comment
+	 (or (primitive-arg-check field (car value))
+	     (error "Wrong type field -- MODIFY" (list field value)))
+	 )
+	 (setq value (cdr value))))
+  (cond ((not (numberp subfield-value))
+	 (comment
+	 (or (primitive-arg-check subfield (car subfield-value))
+	     (error "Wrong type subfield -- MODIFY" (list subfield subfield-value)))
+	 )
+	 (setq subfield-value (cdr subfield-value))))
+  (cons field
+	(modify-variable-field subfield field value subfield-value)))
+
+(defprop  extract-field codewalk-args codewalk)
+
+(defprop  modify-field codewalk-args codewalk)
+
+; Memory references
+
+;The value of this is a fixnum array that holds the contents of memory.
+(DEFVAR MEMORY-ARRAY)
+
+;Physical address 0 is actually stored at index 10 in the array.
+;This is so that address -1, etc., which are slave register addresses,
+;can exist.  Such slave registers are used to store the starting expression
+;and the entry vector (as well as other purposes on the real machine).
+(DEFVAR ADDRESS-OFFSET 10)
+
+(DEFUN LEFT-ADDRESS (POINTER)
+  (CHECK-ARG-TYPE LEFT-ADDRESS POINTER (WORD))
+  (CONS '(MEMORY-ADDRESS)
+	(* 2 (EXTRACT-FIELD (DATUM) (WORD) (CDR POINTER)))))
+
+(DEFUN RIGHT-ADDRESS (POINTER)
+  (CHECK-ARG-TYPE RIGHT-ADDRESS POINTER (WORD))
+  (CONS '(MEMORY-ADDRESS)
+	(+ 1 (* 2 (EXTRACT-FIELD (DATUM) (WORD) (CDR POINTER))))))
+
+
+(defvar read-mar nil)
+
+(DEFUN GET-MEMORY (ADDRESS)
+  (CHECK-ARG-TYPE GET-MEMORY ADDRESS (MEMORY-ADDRESS))
+  (and read-mar
+       (member (cdr address) read-mar)
+       (print address) (princ ": ") (prin1 (gm (cdr address)))
+       (break 'READ-MAR))
+  (CONS '(WORD)
+	(ARRAYCALL FIXNUM MEMORY-ARRAY
+		   (EXTRACT-FIELD (DATUM)
+				  (WORD)
+				  (+ ADDRESS-OFFSET (CDR ADDRESS))))))
+
+
+(defvar write-mar nil)
+(defvar write-data-check nil)
+
+(DEFUN SET-MEMORY (ADDRESS CONTENTS)
+  (CHECK-ARG-TYPE SET-MEMORY ADDRESS (MEMORY-ADDRESS))
+  (CHECK-ARG-TYPE SET-MEMORY CONTENTS (WORD))
+  (and write-data-check (funcall write-data-check address contents))
+  (and write-mar
+       (member (cdr address) write-mar)
+       (print address) (princ ": ") (prin1 (gm (cdr address)))
+       (break 'WRITE-MAR))
+  (STORE
+    (ARRAYCALL FIXNUM MEMORY-ARRAY
+	       (EXTRACT-FIELD (DATUM) (WORD) (+ ADDRESS-OFFSET (CDR ADDRESS))))
+    (CDR CONTENTS)))
+
+;;; Definitions for random logic.
+
+;;; Pads:
+
+(defmacro sense-pad-fun (field pad-name)
+  (or (memq 'input (get pad-name 'pad-directions))
+      (error "Can't sense pad" pad-name))
+  `(or (get ',pad-name 'impressed-value)
+       (let ((x (get ',pad-name 'pulldown)))
+	    (and x (vnot ,field (funcall x))))
+       (error "Unconstrained pad value -- SENSE-PAD" ',pad-name)))
+
+(defmacro drive-pad-fun (field pad-name value)
+  (or (memq 'output (get pad-name 'pad-directions))
+      (error "Can't drive pad" pad-name))
+  `(let ((x (get ',pad-name 'pad-drive-procedure)))
+	(and x (funcall x ',pad-name ,value))))
+
+(defmacro test-bit (x) `(=? 1 ,x))
+
+(DEFUN (LOGIC-FLAG FETCH) (R)
+  `(,R))
+
+(DEFUN (LOGIC-FLAG ASSIGN) (R V)
+  (PRINT "Assignment to logic flag name")
+  (PRIN1 R))
+
+(DEFMACRO VNOT (FIELDPATH ARG)
+  `(VNOT-1 ,ARG ,(WIDTH-OF-FIELD FIELDPATH)))
+
+(defprop  VNOT codewalk-args codewalk)
+
+(DEFUN VNOT-1 (QUANTITY WIDTH)
+  (CONS (CAR QUANTITY)
+	(LOGAND (1- (LEFT-SHIFT 1 WIDTH)) (LOGXOR -1 (CDR QUANTITY)))))
+
+(DEFUN VEQL (X Y)
+  (COND ((=? X Y) '((BIT) . 1))
+	 (T '((BIT) . 0))))
+
+(DEFMACRO VALL (FIELDPATH X)
+  `(VALL-1 ,X ,(WIDTH-OF-FIELD FIELDPATH)))
+
+(defprop  VALL codewalk-args codewalk)
+
+(DEFUN VALL-1 (X WIDTH)
+  (COND ((= (LOGIOR (LOGXOR -1 (1- (LEFT-SHIFT 1 WIDTH)))  ;Turn on the bits
+		    (CDR X))	                    ;we dont want to check
+	    -1)
+	 '((BIT) . 1))
+	(T '((BIT) . 0))))
+
+(DEFUN VXOR (X Y)
+  (CONS (CAR X) (LOGXOR (CDR X) (CDR Y))))
+
+(DEFUN VAND (X Y)
+  (CONS (CAR X) (LOGAND (CDR X) (CDR Y))))
+
+(DEFUN VOR (X Y)
+  (CONS (CAR X) (LOGIOR (CDR X) (CDR Y))))

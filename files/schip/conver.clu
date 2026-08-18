@@ -1,0 +1,75 @@
+lines = iter (instream: stream) yields (string)
+  while ~stream$empty(instream) do
+    yield(stream$getl(instream))
+    end
+  stream$close(instream)
+  end lines
+
+next_num = proc(inl: string) returns(real, string)
+  thepos: int := string$indexc(' ', inl)
+  if thepos = 0 then thepos := 1000 end
+  cpos: int := string$indexc(',', inl)
+  if cpos = 0 then cpos := 1000 end
+  if cpos < thepos then thepos := cpos end
+  spos: int := string$indexc(';', inl)
+  if spos = 0 then spos := 1000 end
+  if spos < thepos then thepos := spos end
+  return(real$parse(string$substr(inl, 1, thepos-1) || ".0"),
+	 string$rest(inl, thepos))
+  end next_num
+
+inlambda = proc(xtemp: real) returns(string)
+  s: string
+  twolambda: real := xtemp/150.
+  nearint: int := real$r2i(twolambda)
+  nearreal: real := real$i2r(nearint)
+  if (nearreal-.01) < twolambda cand twolambda < (nearreal+.01) then
+    s := int$unparse(nearint/2)
+    if (nearint // 2) = 1 then s := s || ".5" end
+  else
+    s := real$unparse(twolambda/2.)
+  end
+  return(" " || s)
+  end inlambda
+
+convert = proc(s: string)
+  infname: file_name := file_name$parse(s)
+  outfname: file_name := file_name$create("HIC", file_name$get_name(infname),
+					  "MLL", "")
+  instream: stream := stream$open(infname, "read")
+  outstream: stream := stream$open(outfname, "write")
+  for line: string in lines(instream) do
+    outline: string
+    if string$substr(line, 1, 5) = "Layer" then
+      c: char := line[8]
+      if c = 'C' then outline := "black"
+      elseif c = 'D' then outline := "green"
+      elseif c = 'I' then outline := "yellow"
+      elseif c = 'M' then outline := "blue"
+      elseif c = 'P' then outline := "red"
+      else outline := "????"
+      end
+      spos: int := string$indexs("Len", line)
+      len, wid, cen1, cen2: real
+      nstring: string
+      len, nstring := next_num(string$rest(line, spos+4))
+      spos := string$indexs("Wid", nstring)
+      wid, nstring := next_num(string$rest(nstring, spos+4))
+      spos := string$indexs("Center", nstring)
+      cen1, nstring := next_num(string$rest(nstring, spos+7))
+      spos := string$indexc(',' , nstring)
+      cen2, nstring := next_num(string$rest(nstring, spos+1))
+      xlow: real := cen1 - (len/2.)
+      xhigh : real := xlow + len
+      ylow: real := cen2 - (wid/2.)
+      yhigh : real := ylow + wid
+      outline := outline || inlambda(xlow) || inlambda(xhigh)
+			 || inlambda(ylow) || inlambda(yhigh)
+    else
+      outline := line
+    end
+    stream$putl(outstream, outline)
+  end
+  stream$close(outstream)
+  end convert
+   

@@ -1,0 +1,981 @@
+;;; -*- mode:LISP; package: SCHIP -*-
+
+;;; PASS2 of the microcode compiler, by HANSON
+
+(eval-when (compile) (load "xlang") (load "fields"))
+
+(declare (*lexpr cons-name))
+(declare (*expr #M butlast simplify-progn enlist value-size-check))
+(declare (*expr extract-variable-field modify-variable-field
+		width-of-field same-field? subfield? max-width-mask))
+(declare (*expr ctransform cmacroexpand hansons-codewalker))
+(defvar *modify-enclosing-form*)
+(defvar ignore1 nil)
+
+(defvar *current-pc* nil)
+(defvar *me*)
+
+;;; these two functions are used for error and warning messages by many parts
+;;; of the compiler.  they use identical calling structures permitting easy
+;;; modification of the calls.  both access the information stored in the above
+;;; variables, which is then printed on the screen to help identify the location
+;;; and cause of the error.
+
+(defun cerr (&rest args)
+  (error (format nil "~%Handler: ~A~%PC: ~A~{~%~A~}"
+		  (car *me*)
+		  *current-pc*
+		  args)
+	  'pass2-codewalk-error))
+
+(defvar *statement-number* 0)
+(defun cwarn (&rest args)
+  (format t "~%PASS2-CODEWALK-WARNING~
+	  ~%Handler: ~A~%PC: ~A~%Statement: ~A~{~%~A~}"
+	  (car *me*)
+	  *current-pc*
+	  *statement-number*
+	  args))
+
+;;; these are the primitive functions used to compare two fields for error-checking.
+;;; the fields are expressed as pairs, the first of which is a subfield, and the second
+;;; a base field.  the total field spec is made by appending them.
+
+(defun field-error-check (a b c d)
+  (or (field-check a b c d)
+      (cwarn "improperly matched fields" a b c d)))
+
+(defun field-check (a b c d) (same-field? (append a b) (append c d)))
+
+(defun subfield-error-check (a b c d)
+  (or (subfield-check a b c d)
+      (cwarn "improperly nested fields" a b c d)))
+
+(defun subfield-check (a b c d) (subfield? (append a b) (append c d)))
+
+;;; ***** INPUTS *****
+
+;;; the following are descriptions of the sources of input information
+;;; used by this pass of the compiler.  each description consists of
+;;; a global symbol, which has as its value a list of symbols.  below
+;;; that is a description of the properties that each of the symbols
+;;; on that list is expected to have, and its meaning.
+
+(defvar *dispatch-tables*)
+
+;;; CTYPE		NIL
+;;; DISPATCH-CLASS	name of the class of dispatches the table is used for.
+;;;			the class name has a field-description of the table size
+;;;			on the 'DISPATCH-FIELD property.
+
+(defvar *pc-list*)
+
+;;; CTYPE		'PC
+;;; ENCLOSING-PC	either nil or the name of the PC enclosing this one.
+;;;			the enclosing pc will always be either a microsubr
+;;;			or a microfun, since this information is used to
+;;;			determine arg-stack inheritances.
+;;; PC-DEFINITION	the input code for this pass of the compiler.
+;;; NEW-PC-DEF		the output code of this pass of the compiler.
+
+(defun get-top-level-pc-of (name)
+  (let ((epc (get name 'enclosing-pc)))
+    (if (not epc) name (get-top-level-pc-of epc))))
+
+(defvar *reg-list*)					;simple-registers.
+(defvar *the-stacks*)					;arg-registers.
+
+;;; CTYPE		'REGISTER
+;;; REG-TYPE		'SIMPLE-REGISTER or 'ARG-REGISTER
+;;; FIELD-TYPE		description of dimensions.
+;;; REGISTER-ATTRIBUTES	list of attribute names, e.g. EXTERNAL.
+
+(defun register? (x) (and (symbolp x) (eq (get x 'ctype) 'register)))
+(defun arg-stack? (x) (and (register? x) (eq (get x 'reg-type) 'arg-register)))
+(defun field-type-of (x)
+  (if (symbolp x)
+      (enlist (get x 'field-type))
+      (cerr "object has no field-type" x)))
+
+(defvar *black-boxes*)
+(defvar *pads*)
+
+;;; these lists contain things that for all practical purpose are registers,
+;;; except that their CTYPE is not REGISTER.  no other special knowledge is used.
+
+;;; ***** OUTPUTS *****
+
+;;; in addition to the output microcode which is left on the PCs as
+;;; described above, several other kinds of objects are created in
+;;; this pass that are of interest.  they are listed here in similar
+;;; fashion to the input descriptions.
+
+(defvar *arg-stack-occurrences* nil)
+
+;;; CTYPE		'ARG-STACK-OCCURRENCE
+;;; ARG-STACK-NAME	name of the arg-stack of which this is an occurrence.
+;;; PC-NAME		name of the PC by which the arg-stack is used.
+
+;;; arg-stack-occurrences are used to localize the information associated
+;;; with a given arg-stack to the locality of a single PC.  this is so that
+;;; when the control and status wires are later distributed around to the
+;;; actual registers on which they are needed, only those registers which
+;;; actually were passed as arguments to the PC that created the wires will
+;;; need to have them.
+
+;;; notice the special treatment if the PC happens to be enclosed in another
+;;; one.  this is how the equivalence of these occurrences is recognized.
+
+;;; BUG: the arglist for any particular call is not stored; it is assumed
+;;;      that all calls to the same PC are identical.  for SCHEME-81 this
+;;;      is true, but eventually this should be changed to the general case.
+
+(defun make-stack-ref (arg-stack-name pc-name)
+  (let ((the-stack (make-stack-occurrence arg-stack-name pc-name)))
+    (putprop the-stack 't 'references)
+    the-stack))
+
+(defun make-stack-occurrence (arg-stack-name pc-name)
+  (setq pc-name (get-top-level-pc-of pc-name))
+  (let ((the-stack (cons-name arg-stack-name 'in pc-name)))
+    (or (memq the-stack *arg-stack-occurrences*)
+	(progn (push the-stack *arg-stack-occurrences*)
+	       (push the-stack (get arg-stack-name 'my-occurrences))
+	       (putprop the-stack 'arg-stack-occurrence 'ctype)
+	       (putprop the-stack arg-stack-name 'arg-stack-name)
+	       (putprop the-stack pc-name 'pc-name)))
+    the-stack))
+
+(defvar *constant-regs* nil)
+
+;;; NIL or an existing constant register.
+
+(defun interned-constant-reg? (subfield field the-value)
+  (setq the-value (logand the-value (max-width-mask subfield field)))
+  (let (cregs-list)
+    (let-mapc ((creg *constant-regs*))
+	      (if (and (subfield-check subfield field nil (field-type-of creg))
+		       (= the-value
+			  (extract-variable-field subfield field
+						  (get creg 'constant-value))))
+		  (push creg cregs-list)))
+    (or (dolist (creg cregs-list)
+	  (if (member subfield (get creg 'subfields-used))
+	      (return creg)))
+	(progn (push subfield (get (car cregs-list) 'subfields-used))
+	       (car cregs-list)))))
+
+;;; CTYPE		'REGISTER
+;;; REG-TYPE		'SIMPLE-REGISTER
+;;; FIELD-TYPE		description of dimensions.
+;;; SUBFIELDS-USED	list of subfields which are sourced independently.
+;;; REGISTER-ATTRIBUTES	'(CONSTANT)
+;;; CONSTANT-VALUE	the value of the constant.
+
+;;; constant-registers are used to formalize the definition and control
+;;; of constants.  this is convenient because we have the means of generating
+;;; constant-registers which are actually quite close to PLAs and behave
+;;; exactly like registers, and in all other respects they are handled just
+;;; as registers are.
+
+(defvar *constant-reg-number* 0)
+(defun make-constant-register (subfield field the-value)
+  (let ((p (prog1 (cons-name 'constant-register *constant-reg-number*)
+		  (setq *constant-reg-number* (1+ *constant-reg-number*)))))
+    (push p *constant-regs*)
+    (putprop p 'register 'ctype)
+    (putprop p 'simple-register 'reg-type)
+    (putprop p field 'field-type)
+    (putprop p (ncons subfield) 'subfields-used)
+    (putprop p '(constant) 'register-attributes)
+    (putprop p (modify-variable-field subfield field 0 the-value) 'constant-value)
+    p))
+
+(defun constant-register? (x)
+  (and (register? x) (memq 'constant (get x 'register-attributes))))
+
+;;; this function is used to identify all possible usages of constants within the
+;;; microcode.  it returns a fixnum if the given expression is a valid constant,
+;;; or else NIL if not.
+
+(defun constant? (x)
+  (cond ((fixp x) x)
+	((not (symbolp x)) nil)
+	(t (or (get x 'constant-value)
+	       (get x 'defdispatch-type-code)))))
+
+(defvar *constant-list* nil)
+(defun make-constant (the-value)
+  (setq the-value (or (constant? the-value) (cerr "illegal constant" the-value)))
+  (let ((x (let-mem (name *constant-list*)
+		    (equal (get name 'constant-value) the-value))))
+    (if (not (null x))
+	(car x)
+	(let ((p (cons-name 'constant= the-value)))
+	  (push p *constant-list*)
+	  (putprop p 'constant 'ctype)
+	  (putprop p the-value 'constant-value)
+	  p))))
+
+;;; ***** CODEWALKER *****
+
+;;; functions are provided to perform all standard operations.
+;;; the variables *CURRENT-PC* and *THE-CURRENT-HANDLER* are
+;;; maintained to aid in error detection and reporting.
+
+;;; currently the post-codewalk analysis doesn't work; see the code for comments.
+
+(defun pass2 ()						;the function that does it.
+  (print "starting pass2")
+  (pass2-start)
+  (setq *current-pc* (car *pc-list*))
+  (rpass2))
+
+(defun rpass2 ()					;restart pass2 after aborting.
+  (mapc #'pass2-2 (memq *current-pc* *pc-list*))
+  (pass2-finish)
+  'done)
+
+(defun pass2-start ()					;necessary to eliminate racks.
+  (set-addq 'pc-stack *the-stacks*)
+  (let-mapc ((reg *reg-list*))
+    (and (memq (get reg 'reg-type) '(push-optimizer push-counter))
+	 (putprop reg (get reg 'reg-type) 'rack-type)
+	 (putprop reg 'simple-register 'reg-type)))
+  'done)
+
+(defvar *watch-it* nil)
+(defun pass2-2 (pc-name)				;do a single PC.
+  (let ((newbody (pass2-1 pc-name)))
+    (putprop pc-name newbody 'new-pc-def)
+    (and *watch-it* (print pc-name))
+    newbody))
+
+(defvar *predicate-number* 0)
+(defun pass2-1 (pc-name)				;process a PC, but don't store.
+  (setq *current-pc* pc-name)
+  (setq *statement-number* 0)
+  (setq *predicate-number* 0)
+  (pass2-walk (get pc-name 'pc-definition)))
+
+(defun pass2-walk (form) (hansons-codewalker form 'cquoted 'cmacro 'cexpr))
+
+;;; these macros, especially TRY, are very useful for debugging, as they allow
+;;; the results of compiling a single PC to be examined without causing any
+;;; serious damage to the environment (but note that if bad wires are created,
+;;; there is no easy way to remove them -- this could perhaps be fixed, but
+;;; doesn't seem worth it.).
+
+(eval-when (eval load)
+(defmacro p (x) `(pretty-print ,x))
+(defmacro try (x) `(p (pass2-1 ',x)))
+(defmacro new (x) `(p (get ',x 'new-pc-def)))
+(defmacro unew (x) `(p (uncompile-statements (get ',x 'new-pc-def))))
+(defmacro replace2 (name) `(progn (pass2-2 ',name) 'replaced))
+(defmacro ppl (x) `(p (plist ',x)))
+)
+
+;;; here is a set of functions for poking around in predicates and statements.
+
+(eval-when (eval load)
+(defmacro enter (x) `(progn (setq *current-pc* ',x)
+			    (new ,x)))
+(defmacro pp (n) `(p (plist (cons-name *current-pc* 'predicate-number ,n))))
+(defmacro ps (n) `(p (plist (cons-name *current-pc* 'statement-number ,n))))
+(defmacro pr (reg) `(append (get ',reg 'source-of) (get ',reg 'target-of)))
+)
+
+(defun togo ()						;how far are we?
+  (let ((tt (// (* 100. (1- (length (memq *current-pc* *pc-list*))))
+		(length *pc-list*))))
+    (format t "~%current pc is:  ~A" *current-pc*)
+    (format t "~%only ~D% of the pcs are left." tt)
+    nil))
+
+(defun get-depths ()					;how big are the arg-stacks?
+  (mapcar #'(lambda (stack) `(,stack ,(get stack 'depth)))
+	  *the-stacks*))
+
+(defun get-cross-args ()				;passes from one stack to another.
+  (let-mapc ((stack *arg-stack-occurrences*))
+	    (let-mapc ((source (get stack 'sources)))
+		      (if (and (eq (get source 'ctype) 'arg-stack-occurrence)
+			       (not (eq source stack)))
+			  (print (list stack source))))))
+
+;;; destroy the environment.
+
+(eval-when (eval compile)
+  (defmacro remprops (names &rest props)
+    `(let-mapc ((name ,names))
+	       (let-mapc ((prop ',props)) (remprop name prop)))))
+
+(defvar *operators* nil)
+(defvar *statements* nil)
+(defvar *predicate-exprs* nil)
+
+(defun remove-all-data ()
+  (remprops *arg-stack-occurrences* sources references target-of source-of)
+  (remprops *pc-list* new-pc-def my-arguments-are
+	    calls-me jumps-to-me i-call i-jump-to)
+  (remprops *the-stacks* i-am-used-by depth)
+  (remprops *reg-list* target-of source-of)
+  (remprops *predicate-exprs* expression operators sources)
+  (remprops *statements* expression operators targets sources)
+  (mapatoms #'(lambda (name) (remprop name 'target-of) (remprop name 'source-of)))
+  (setq *arg-stack-occurrences* nil *constant-regs* nil
+	*predicate-exprs* nil *statements* nil *operators* nil
+	*constant-reg-number* 0 *constant-list* nil))
+
+;;; The following macros are used to define the macros and
+;;; functions used in this pass of the codewalker.
+
+(eval-when (eval compile load)
+
+(defmacro defcfun (name args &rest body)
+  `(defun (,name cexpr) ,args
+     #Q,@(let ((tail (memq '&rest args)))
+	   (and tail `((setq ,(cadr tail) (copylist ,(cadr tail))))))
+     ,@body))
+
+(defmacro defcmacro (name args &rest body)
+  `(defun (,name cmacro) ,args
+     #Q,@(let ((tail (memq '&rest args)))
+	   (and tail `((setq ,(cadr tail) (copylist ,(cadr tail))))))
+     ,@body))
+
+)
+
+;;; this is the fanciness needed to do code folding to eliminate
+;;; the things like SAME-CYCLE-VALUE from the language.
+
+;;; this function says that the form returns a value that is to be
+;;; found in value-cell, and that the rest of the form is uninteresting
+;;; as far as the expression is concerned and should be folded outwards.
+;;; in other words, given:
+
+;;; x ::= (<a> <y> <b>)
+;;; y ::= (<c> <z> <d>)
+
+;;; where it is presumed that <y> is a value to be used in <x>, and
+;;; <z> is the SOLE value of <y> (to which others, e.g. assertions,
+;;; are attached somehow), then fold things so that the final expression
+;;; is:
+
+;;; (<c'> (<a'> <z'> <b'>) <d'>)
+
+;;; where the ' indicates that the expression has been codewalked.
+
+;;; the new-top-level-keyword is used in the case where <x> is a statement
+;;; (that is, where <x> is an expression that returns no value).  in that
+;;; case, it means replace the car of <y> with it, otherwise leave it alone.
+
+;;; all that this function does, then, is to store the data necessary to
+;;; make the codewalker do this at the appropriate time, and then to
+;;; return form.  it should clearly be an error if the value-cell
+;;; is not one of this form's component cells.
+
+(defun fold-outwards (new-top-level-keyword value me)
+  (and (not (submatch value me)) (cerr "cannot fold unless nested" value me))
+  (setq *modify-enclosing-form* (cons #'foldout-1 (list new-top-level-keyword value me)))
+  me)
+
+(defun foldout-1 (envir form)
+  (let (((new-keyword inner-exp me) envir))
+    (if (eq (car me) (car form)) (ctransform form)
+	(let* ((outer-cell (submatch me form))
+	       (me (car outer-cell))
+	       (inner-cell (submatch inner-exp me)))
+	  (rplaca outer-cell inner-exp)
+	  (rplaca inner-cell (ctransform form))
+	  (and (memq (car form) '(expression if*))
+	       (rplaca me new-keyword))
+	  (ctransform me)))))
+
+(defun submatch (inner outer)
+  (cond ((null outer) nil)
+	((atom (car outer))
+	 (if (and (atom inner) (eq inner (car outer))) outer
+	     (submatch inner (cdr outer))))
+	((eq (car inner) (caar outer)) outer)
+	(t (submatch inner (cdr outer)))))
+
+;;; EXPRESSIONS.
+
+;;; on the abstract wire:
+
+;;; CTYPE
+;;; PC-NAME
+;;; EXPRESSION		actual compiler-crunched code.
+;;; OPERATORS		
+;;; TARGETS		
+;;; SOURCES		
+
+;;; on the sources and targets that happen to be symbolic:
+
+;;; SOURCE-OF		a list of abstract wires in which this symbol appears as source.
+;;; TARGET-OF		a list of abstract wires in which this symbol appears as target.
+
+(defun expression-walk (form)
+  (if (atom form) `((,form) () ())
+      (let ((handler (get (car form) 'norm-expr)))
+	(if (null handler) (cerr "unknown expression keyword" (car form))
+	    (apply handler (cdr form))))))
+
+(defcfun expression (src-exp)
+  (let (((sources targets ops) (expression-walk src-exp))
+	(wire (prog1 (cons-name *current-pc*  'statement-number *statement-number*)
+		     (setq *statement-number* (1+ *statement-number*)))))
+    (dolist (matched-wire *statements*)
+      (if (equal (get matched-wire 'expression) src-exp)
+	  (progn (if (get matched-wire 'representative)
+		     (putprop wire (get matched-wire 'representative) 'representative)
+		     (putprop wire matched-wire 'representative))
+		 (return nil))))
+    (setq sources
+	  (let-mapcar ((source sources))
+		      (cond ((arg-stack? source)
+			     (setq source (make-stack-ref source *current-pc*)))
+			    ((constant? source)
+			     (setq source (make-constant source)))
+			    ((not (symbolp source))
+			     (cerr "unknown source type" source)))
+		      (set-addq wire (get source 'source-of))
+		      source))
+    (let-mapc ((target targets))
+	      (if (arg-stack? target)
+		  (setq target (make-stack-ref target *current-pc*)))
+	      (if (symbolp target)
+		  (set-addq wire (get target 'target-of))
+		  (cerr "illegal target type" target)))
+    (let-mapc ((operator ops))
+	      (if (symbolp operator)
+		  (set-addq wire (get operator 'operator-of))
+		  (set-addq operator *operators*)
+		  (putprop operator 'operator 'ctype)
+		  (cerr "illegal operator type" operator)))
+    (putprop wire 'statement 'ctype)
+    (set-addq wire *statements*)
+    (putprop wire *current-pc* 'pc-name)
+    (putprop wire src-exp 'expression)
+    (putprop wire ops 'operators)
+    (putprop wire targets 'targets)
+    (putprop wire sources 'sources)
+    wire))
+
+;;; PREDICATES (status wires).
+
+;;; on the abstract wire:
+
+;;; CTYPE
+;;; PC-NAME
+;;; EXPRESSION		actual compiler-crunched code.
+;;; OPERATORS		
+;;; SOURCES		
+
+;;; on the sources that happen to be symbolic:
+
+;;; SOURCE-OF		a list of abstract wires in which this symbol appears as source.
+
+(defun predicate-walk (form)
+  (cond ((atom form) `((,form) ()))
+	((eq (get (car form) 'ctype) 'logic-flag)
+	 (list (copylist (cdr form)) (ncons (car form))))
+	((get (car form) 'pred-quoted)
+	 (let ((values-list (mapcar #'predicate-walk (cdr form))))
+	   (list (mapcan #'car values-list) (mapcan #'cadr values-list))))
+	(t (let ((handler (get (car form) 'pred-expr)))
+	     (if (null handler) (cerr "unknown predicate keyword" (car form))
+		 (apply handler (cdr form)))))))
+
+(defprop not t pred-quoted)
+(defprop and t pred-quoted)
+(defprop xor t pred-quoted)
+(defprop or t pred-quoted)
+
+(defcfun expression-pred (src-exp)
+  (let (((sources ops) (predicate-walk src-exp))
+	(wire (prog1 (cons-name *current-pc* 'predicate-number *predicate-number*)
+		     (setq *predicate-number* (1+ *predicate-number*)))))
+    (dolist (matched-wire *predicate-exprs*)
+      (if (equal (get matched-wire 'expression) src-exp)
+	  (progn (if (get matched-wire 'representative)
+		     (putprop wire (get matched-wire 'representative) 'representative)
+		     (putprop wire matched-wire 'representative))
+		 (return nil))))
+    (setq sources
+	  (let-mapcar ((source sources))
+		      (cond ((arg-stack? source)
+			     (setq source (make-stack-ref source *current-pc*)))
+			    ((constant? source)
+			     (setq source (make-constant source)))
+			    ((not (symbolp source))
+			     (cerr "unknown source type" source)))
+		      (set-addq wire (get source 'source-of))
+		      source))
+    (let-mapc ((operator ops))
+	      (if (symbolp operator)
+		  (set-addq operator *operators*)
+		  (putprop operator 'operator 'ctype)
+		  (set-addq wire (get operator 'operator-of))
+		  (cerr "illegal operator type" operator)))
+    (putprop wire 'statement 'ctype)
+    (set-addq wire *predicate-exprs*)
+    (putprop wire '(predicate) 'statement-type)
+    (putprop wire *current-pc* 'pc-name)
+    (putprop wire src-exp 'expression)
+    (putprop wire ops 'operators)
+    (putprop wire sources 'sources)
+    wire))
+
+;;; ***** CONTROL *****
+
+(defprop assert t cquoted)
+
+;;; locate IF forms inside same-cycles and synchronize with the predicate.
+;;; this code assumes that the nested IF has no same-cycle-prog1s in the pred,
+;;; because there are none in the SCHEME chip.  it would be easy to change.
+
+(defcfun same-cycle (&rest stuff)
+  (let ((nuform (copylist (simplify-progn 'same-cycle stuff))))
+    (let ((ifform (locate-if-subexpr nuform)))
+      (if (null ifform) nuform
+	  (let ((restforms (delq ifform (cdr nuform))))
+	    (if (locate-if-subexpr restforms)
+		(cerr "multiple same-cycled IFs" nuform)
+		`(if ,(let ((pred (cadr ifform)))
+			(cond ((atom pred) `(same-cycle-prog1 ,pred ,@restforms))
+			      ((eq (car pred) 'same-cycle-prog1)
+			       `(same-cycle-prog1 ,@(cdr pred) ,@restforms))
+			      (t (cerr "illegal predicate" pred))))
+		     ,@(cddr ifform))))))))
+
+(defun locate-if-subexpr (x)
+  (cond ((null x) nil)
+	((atom (car x)) (locate-if-subexpr (cdr x)))
+	((eq (caar x) 'if) (car x))
+	(t (locate-if-subexpr (cdr x)))))
+
+(defcfun same-state-linear (&rest stuff)
+  (simplify-progn 'same-state-linear stuff))
+
+(defcmacro if (pred conseq alt)
+  (cond ((atom pred) (cerr "illegal predicate" pred))
+	((eq (car pred) 'not) `(if ,(cadr pred) ,alt ,conseq))
+	((memq (car pred) '(same-cycle-prog1 same-state-prog1))
+	 (cond ((atom (cadr pred)) (cerr "illegal predicate" (cadr pred)))
+	       ((eq (caadr pred) 'not)
+		`(if (,(car pred) ,(cadadr pred) ,@(cddr pred)) ,alt ,conseq))
+	       (t `(if* (,(car pred) (expression-pred ,(cadr pred)) ,@(cddr pred))
+			,conseq ,alt))))
+	(t `(if* (expression-pred ,pred) ,conseq ,alt))))
+
+(defcfun if* (a b c) `(if ,a ,b ,c))
+
+(defcmacro wait-until (pred) `(wait (expression-pred ,pred)))
+
+(defcfun dispatch (dispatch-source dispatch-type)
+  `(dispatch ,(ctransform `(expression ,dispatch-source)) ,dispatch-type))
+
+(defcfun call (pc-name &rest arg-forms)
+  (let ((realpc (get-top-level-pc-of *current-pc*)))
+    (set-addq realpc (get pc-name 'calls-me))
+    (set-addq pc-name (get realpc 'i-call)))
+  `(call ,pc-name ,@arg-forms))
+
+;;; ***** FUNCTIONAL ARGUMENTS *****
+
+(defcfun arg-stack-push (pc-name stack source)
+
+  ;; convert constant merge-fields expressions to constants.
+  (let ((constant-source (constant-merge-fields? source)))
+    (if (not (null constant-source))
+	(setq source constant-source)))
+
+  ;; if the source is a constant, then it should be converted to
+  ;; a constant-register.  this is the only case which requires such treatment.
+  (let ((the-value (constant? source))
+	(field (field-type-of stack)))
+    (if (not (null the-value))
+	(setq source
+	      (or (interned-constant-reg? nil field the-value)
+		  (let ((new-reg (make-constant-register nil field the-value)))
+		    (format t "~%creating new constant register ~A with value ~A"
+			    new-reg the-value)
+		    new-reg)))))
+
+  ;; if the source is not now some type of register, then it is an error.
+  ;; note, however, that pc-stack has an unimportant source.
+  (if (and (not (register? source))
+	   (not (eq stack 'pc-stack)))
+      (cerr "non-register function argument" source))
+
+  ;; finally, do the actual work of linking everything together.
+  (let ((stack-occurrence (make-stack-occurrence stack pc-name)))
+    (set-addq (if (not (arg-stack? source))
+		  source
+		  (make-stack-ref source *current-pc*))
+	      (get stack-occurrence 'sources))
+    (set-addq (list stack-occurrence 'by *current-pc*) (get source 'i-am-pushed-on))
+    (set-addq stack (get pc-name 'my-arguments-are))
+    (set-addq pc-name (get stack 'i-am-used-by)))
+
+  ;; and then return this expression.
+  `(arg-stack-push ,stack ,source))
+
+;;; ***** DATA *****
+
+(defcfun read-subfield (subfield field source)
+  (cond ((or (constant? source) (symbolp source))
+	 `(read-subfield ,subfield ,field ,source))
+	((and (not (atom source)) (eq (car source) 'read-subfield))
+	 (field-error-check (cadr source) (caddr source) nil field)
+	 `(read-subfield ,subfield ,field ,(cadddr source)))
+	(t (standard-field-check nil field source))))
+
+(defun (read-subfield norm-expr) (ignore ignore1 source)
+  (if (atom source) `((,source) () ())
+      (let (((sources targets ops) (expression-walk source)))
+	(list sources targets (cons 'read-subfield ops)))))
+
+(defun (read-subfield pred-expr) (ignore ignore1 source)
+  (if (atom source) `((,source) ())
+      (let (((sources ops) (predicate-walk source)))
+	(list sources (cons 'read-subfield ops)))))
+
+(defcmacro drive-subfield (subfield field source)
+  `(expression (drive-subfield* ,subfield ,field ,source)))
+
+(defcfun drive-subfield* (subfield field source)
+  `(drive-subfield ,subfield ,field ,(standard-field-check nil field source)))
+
+(defun (drive-subfield norm-expr) (ignore ignore1 source)
+  (expression-walk source))
+
+(defcmacro write-subfield (subfield field target source)
+  `(expression (write-subfield* ,subfield ,field ,target ,source)))
+
+(defcfun write-subfield* (subfield field target source)
+  `(write-subfield ,subfield ,field
+		   ,target ,(standard-field-check subfield field source)))
+
+(defun (write-subfield norm-expr) (ignore ignore1 target source)
+  (let (((sources targets ops) (expression-walk source)))
+	(list sources (cons target targets) ops)))
+
+(defcfun write-subfield-value (subfield field target source)
+  `(write-subfield-value ,subfield ,field
+			 ,target ,(standard-field-check subfield field source)))
+
+(defun (write-subfield-value norm-expr) (ignore ignore1 target source)
+  (let (((sources targets ops) (expression-walk source)))
+	(list sources (cons target targets) ops)))
+
+;;; NOTE:  this trick of reusing parts of existing constant registers
+;;; is not general and in fact will only work reasonably well because
+;;; the pcs are compiled in a specific order.  this order is to start
+;;; at the end of the microcode, and work towards the beginning.
+;;; the general problem is that ALL of the constant-registers should
+;;; be known before this stuff happens.  that means another pass would
+;;; be necessary, which is clearly out of the question.  however,
+;;; the scheme chip will compile reasonably well because *NIL is
+;;; consed up by the garbage collector (before anything interesting)
+;;; and the one occurrence of BOOT-PROGRAM-POINTER happens after
+;;; its twin is compiled.  reversing the order of compilation would screw.
+
+(defun standard-field-check (subfield field source)
+  (let ((constant-value (constant-merge-fields? source)))
+    (if (not (null constant-value))
+	(let ((constant-exp (constant-register-conversion nil
+							  (cadr source)
+							  constant-value)))
+	  (if (not (null constant-exp))
+	      (setq source constant-exp)))))
+  (if (and (not (atom source)) (eq (car source) 'merge))
+      (let-mapc ((clause (cddr source)))
+		(if (constant? (cadr clause))
+		    (let ((constant-reg (interned-constant-reg? (car clause)
+								(cadr source)
+								(cadr clause))))
+		      (if (not (null constant-reg))
+			  (rplaca (cdr clause) constant-reg))))))
+  (cond ((let ((constant-value (constant? source)))
+	   (and constant-value
+		(let ((constant-exp (constant-register-conversion subfield
+								  field
+								  constant-value)))
+		  (if (null constant-exp)
+		      constant-value
+		      constant-exp)))))
+	((symbolp source) source)
+	((atom source) (cerr "illegal source" source))
+	((get (car source) 'subfield-expression)
+	 (field-error-check (cadr source) (caddr source) subfield field)
+	 source)
+	((get (car source) 'field-expression)
+	 (field-error-check nil (cadr source) subfield field)
+	 source)
+	(t (cerr "unknown source" source))))
+
+(defun constant-register-conversion (subfield field the-value)
+  (let ((constant-reg (interned-constant-reg? subfield field (constant? the-value))))
+    (and (not (null constant-reg)) 
+	`(read-subfield ,subfield ,field ,constant-reg))))
+
+(defprop merge t field-expression)
+(defprop write-subfield-value t subfield-expression)
+(defprop read-subfield t subfield-expression)
+(defprop add-field t field-expression)
+
+;;; MERGE-FIELDS says the right thing, but the syntax is clumsy, and it isn't
+;;; worth changing the preceding pass at this point to fix it.
+;;; also it helps to guarantee the correct nesting of VALUE-TO-MERGE.
+
+(defcmacro merge-fields (top-field &rest args)
+  `(merge-values ,top-field ,@(mf-1 args top-field)))
+
+(defun mf-1 (x top-field)
+  (cond ((null x) nil)
+	((or (atom x)
+	     (null (cdr x)))
+	 (cerr "badly-formed merge-fields" x))
+	(t (cons `(value-to-merge ,(car x) ,top-field ,(cadr x))
+		 (mf-1 (cddr x) top-field)))))
+
+(defcfun merge-values (top &rest srcs)
+  `(merge ,top ,@(let-mapcan ((src srcs))
+			     (selectq (car src)
+			       (merge-value (list (cdr src)))
+			       (values-to-merge (cdr src))
+			       (otherwise (cerr "illegal merge subexpr" src))))))
+
+(defun (merge norm-expr) (ignore &rest sources)
+  (let ((values-list
+	 (let-mapcar ((source sources)) (expression-walk (cadr source)))))
+    (list (mapcan #'car values-list)
+	  (mapcan #'cadr values-list)
+	  (mapcan #'caddr values-list))))
+
+(defun (merge pred-expr) (ignore &rest sources)
+  (let ((values-list
+	 (let-mapcar ((source sources)) (predicate-walk (cadr source)))))
+    (list (mapcan #'car values-list)
+	  (mapcan #'cadr values-list))))
+
+;;; returns either a fixnum or nil.
+
+(defun constant-merge-fields? (the-exp)
+  (and (not (atom the-exp))
+       (eq (car the-exp) 'merge)
+       (let ((acc 0)
+	     (top-field (cadr the-exp))
+	     (source-fields (cddr the-exp)))
+	 (and (not (let-mem (x source-fields)
+			    (let ((subfield (car x))
+				  (subfield-source (cadr x)))
+			      (not (and (fixp subfield-source)
+					(setq acc
+					      (modify-variable-field subfield
+								     top-field
+								     acc
+								     subfield-source)))))))
+	      acc))))
+
+(defcfun value-to-merge (subfield field source)
+  (cond ((and (not (atom source)) (eq (car source) 'merge))
+	 (subfield-error-check subfield field nil (cadr source))
+	 `(values-to-merge ,@(let-mapcar ((subsource (cddr source)))
+					 `((,@(car subsource) ,@subfield)
+					   ,(cadr subsource)))))
+	(t `(merge-value ,subfield
+			 ,(standard-subfield-check subfield field source)))))
+
+(defun standard-subfield-check (subfield field source)
+  (cond ((constant? source))
+	((atom source) (cerr "illegal source" source))
+	((get (car source) 'subfield-expression)
+	 (subfield-error-check subfield field (cadr source) (caddr source))
+	 (if (eq (car source) 'read-subfield)
+	     (cadddr source)
+	     source))
+	((get (car source) 'field-expression)
+	 (subfield-error-check subfield field nil (cadr source))
+	 source)
+	(t (cerr "unknown source" source))))
+
+;;; these functions are local arithmetic operations, that is, operations
+;;; that an object can do locally, and require only raising a control wire.
+
+(defcfun right-shift-with-0-subfield (&rest ignore)
+  (ctransform `(expression ,*me*)))
+
+(defun (right-shift-with-0-subfield norm-expr) (ignore ignore1 target)
+  `((,target) (,target) (right-shift-0)))
+
+(defun (right-shift-with-0-value norm-expr) (source)
+  (let (((sources targets ops) (expression-walk source)))
+    `(,sources ,targets (right-shift-with-0-value ,@ops))))
+
+(defcfun left-shift-with-0-subfield (&rest ignore)
+  (ctransform `(expression ,*me*)))
+
+(defun (left-shift-with-0-subfield norm-expr) (ignore ignore1 target)
+  `((,target) (,target) (left-shift-0)))
+
+(defcfun left-shift-with-1-subfield (&rest ignore)
+  (ctransform `(expression ,*me*)))
+
+(defun (left-shift-with-1-subfield norm-expr) (ignore ignore1 target)
+  `((,target) (,target) (left-shift-1)))
+
+(defcfun add-to-subfield (&rest ignore)
+  (ctransform `(expression ,*me*)))
+
+(defun (add-to-subfield norm-expr) (ignore ignore1 target quantity)
+  (or (member quantity '(1 -1)) (cerr "illegal increment value" quantity))
+  `((,target) (,target) (,(if (= 1 quantity) 'incr 'decr))))
+
+;;; this is the function used to compare two fields.  one of the
+;;; fields MUST reside in a register, and be referred to as such.
+
+(defcfun =? (arg1 arg2)
+  (cond ((and (not (atom arg1)) (eq (car arg1) 'read-subfield))
+	 `(=? ,arg1 ,(or (constant? arg2) arg2)))
+	((and (not (atom arg2)) (eq (car arg2) 'read-subfield))
+	 `(=? ,arg2 ,(or (constant? arg1) arg1)))
+	(t (cerr "neither arg has comparison destination" arg1 arg2))))
+
+(defun (=? pred-expr) (target-field source)
+  (or (not (atom target-field)) (eq (car target-field) 'read-subfield)
+      (cerr "illegal =? target-field" target-field))
+  (let ((target (cadddr target-field)))
+    (if (atom source) `((,source ,target) (=?))
+	(let (((sources ops) (predicate-walk source)))
+	  (list (cons target sources) (cons '=? ops))))))
+
+;;; ***** CLEANUP PASS *****
+
+;;; this is the code that performs the post-code-generation analysis and cleanup.
+;;; is does error checking and completes the generation of the register specifications
+;;; that was begun by the codewalk.
+
+(defun pass2-finish ()
+  (check-stack-refs)
+  (measure-stack-depths)
+  `done)
+
+;;; this function is intended to check to see if the source and reference
+;;; data generated by the codewalker is consistent.  it locates arg-stack-occurrences
+;;; that have been source but never used, and those that were used but never sourced.
+
+(defun check-stack-refs ()
+  (let-mapc ((stack *arg-stack-occurrences*))
+    (if (get stack 'references)
+	(if (not (get stack 'sources))
+	    (format t "~%ref without source: ~A" stack))
+	(if (get stack 'sources)
+	    (format t "~%source without ref: ~A" stack))))
+  'done)
+
+;;; compute depth of arg-stacks.  note that the information stored earlier
+;;; by the codewalker just gives us who calls who and who uses what args.
+;;; thus it implicitly assumes that when a subroutine is called, it is
+;;; always called with all of its argument stacks being pushed.  at this
+;;; point this assumption is true.
+
+(defun measure-stack-depths ()
+  (let-mapc ((name *the-stacks*))
+    (remprop name 'depth)
+    (let ((users (get name 'i-am-used-by)))
+      (putprop name
+	       (apply #'max
+		      (let-mapcar ((user users)) (msd-1 user users 1)))
+	       'depth)))
+  'done)
+
+(defun msd-1 (name users level)
+  (let ((sub-users (set-intersect (get name 'i-call) users)))
+    (if (not sub-users) level
+	(apply #'max
+	       (let-mapcar ((sub-user sub-users))
+		 (msd-1 sub-user users (1+ level)))))))
+
+(defun set-intersect (a b)
+  (cond ((null a) nil)
+	((memq (car a) b) (cons (car a) (set-intersect (cdr a) b)))
+	(t (set-intersect (cdr a) b))))
+
+;;; ***** GRINDING THE OUTPUT *****
+
+;;; this function produces a pretty-printed register-specification in the
+;;; file specified by the user.
+
+(defun grind-reg-specs (filename)
+  (bind-outstream filename (grs-1))
+  filename)
+
+(defun grs-1 ()
+  (grind-obj '*predicate-exprs* '(pc-name representative operators sources expression))
+  (grind-obj '*statements* '(pc-name representative operators targets sources expression))
+  (grind-obj '*constant-regs*
+	     '(subfield-type field-type register-attributes constant-value))
+  (grind-obj '*constant-list* '(sources-of))
+  (grind-obj '*operators* '(operator-of))
+  (grind-obj '*reg-list* '(field-type source-of target-of)))
+
+;;; this function produces a pretty-printed microcode specification in the
+;;; specified file.  it also prints the related information needed by the
+;;; next phase of the compiler, and is intended to be able to completely
+;;; represent the interface environment.
+
+;;; note that the main feature of this grinder is that it is extremely
+;;; generalized, in that all it does is produce a printed version of the
+;;; interesting properties of the interesting objects.  this makes the
+;;; reader function fairly trivial.
+
+(defun grind-output (filename)
+  (bind-outstream filename
+    (terpri)
+    (p `(defvar *dispatch-tables* ',*dispatch-tables*))
+    (p `(defvar *logic-flag-list* nil))
+    (grind-obj '*black-boxes* '())
+    (grind-obj '*pads* '(pad-directions))
+    (grind-obj '*the-stacks* '(register-attributes))
+    (format t "~/|")
+    (grind-obj '*constant-regs* '(register-attributes constant-value))
+    (grind-obj '*reg-list* '(register-attributes))
+    (format t "~/|")
+    (grind-obj '*pc-list* `(,@*dispatch-tables* new-pc-def)))
+  filename)
+
+;;; this function grinds an output file of the input microcode.  it is not
+;;; intended to define an interface, but merely to allow convenient
+;;; examination of the transformed microcode.
+
+(defun grind-input (filename)
+  (bind-outstream filename
+    (terpri)
+    (grind-obj '*pc-list* `(pc-definition)))
+  filename)
+
+(defun grind-obj (sym props)
+  (let-mapc ((name (reverse (symeval sym)))) (grindit sym name props)))
+
+(defun grindit (tag name props)
+  (terpri)
+  (p `(define (,name ,tag)
+	,@(grindit-1 name (cons 'ctype props)))))
+
+(defun grindit-1 (name props)
+  (and props
+       (let ((temp (get name (car props)))
+	     (rest (grindit-1 name (cdr props))))
+	 (if (null temp) rest
+	     `((,(car props) ,@temp) ,@rest)))))
+
+(defun uncompile-statements (x)
+  (cond ((and (symbolp x) (eq (get x 'ctype) 'statement))
+	 (get x 'expression))
+	((atom x) x)
+	(t (cons (uncompile-statements (car x))
+		 (uncompile-statements (cdr x))))))

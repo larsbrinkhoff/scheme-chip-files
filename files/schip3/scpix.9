@@ -1,0 +1,135 @@
+-*- mode: TEXT -*-
+
+MAJOR SYSTEMS AND CLOCKING
+
+	The major systems are shown in the diagram.  The control PLA
+recieves its input, clocked on phi1.  This input selects a line of the
+OR plane.  All outputs of the control PLA are clocked on phi2. One
+signal selects a predicate, The output of the predicate box is the T/F
+signal.  One set of control PLA outputs controls the data to be fed to
+the global bus control and the local register operations.  Two sets of
+signals are developed to control the uarg stack, one will be selected
+by the T/F signal.  Two dispatch decoders are attached to the type
+field of the register file.  Also, the control PLA develops two
+alternate explicit next states.  Two control signals for the NS
+machine are developed and selected by the T/F signal.  Among the NS
+control signals is the selected source of next state.
+
+	The data paths: the register file, the NS machine, and the
+UARG stacks are all clocked as follows:
+	They may be loaded during phi1;
+	They may be read any time, the value read is the
+	value loaded (or restored) during the previous phi1.
+
+THE NEXT-STATE MACHINE
+
+	The next state machine is a register file whose global bus
+(which will be called the "NS-BUS") is connected directly to
+the STATE-INPUT field of the control PLA.  Thus if anyone gets to
+place his value on the NS-BUS, that value will be the next state of
+the machine.  That value is also sent to the output lines of the STATE
+pads. 
+
+	Each element of the next state machine has the control signals
+SOURCE and DISABLE.  They mean:
+	SOURCE	put value onto the NS-BUS, unless;
+	DISABLE	is on.
+
+	See the figure for the arrangement and clocking of the members
+of the next-state machine.  During one cycle of the machine, the
+control PLA does the following:
+	Selects a pedicate;
+	Produces values for TRUE-EXPLICIT and FALSE-EXPLICIT;
+	Produces two sets of controls for the NS machine, one for if
+the predicate is true, one for if it is false.
+
+	The PREDICATE machine produces predicates as boolean
+combinations of "primitive" predicates from the register file and
+pads.  The selected predicate is used to produce the T/F signal.  This
+signal is used to select between the two NS control signals.  The
+selected NS control signal selects which element of the NS machine
+gets to source the NS bus and, possibly, controls the operation of the
+stack.
+
+	If the PC-FREEZE signal is on, all sources of NS except PC are
+disabled, and, if LOAD&FREEZE is low, PC is selected to source NS.  If
+LOAD&FREEZE is on, NS always comes from the pads. LOAD&FREEZE causes
+the tri-state STATE pads to become input pads.
+
+	NS Machine Elements:
+
+	PC is a register that always gets the value from the NS bus,
+gated by phi1.  This value is available to be sourced back onto the
+bus for the next cycle.
+
+	INC always increments the current value in PC.
+
+	STACK's only push-source is the value in INC.
+
+	TRUE-EXPLICIT and FALSE-EXPLICIT come directly (clocked on
+phi2) from the control PLA.
+
+	DISPATCH-USER-TYPE and DISPATCH-EXTRA-TYPE-CONT come from
+decoders connected to the TYPE field of the REGISTER file.
+
+	PADS gets its value from the input lines of the STATE pads.
+
+
+PADS
+(total number of pads: 77)
+
+CONTROL OUTPUTS (15)
+(Outputs of control PLA, gated on phi2)
+	
+	READ-MAR
+	READ-MBR
+	WRITE-MAR
+	WRITE-MBR
+	READ-SBUS-ERROR-CODE
+	READ-INTERRUPT-NUMBER
+	WRITE-SBUS-CONS
+	READ-SBUS-RELOCATE-REQUEST
+	WRITE-SBUS-RELOCATE-VALUE
+	WRITE-SBUS-RELOCATE-REQUEST
+	READ-SBUS-RELOCATE-VALUE
+
+	EXTERNAL-INTERRUPT-GRANT
+	CONS-SERVER-INTERRUPT-GRANT
+	DMA-INTERRUPT-GRANT
+	MACHINE-HALTED
+
+CONTROL INPUTS (7)
+	
+	-MEMORY-DONE
+	(gated and buffered on phi2)
+	RELOCATE-REQUEST-TO-ME
+	RELOCATE-FROM-ME-ACKNOWLEDGED
+	(these two are inputs to an OR gate as shown in the diagram
+	 RELOCATE-REQUEST-TO-ME is also an input to the predicate box.)
+	FREEZE
+	LOAD-STATE
+	-SOMEBODY-NEEDS-GC
+	-SOMEBODY-ISNT-READY-TO-GC
+	(these are stored as shown in the diagram.)
+
+PAD INPUTS TO PREDICATE BOX (4)
+
+	SBUS-ERROR-FLAG
+	EXTERNAL-INTERRUPT-REQUEST
+	CONS-SERVER-INTERRUPT-REQUEST
+	DMA-INTERRUPT-REQUEST
+
+BUSSES (46)
+(All tri-state)
+	
+	DATA (36)
+	CAR/CDR
+	STATE (9)
+
+OVERHEAD (5)
+
+	VDD
+	VSS
+	GNS
+	PHI1
+	PHI2

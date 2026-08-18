@@ -1,0 +1,384 @@
+
+;;; -*-LISP-*-  SCHEME chip simulator -- RMS, GJS
+
+(DECLARE (MACROS T))
+
+(EVAL-WHEN (EVAL COMPILE LOAD)
+	   (DEFUN RESET-LOADING ()
+		  (SETQ EXPLICIT-TYPES NIL EXPLICIT-DATUMS NIL)   ;(SPELLING OK!)
+		  (SETQ USER-TYPE (*ARRAY NIL T 128.))
+		  (SETQ EXTRA-TYPE-CONT (*ARRAY NIL T 128.))
+		  (SETQ REG-NUMBER 0)
+		  (setq used-temps 0)
+		  (setq last-temp 0)
+		  (setq arg-expressions nil))
+	   (RESET-LOADING))
+
+;;; The SCHEME virtual machine is composed of a set of registers with
+;;; associated stacks (RACKS), other registers, and a controller.  The following allows
+;;; one to set up the registers.
+
+;;; The microcode of the machine is in the file NUCODE, while
+;;; the primitive macros are in GENMAC.
+
+(DECLARE (SPECIAL REG-NUMBER *REG-STATS?))
+(SETQ *REG-STATS? NIL)
+
+;;; The controller part of the virtual machine is implemented in LISP below.
+
+;;; The following macros allow us to refer to virtual machine PC's as
+;;; the values of LISP variables.
+
+;;; Virtual machine PCs which are referred to are defined with:
+;;; This builder function is used by the DEFPC macro to generate the code.
+;;; It should return the code which will be returned from the macro.
+
+(DEFUN DEFPC-BUILDER (CNAME BODY)
+  (LET ((PROC (COND ((MEMQ 'COMPLR (STATUS FEATURES))
+		     `(GET ',CNAME 'SUBR))
+		    (T
+		     `',CNAME))))
+    `(PROGN 'COMPILE
+	    (DEFUN ,CNAME ()
+		   ,(DEFPC-CODEWALK `(PROG () ,@BODY (ERROR "Drop off end" ',CNAME))))
+	    (SETQ ,CNAME ,PROC))))
+
+(DEFUN DEFPC-CODEWALK (BODY)
+  (CODEWALK (SUBST NIL NIL BODY) NIL 'CODEWALK-1 'CODEWALK-EXPAND-CLOBBER NIL))
+
+;This works as long as we are interpreting the microcode
+;(that is, not passing it through NCOMPLR).
+(DEFUN DO-LATER (EXP) (EVAL EXP))
+
+(DEFMACRO CALL-PC (PC)
+  (IF-FOR-MACLISP-ELSE-LISPM
+    (COND ((MEMQ 'COMPLR (STATUS FEATURES))
+	   `(SUBRCALL NIL ,PC))
+	  (T
+	   `(FUNCALL ,PC)))
+    `(FUNCALL ,PC)))
+
+;; Phantom stacks not simulated now.
+(DEFMACRO FLUSH-STACK (RACK) NIL)
+(DEFMACRO DEFINE-PUSHER (RACK) NIL)
+(DEFMACRO RESET-RACK (RACK) NIL)  ;This is handled by RESET-RACKS instead.
+
+;;; Define the temp registers and tell compiler what they are.
+(setq temp-regs '(temp-reg-0 temp-reg-1 temp-reg-2 temp-reg-3 temp-reg-4))
+(defreg temp-reg-0 simple-register word)
+(defreg temp-reg-1 simple-register word)
+(defreg temp-reg-2 simple-register word)
+(defreg temp-reg-3 simple-register word)
+(defreg temp-reg-4 simple-register word)
+
+;;; These are our argument registers.
+;;; An arg register is a phony register.
+;;; The microcode can fetch or assign the arg register as if it were a real register
+;;; but the arg register remembers the name of some other real register
+;;; and fetches or assigns that register.
+
+;;; In fact, the arg register has a stack of rememebered registers
+;;; and it uses the last one pushed.  Here are the names of the arg registers.
+(setq arg-stack-names '(arg1-stack arg2-stack))
+(setq target-stack-name 'target-stack)
+;;; DEFMICROFUN and UCALL both refer to this information.
+
+(defmacro defargreg (name field-type)
+  `(eval-when (compile eval load)
+     (putprop ',name 'arg-register 'reg-type)
+     (putprop ',name ',field-type 'field-type)))
+
+(defargreg target-stack word)
+(defargreg arg1-stack word)
+(defargreg arg2-stack word)
+
+;;; Here is how to fetch and assign them.
+
+(defun (arg-register fetch-preparation) (reg) nil)
+
+(defun (arg-register assign-preparation) (reg) nil)
+
+(defun (arg-register fetch) (reg)
+   `(let ((arg (funcall (car ,reg))))
+      (check-arg-type (fetch ,reg) arg word)
+      arg))
+
+(defun (arg-register assign) (reg value)
+  `(let ((arg ,value))
+     (check-arg-type (assign ,reg) arg word)
+     (funcall (cadr ,reg) value)))
+
+;;; What actually lives on the arg register stacks is not the name
+;;; of a register, but a list of thunks for reading or writing the register.
+
+;These macros expand into code
+;to produce the object to be pushed onto an arg stack.
+;That object's car is a function to read the argument.
+;That object's cadr is a function of one arg to set the argument.
+;That object's caddr is the expression the caller gave for the argument.
+;It is not used.  It is there for humans looking at the arg stack.
+
+;This version wants an expression (such as (fetch foo))
+;and pushes an object saying how to read it, and not allowing writes.
+(defmacro arg-stack-read-only (arg)
+  `(list `(function (lambda () ,',arg))
+	 'dont-set-arg-reg
+	 ',arg))
+
+;This version wants a register name
+;and pushes an object saying how to read or write that register.
+(defmacro arg-stack-read-write (target)
+  `(list `(function (lambda () (fetch ,',target)))
+	 `(function (lambda (value) (assign ,',target value)))
+	 ',target))
+
+;;; Abstract register/stack operations implemented in hunks.
+
+(DECLARE (SPECIAL *THE-REGISTERS *THE-STACKS
+		  *PCLSRED-REGISTERS *PCLSRED-STACKS
+		  *FREE-MARKS *REG-STATS))
+
+(SETQ *REG-STATS? NIL)
+
+(DEFMACRO READ-REG (R)
+	  `(CONS ',(GET R 'FIELD-TYPE) (CXR ,(GET R 'REG-NUMBER) *THE-REGISTERS)))
+
+(DEFMACRO LOAD-REG (R V)
+   `(LET ((VAL ,V))
+      (COND ((EQ (CAR VAL) ',(GET R 'FIELD-TYPE))
+	     (RPLACX ,(GET R 'REG-NUMBER) *THE-REGISTERS (CDR VAL)))
+	    (T (ERROR "Bad field-type in loading a register" (LIST ',R VAL))))))
+
+(DEFMACRO READ-STACK (R)
+	  `(CONS 'WORD (CXR ,(GET R 'REG-NUMBER) *THE-STACKS)))
+
+(DEFMACRO LOAD-STACK (R V)
+   `(LET ((VAL ,V))
+      (COND ((EQ (CAR VAL) 'WORD)
+	     (RPLACX ,(GET R 'REG-NUMBER) *THE-STACKS (CDR VAL)))
+	    (T (ERROR "Bad field-type in loading a stack" (LIST ',R VAL))))))
+
+(DEFMACRO FREE-RACK? (R)
+	  `(= (CXR ,(GET R 'REG-NUMBER) *FREE-MARKS) 0))
+
+(DEFMACRO FREE-RACK! (R)
+	  `(RPLACX ,(GET R 'REG-NUMBER) *FREE-MARKS 0))
+
+(DEFMACRO MARK-SAVED! (R)
+	  `(RPLACX ,(GET R 'REG-NUMBER) *FREE-MARKS 1))
+
+
+(DEFMACRO PCLSR-SAVE (REGNAME)
+  (LET ((N (GET REGNAME 'REG-NUMBER)))
+    `(RPLACX ,N *PCLSRED-REGISTERS (CXR ,N *THE-REGISTERS))))
+
+(DEFMACRO PCLSR-RESTORE (REGNAME)
+  (LET ((N (GET REGNAME 'REG-NUMBER)))
+    `(RPLACX ,N *THE-REGISTERS (CXR ,N *PCLSRED-REGISTERS))))
+
+(DEFMACRO PCLSR-SAVE-STACK (REGNAME)
+  (LET ((N (GET REGNAME 'REG-NUMBER)))
+    `(RPLACX ,N *PCLSRED-STACKS (CXR ,N *THE-STACKS))))
+
+(DEFMACRO PCLSR-RESTORE-STACK (REGNAME)
+  (LET ((N (GET REGNAME 'REG-NUMBER)))
+    `(RPLACX ,N *THE-STACKS (CXR ,N *PCLSRED-STACKS))))
+
+(DEFUN RESET-RACKS ()
+       (SETQ *THE-REGISTERS (MAKHUNK 16.))
+       (SETQ *PCLSRED-REGISTERS (MAKHUNK 16.))
+       (SETQ *THE-STACKS (MAKHUNK 16.))       
+       (SETQ *PCLSRED-STACKS (MAKHUNK 16.))       
+       (DO ((I 0 (1+ I))) ((= I 16.))
+	 (RPLACX I *THE-REGISTERS SIMULATED-NIL)
+	 (RPLACX I *THE-STACKS SIMULATED-NIL))
+       (SETQ *FREE-MARKS (MAKHUNK '(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)))
+       (COND ((NOT (NULL *REG-STATS?))
+	      (SETQ *REG-STATS (MAKHUNK '(0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0))))))
+
+(DEFMACRO CHECK-ARG-TYPE (FCN ARG TYPE)
+  `(OR (EQ (CAR ,ARG) ',TYPE)
+       (ERROR "Wrong type argument" (LIST ',FCN ',TYPE ,ARG))))
+
+(DEFMACRO MAKE-POINTER (TYPE DATUM)
+  (COND ((NUMBERP TYPE) (SETQ TYPE `'(TYPE ,TYPE))
+			(PUSH TYPE EXPLICIT-TYPES)))
+  (COND ((NUMBERP DATUM) (SETQ DATUM `'(DATUM ,DATUM))
+			 (PUSH DATUM EXPLICIT-DATUMS)))
+  `(RUN-TIME-MAKE-POINTER ,TYPE ,DATUM))
+  
+(DEFUN RUN-TIME-MAKE-POINTER (TYPE DATUM)
+  (CHECK-ARG-TYPE MAKE-POINTER TYPE TYPE)
+  (CHECK-ARG-TYPE MAKE-POINTER DATUM DATUM)
+  (CONS 'WORD (LOGIOR (LSH (CDR TYPE) (FIELD-WIDTH WORD DATUM))
+		      (CDR DATUM))))
+
+(DEFUN MAKE-BIT (1-OR-0)
+  (OR (MEMQ 1-OR-0 '(1 0))
+      (ERROR "Arg not 1 or 0 -- MAKE-BIT" 1-OR-0))
+  `(BIT ,1-OR-0))
+
+(DEFMACRO =? (X Y)
+  (COND ((NUMBERP X) `(= ,X (CDR ,Y)))
+	((NUMBERP Y) `(= (CDR ,X) ,Y))
+	(T `(EQUAL ,X ,Y))))
+
+(DEFMACRO SAME-STATE (&REST BODY) `(PROGN . ,BODY))
+(DEFMACRO SAME-CYCLE (&REST BODY) `(PROGN . ,BODY))
+(DEFMACRO SAME-STATE-PROG1 (&REST BODY) `(PROG1 . ,BODY))
+(DEFMACRO SAME-STATE-PROG (&REST BODY) `(PROGN . ,BODY))
+
+; Memory references
+
+(DECLARE (SPECIAL MEMORY-ARRAY MEMORY-SIZE))
+
+(SETQ MEMORY-SIZE 100000)
+
+(DEFUN MEMORY-INIT ()
+  (SETQ MEMORY-ARRAY (*ARRAY NIL FIXNUM MEMORY-SIZE)))
+
+(DEFUN INDEX-ADD (ARRAY INDEX)
+  (CHECK-ARG-TYPE INDEX-ADD ARRAY WORD)
+  (CHECK-ARG-TYPE INDEX-ADD INDEX WORD)
+  (CONS 'MEMORY-ADDRESS
+	(+ 1 (* 2 (EXTRACT-FIELD (DATUM WORD) (CDR ARRAY)))
+	   (EXTRACT-FIELD (DATUM WORD) (CDR INDEX)))))
+
+(DEFUN LEFT-ADDRESS (POINTER)
+  (CHECK-ARG-TYPE LEFT-ADDRESS POINTER WORD)
+  (CONS 'MEMORY-ADDRESS
+	(* 2 (EXTRACT-FIELD (DATUM WORD) (CDR POINTER)))))
+
+(DEFUN RIGHT-ADDRESS (POINTER)
+  (CHECK-ARG-TYPE RIGHT-ADDRESS POINTER WORD)
+  (CONS 'MEMORY-ADDRESS
+	(+ 1(* 2 (EXTRACT-FIELD (DATUM WORD) (CDR POINTER))))))
+
+(DEFUN GET-MEMORY (ADDRESS)
+  (CHECK-ARG-TYPE GET-MEMORY ADDRESS MEMORY-ADDRESS)
+  (CONS 'WORD (ARRAYCALL FIXNUM MEMORY-ARRAY (CDR ADDRESS))))
+
+(DEFUN SET-MEMORY (ADDRESS CONTENTS)
+  (CHECK-ARG-TYPE SET-MEMORY ADDRESS MEMORY-ADDRESS)
+  (CHECK-ARG-TYPE SET-MEMORY CONTENTS WORD)
+  (STORE (ARRAYCALL FIXNUM MEMORY-ARRAY (CDR ADDRESS))
+	 (CDR CONTENTS)))
+
+(DEFUN HALT () (BREAK 'HALT))
+
+(DEFUN READ-SBUS-DATA ()
+  (PRINT "SBUS data: ")
+  (CONS 'WORD (READ)))
+
+(DEFUN RETURN-SBUS-VALUE (VALUE)
+  (PRINT "SBUS value: ")
+  (PRIN1 VALUE))
+
+(DEFUN ACKNOWLEDGE-CONS-SERVER-REQUEST ()
+  (PRINT "CONS server request acknowledged"))
+
+(DEFMACRO WAIT-UNTIL (CONDITION) ())
+
+;Definitions for random logic.
+
+(DEFMACRO DEFLOGIC (NAME BODY)
+  `(PROGN 'COMPILE
+	  (DEFUN ,NAME () ,BODY)
+	  (DEFREG ,NAME LOGIC-FLAG BIT)))
+
+(EVAL-WHEN (EVAL-COMPILE-LOAD)
+
+(DEFUN (LOGIC-FLAG FETCH) (R)
+  (FUNCALL R))
+
+(DEFUN (LOGIC-FLAG ASSIGN) (R V)
+  (PRINT "Assignment to logic flag name")
+  (PRIN1 R))
+)
+
+(DEFUN VNOT (QUANTITY)
+  (CONS (CAR QUANTITY)
+	(LOGXOR -1 (CDR QUANTITY))))
+
+(DEFUN VAND (X Y)
+  (OR (EQ (CAR X) (CAR Y))
+      (ERROR "Type mismatch -- VAND" (LIST X Y)))
+  (CONS (CAR X) (LOGAND (CDR X) (CDR Y))))
+
+(DEFUN VOR (X Y)
+  (OR (EQ (CAR X) (CAR Y))
+      (ERROR "Type mismatch -- VOR" (LIST X Y)))
+  (CONS (CAR X) (LOGIOR (CDR X) (CDR Y))))
+
+;Random arithmetic primitives.
+
+(DEFUN ADD-ONE-TO-DATUM (ARG)
+  (CHECK-ARG-TYPE ADD-ONE-TO-DATUM ARG WORD)
+  (CONS 'WORD
+	(MODIFY-FIELD DATUM WORD (CDR ARG)
+		      (1+ (EXTRACT-FIELD (DATUM WORD) (CDR ARG))))))
+
+(DEFUN SUBTRACT-ONE-FROM-DATUM (ARG)
+  (CHECK-ARG-TYPE SUBTRACT-ONE-FROM-DATUM ARG WORD)
+  (CONS 'WORD
+	(MODIFY-FIELD DATUM WORD (CDR ARG)
+		      (1- (EXTRACT-FIELD (DATUM WORD) (CDR ARG))))))
+
+(DEFUN ADD-ONE-TO-COUNT (ARG)
+  (CHECK-ARG-TYPE ADD-ONE-TO-COUNT ARG WORD)
+  (CONS 'WORD
+	(MODIFY-FIELD COUNT WORD (CDR ARG)
+		      (1+ (EXTRACT-FIELD (COUNT WORD) (CDR ARG))))))
+
+(DEFUN SUBTRACT-ONE-FROM-COUNT (ARG)
+  (CHECK-ARG-TYPE SUBTRACT-ONE-FROM-COUNT ARG WORD)
+  (CONS 'WORD
+	(MODIFY-FIELD COUNT WORD (CDR ARG)
+		      (1- (EXTRACT-FIELD (COUNT WORD) (CDR ARG))))))
+
+(DEFUN LEFT-SHIFT (ARG)
+  (CHECK-ARG-TYPE LEFT-SHIFT ARG WORD)
+  (CONS 'WORD
+	(MODIFY-FIELD DATUM WORD (CDR ARG)
+		      (LSH (EXTRACT-FIELD (DATUM WORD) (CDR ARG)) 1))))
+
+(DEFUN RIGHT-SHIFT (ARG)
+  (CHECK-ARG-TYPE RIGHT-SHIFT ARG WORD)
+  (CONS 'WORD
+	(MODIFY-FIELD DATUM WORD (CDR ARG)
+		      (LSH (EXTRACT-FIELD (DATUM WORD) (CDR ARG)) -1))))
+
+(DEFUN 1//2+ (ARG)
+  (CHECK-ARG-TYPE 1//2+ ARG MEMORY-ADDRESS)
+  (CONS 'MEMORY-ADDRESS
+	(1+ (CDR ARG))))
+
+(DEFUN ARRAY-INDEX-OK? (SIZE INDEX)
+  (CHECK-ARG-TYPE ARRAY-INDEX-OK? INDEX WORD)
+  (CHECK-ARG-TYPE ARRAY-INDEX-OK? SIZE WORD)
+  (AND (NOT (MINUSP (EXTRACT-FIELD-SIGN-EXTEND (DATUM WORD) (CDR INDEX))))
+       (< (EXTRACT-FIELD (DATUM WORD) (CDR INDEX))
+	  (EXTRACT-FIELD (DATUM WORD) (CDR SIZE)))))
+
+;This is a microcode primitive which does (at hardware runtime) an extract-field.
+;In the simulator, it operates on simulator quantites.
+(DEFMACRO EXTRACT (FIELD-DESC VALUE)
+  `(PROGN (CHECK-ARG-TYPE EXTRACT VALUE ,(CAR (LAST FIELD-DESC)))
+	  (CONS ',(CAR FIELD-DESC)
+		(EXTRACT-FIELD ,(BUTLAST FIELD-DESC) ,(LAST FIELD-DESC) (CDR ,VALUE)))))
+
+;given a number representing the value in a field,
+;extract the number which is the value of a subfield.
+(defmacro extract-field (subfieldpath fieldpath value)
+  (and (atom subfieldpath) (setq subfieldpath (list subfieldpath)))
+  (and (atom fieldpath) (setq fieldpath (list fieldpath)))
+  (let ((width (width-of-field (append subfieldpath fieldpath)))
+	(position (position-of-subfield subfieldpath fieldpath)))
+    `(load-byte ,value ,position ,width)))
+
+(defmacro modify-field (subfieldpath fieldpath entire-field-value subfield-value)
+  (and (atom subfieldpath) (setq subfieldpath (list subfieldpath)))
+  (and (atom fieldpath) (setq fieldpath (list fieldpath)))
+  (let ((width (width-of-field (append subfieldpath fieldpath)))
+	(position (position-of-subfield subfieldpath fieldpath)))
+    `(deposit-byte ,entire-field-value ,position ,width ,subfield-value)))

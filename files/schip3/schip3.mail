@@ -1,0 +1,123 @@
+HES@MIT-AI 03/15/82 21:10:57 Re: Scheme-81
+Congratulations.
+
+COMSAT@MIT-AI 03/15/82 21:06:48 Re: Msg of Monday, 15 March 1982 13:05-EST
+To: SCHIP3 at MIT-AI
+Queued msg sent to: abell at PARC-MAXC
+
+COMSAT@MIT-AI 03/15/82 13:07:08 Re: Msg of Monday, 15 March 1982 13:05-EST
+To: SCHIP3 at MIT-AI
+Queued: abell at PARC-MAXC
+
+HANSON@MIT-MC 02/16/82 13:38:45
+To: GJS at MIT-MC, HAL at MIT-MC, NLM at MIT-MC, TAFT at MIT-MC
+To: AGRE at MIT-MC, state-machines at MIT-AI
+
+preliminary documentation describing the UCODE microcode language is available
+in the file MC:SCHEME;UCODE DOC.  the compiler has a little catching up to do,
+but essentially most of the language is now implemented, minus the code generators.
+
+this definition will hopefully be kept up to date as it is my intention to make this
+the standard interface between SCHEME and arbitrary machines.
+
+				- chris
+
+
+Date: 31 Dec 1981 0009-EST
+From: .BATCH at MIT-DMS
+To: SCHIP3 at MIT-AI
+Message-id: <[MIT-DMS].218817>
+
+
+Happy birthday to you!
+
+Happy birthday to you!
+
+Happy birthday, dear Chip,
+
+Happy birthday to you!
+
+
+
+The-XGP@MIT-AI (Sent by COMSAT@MIT-AI) 06/18/81 03:31:58
+To: SCHIP3 at MIT-AI
+[COMSAT: This was a failing QSEND.]
+The-XGP@MIT-AI 06/18/81 03:31:13
+Your printout of AI: SCHIP3; HDWRE > has started.
+Listing aborted by pdp11 -- out of web or out of paper
+Printing interrupted after 5 pages.
+Please come to the XGP to fix this condition.
+When it is fixed, printing will be resumed.
+
+JAR@MIT-AI 07/15/80 00:11:01
+The miscellaneous functions (reverse, nth, nconc etc.) appearing at
+the end of SCHIP3; TRANS > should be real functions, not macros...
+Even if they are macros, they have scoping problems.  Thought ya might
+like to know.
+
+GLS@MIT-AI 07/11/80 21:14:25 Re: SCHEME Chip 3 GC
+To: GJS at MIT-AI, TK at MIT-AI, HES at MIT-AI, GLS at MIT-AI
+To: H at MIT-AI, KRD at MIT-AI, SCHIP3 at MIT-AI
+Note that with a copying GC the extra GC bit can go away.  Feature!
+
+So I propose the following protocol.  There is an SBUS operation called
+RELOCATE.  It operates like CAR: a pointer is fed across the bus, and a
+result obtained.  The argument should be an "oldspace pointer".  Whatever
+processor is responsible for that pointer should return the "new" pointer
+for that object.  This may or may not cause copying, depending on the
+device.  Another SBUS operation is a broadcast message, called FLIP.
+This should cause all interested processors to exchange oldspace and newspace.
+Also, there is an SBUS line that anyone can assert (wire-OR), called
+GC-IN-PROGRESS.
+
+Here is a full GC protocol.  Suppose that on the SBUS are two devices.
+One is a UNIFY device with half-a-dozen registers, each a fake list cell
+with a CAR and CDR, at addresses 40000000 through 40000006.  The other is
+an APL device that has its own funny arrays, to which other people have
+access through headers that look like LISP lists and arrays; these funny
+arrays may contain numbers, characters, or pointers!  Objects in the
+APL device appear to be at addresses 41000000-41777777.
+
+So.  Either the APL machine or the on-chip storage allocator can signal
+for a GC interrupt via the interrupt mechanism.  Eventually EVAL takes
+the interrupt and runs a program that does whatever it wants, including
+asking all other processors to get into a good state to GC, and then
+executes the GC instruction.  This instruction creates a control-point
+(thereby summarizing EVAL's state by an existing mechanism), broadcasts
+the FLIP message across the SBUS, and hands the control state to the
+storage allocator with the operation request RELOCATE.  This will return
+fairly quickly (as soon as the storage allocator has copied the first
+cell of the control state), but then EVAL loops until the GC-IN-PROGRESS
+line on the SBUS is no longer asserted.
+
+Now the APL processor has its own copying garbage collector, and so does
+the on-chip allocator.  As long as the copy-queue-pointer lags behind the
+freespace pointer of a gc'ing processor, it will assert GC-IN-PROGRESS;
+when they are equal (that processor is caught up) it no longer asserts
+it.  When a processor is asserting GC-IN-PROGRESS it should be performing
+the standard copy loop.  When it runs across a pointer that points within
+itself, it should leave the SBUS alone and do the copying internally.
+When it finds a pointer that points outside its own range of addresses,
+it should send it on the SBUS with the operation RELOCATE.  Whatever
+processor is responsible for that pointer will respond with the new
+address.  This pointer is then installed back where it was found.
+
+Whether a processor is copying or just waiting for everyone else to
+finish, it should pay attention to the SBUS for RELOCATE messages
+directed to it.  The APL processor might get a message from the LISP
+processor, for example, in which case it must copy the array pointed to
+and return the new address.  Simple devices such as UNIFY respond to a
+RELOCATE message by returning the argument as is, and then issuing two
+RELOCATE messages (if necessary) for the car and cdr of the register just
+asked about.  (This simple protocol, no worse than responding to CAR,
+makes it so that EVAL doesn't have to explicitly save the state of all
+the simple processors.)
+
+Note that a processor might be done, and then have to reassert GC-IN-PROGRESS
+because of a new RELOCATE message directed to it.  Eventually, however,
+no processor will assert that signal, whereupon EVAL will start up
+again, and feed NIL to the relocated control point, whereupon the GC
+instruction returns NIL and everything carries on.  Hurray!
+
+What do you think?
+

@@ -1,0 +1,53 @@
+;;; -*-LISP-*- Various Debugging Setups
+
+(trace (pclsr-for-error break t))
+
+(defun setup-int-test ()
+  (setq sbus-data-default (make-pointer fixnum 3))
+  (sstatus ttyint 1 '(lambda (f c) (si 1)))
+  (try '(block (setq int-count 0)
+	       (defun int x
+		      (setq int-count (1+ int-count))
+		      (allow-interrupts)
+		      (allow-gc-interrupts)
+		      (x nil))				;bletch
+	       (array-set (cdr entry-vector-list) 3 int))))
+
+(defun int-test () (try '(block (allow-interrupts) (fib* 3))))
+
+(defun acknowledge-gc-done? ()
+       (print 'gc-done)
+       (prin1 (sv (fetch free)))
+       t)
+
+(defun setup-gc-test ()
+  (try `(block (setq gc-count 0)
+	       (setq old-space-base 4000)
+	       (setq old-space-memtop 5000)
+	       (setq new-space-base 2000)
+	       (setq new-space-memtop 3000)
+	       (set-memtop old-space-memtop)
+	       (defun gcint x
+		      (setq init-free (garbage-collect new-space-base))
+		      (set-memtop new-space-memtop)
+		      (setq tem-space-base old-space-base)
+		      (setq tem-space-memtop old-space-memtop)
+		      (setq old-space-base new-space-base)
+		      (setq old-space-memtop new-space-memtop)
+		      (setq new-space-base tem-space-base)
+		      (setq new-space-memtop tem-space-memtop)
+		      (setq gc-count (1+ gc-count))
+		      (allow-gc-interrupts)
+		      ;(allow-cons-server-interrupts)
+		      (allow-interrupts)
+		      (x 'nil))
+	       (array-set (cdr entry-vector-list) 0 gcint))))
+
+(defun gc-test-1 ()
+  (try '(block (allow-gc-interrupts)
+	       init-free)))
+
+(defun gc-test-2 ()
+  (try '(block (allow-gc-interrupts)
+	       (allow-interrupts)
+	       (fib* 5))))

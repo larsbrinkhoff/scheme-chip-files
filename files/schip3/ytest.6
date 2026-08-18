@@ -1,0 +1,41 @@
+; We can define:
+
+(setq ytest
+'(block
+
+(define (y* f)
+	((lambda (g) (f (lambda () (g g))))
+	 (lambda (g) (f (lambda () (g g))))))
+
+; This y operator must be used slightly differently, however.
+; The kernel f must be called in place to extract the function
+; because this y operator was derived by a call-by-name
+; transformation from the original one -- see ! lines below.
+
+(define (+ x y)
+	((y* (lambda (f)
+	       (lambda (x y)
+		 (if (zerop x)
+		     y
+		     ((f) (1- x) (1+ y))))))
+	 x
+	 y))
+
+(define (fib* k)
+	((y* (lambda (f)
+		     (lambda (n)
+			     (cond ((zerop n) 1)
+				   ((zerop (1- n)) 1)
+				   (t (+ ((f) (1- n))
+					 ((f) (1- (1- n)))))))))
+	 k))
+
+(define (app l1 l2)
+	((y* (lambda (f)
+		(lambda (l1 l2)
+			(cond ((null l1) l2)
+			      (t (cons (car l1)
+				       ((f) (cdr l1) l2)))))))	;!
+	 l1
+	 l2))
+))

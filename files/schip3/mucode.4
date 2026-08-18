@@ -1,0 +1,82 @@
+.keep
+UCODE SYNTACTIC DEFINITION
+.sp
+.nf L
+.fs 4
+<UCODE>		= <def>*
+.sp
+<def>		= (<state-name> (<state-name>*) (<state-exp>+) <effect>*)
+<state-exp>	= (state <state-name>) | (select <io-name> <state-exp>+)
+.sp
+<effect>	= (<io-name> <exp>)
+<exp>		= <number> | (pin <io-name>) | (select <io-name> <exp>+)
+.sp
+<io-name>	= <atom> | (<atom>+)
+<state-name>	= <atom> | (<atom>+)
+.fs
+.fi B
+.sp
+Notes:
+.ilist 4
+"*" means "repeat the preceding non-terminal zero or more times".
+.next
+"+" means "repeat the preceding non-terminal one or more times".
+.end_list
+.end_keep
+.keep
+UMACHINE SYNTACTIC DEFINITION
+.sp
+.nf L
+.fs 4
+<UMACHINE>	= <this-environment-name><def>+
+.sp
+<def>		= (environment <environment-name>+) |
+		  (interrupt <intdef>+) |
+		  (new-int-level <number>) |
+		  (enable <interrupt-name>) |
+		  (disable <interrupt-name>) |
+		  (default <full-binding>+) |
+		  (case-map <map-name> <state-name>+) |
+		  (label <state-name> <parameter-name>*) |
+		  (<statement>+) |
+		  (defmacro <macro-name> <macro-definition>) |
+		  (<macro-name> <macro-arguments>)
+.sp
+<statement>	= (assert <binding>+) |
+		  (goto <state-name>) |
+		  (gosub <state-name> <value>*) |
+		  (return) |
+		  (escape <state-name>) |
+		  (goto-case <map-name> <variable>) |
+		  (if <predicate> then <statement>) |
+		  (if <predicate> then <statement> else <statement>) |
+		  (<macro-name> <macro-arguments>)
+.sp
+<intdef>	= <interrupt-name> <state-name>
+<binding>	= <output-field-name> | <full-binding>
+<full-binding>	= (<output-field-name> <value>)
+<value>		= <number> |
+		  <variable> |
+		  (case-code <map-name> <state-name>)
+<variable>	= (ref <parameter-name>) |
+		  (input <input-field-name>)
+<predicate>	= <status-line-name> |
+		  (not <predicate>) |
+		  (<predicate> or <predicate>) |
+		  (<predicate> and <predicate>) |
+		  (<predicate> xor <predicate>)
+.fs
+.fi B
+.sp
+Notes:
+.ilist 4
+"*" means "repeat the preceding non-terminal zero or more times".
+.next
+"+" means "repeat the preceding non-terminal one or more times".
+.next
+<macro-name> is of the form <atom>.
+.next
+All other names are either <atom> or (<atom>+), and furthermore, the
+forms <x> and (<x>) are equivalent for all <x>.
+.end_list
+.end_keep

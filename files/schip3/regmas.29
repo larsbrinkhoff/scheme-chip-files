@@ -1,0 +1,87 @@
+;;; -*-LISP-*-
+
+(defun get-reg-specs (reg)
+  `(,reg
+    (source-of . ,(distinct-occurrences reg 'source-of))
+    (target-of . ,(distinct-occurrences reg 'target-of))))
+
+(defun distinct-occurrences (reg occurrence-type)
+  (let-mapcan ((s (get reg occurrence-type)))
+	      (if (null (get s 'representative))
+		  (list `(,(get s 'expression) ,s)))))
+
+(defun get-arg-reg-specs (reg)
+  (let ((args nil) (source-of nil) (target-of nil))
+    (let-mapc ((occ (get reg 'my-occurrences)))
+	      (setq args
+		    (union args (get occ 'sources)))
+	      (setq source-of
+		    (union source-of (distinct-occurrences occ 'source-of)))
+	      (setq target-of
+		    (union target-of (distinct-occurrences occ 'target-of))))
+    `(,reg
+      (sources . ,args)
+      (source-of . ,source-of)
+      (target-of . ,target-of))))
+
+(defun get-distinct-operations ()
+  `((predicates . ,(distinct-operations *predicate-exprs*))
+    (statements . ,(distinct-operations *statements*))))
+
+(defun distinct-operations (ops)
+  (let ((distinct-operations nil))
+    (let-mapc ((s ops))
+	      (if (null (get s 'representative))
+		  (let ((e (get s 'expression)))
+		    (if (not (member e distinct-operations))
+			(setq distinct-operations
+			      (cons e distinct-operations))))))
+    distinct-operations))
+
+
+(defun union (set1 set2)
+       (cond ((null set1) set2)
+	     ((member (car set1) set2) (union (cdr set1) set2))
+	     (t (cons (car set1) (union (cdr set1) set2)))))
+
+(defun output-reg-specs ()
+  (let-mapc ((reg *reg-list*))
+	    (sprinter (get-reg-specs reg)))
+  (let-mapc ((st *the-stacks*))
+	    (sprinter (get-arg-reg-specs st)))
+  (sprinter (get-distinct-operations))
+  'done)
+
+(defun output-control-wires ()
+  (let ((d nil) (c nil))
+    (mapatoms #'(lambda (n)
+		  (if (not (and (null (left-neighbors n))
+				(null (predecessors n))))
+		      (progn (mapc #'(lambda (w)
+				       (if (not (member w c))
+					   (setq c (cons w c))))
+				   (get n 'primitive-control-actions))
+			     (mapc #'(lambda (w)
+				       (if (not (member w d))
+					   (setq d (cons w d))))
+				   (get n 'primitive-data-actions))))))
+    (setq c (sort c #'ccl))
+    (setq d (sort d #'ccl))
+    (print "State and stack control")
+    (mapc 'print c)
+    (terpri)
+    (print "Datapath control")
+    (mapc 'print d)))
+
+
+(defun ccl (cl1 cl2)
+  (do ((a (reverse cl1) (cdr a)) (b (reverse cl2) (cdr b)))
+      ((or (null a) (null b)) (break "non-unique control wires"))
+    (let ((aa (car a)) (bb (car b)))
+      (if (not (equal aa bb))
+	  (return (alphalessp (cond ((not (atom aa)) (ascii #o177))
+				    ((numberp aa) (cons-name '/#o aa))
+				    (t aa))
+			      (cond ((not (atom bb)) (ascii #o177))
+				    ((numberp bb) (cons-name '/#o bb))
+				    (t bb))))))))

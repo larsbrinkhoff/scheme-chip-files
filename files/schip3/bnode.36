@@ -1,0 +1,245 @@
+;;; -*- package: DPL; mode: LISP -*-
+
+;;; Making the BNODES for SCHEME-81
+
+(defvar *bnoder-function-list* ())
+
+(defmacro defbnoder (name &body body)
+  `(progn 'compile
+	  (defun (,name bnoder-function) ()
+	    (let ((*me* (>> prototype scheme-81)))
+	      . ,body))
+	  (setq *bnoder-function-list*
+		(:cons-new ',name *bnoder-function-list*))
+	  ',name))
+
+(defun call-bnoder (name)
+  (let ((f (get name 'bnoder-function)))
+    (if (null f)
+	(error "No bnoder function" name)
+      (format t "~&;;; ~A" name)
+      (funcall f))))
+
+(defvar *real-bnodes* nil)
+
+(defun bnode-scheme-81 (&optional (*real-bnodes* nil))
+  (or (find-local 'scheme-81 *me*)
+      (error "No SCHEME-81 here -- bnoder"))
+  (mapc #'call-bnoder *bnoder-function-list*))
+
+(defun join-path (path)
+  (let ((*nopoint t))
+    (if (atom path)
+	path
+      (join-path-1 (join-path (car path)) (cdr path)))))
+
+(defun join-path-1 (so-far rest)
+  (if (null rest)
+      (intern so-far)
+    (join-path-1 (format nil "~A-~A" so-far (join-path (car rest))) (cdr rest))))
+
+(defun bnodify (name point layer &optional (type 'normal))
+  (if *real-bnodes*
+      (bnode name point layer type)
+    (format t "~&~A  ;; (PT ~A ~A) ~A"
+	    name (x-of-pt point) (y-of-pt point) layer)))
+
+(defbnoder pgc-bnodes 
+  ;;; power, ground, and clocks
+  
+  (bnodify 'vdd (>> center expanse (*path '(bottom-vdd)) bottom-pads pads)
+	  'metal 'input)
+  ;;; here are all the ground pads. They will have to be stiched together
+  (bnodify 'gnd
+	  (>> center expanse (*path '(top-left-ground)) top-pads pads)
+	  'metal 'input)
+  (bnodify 'gnd
+	  (>> center expanse (*path '(top-right-ground)) top-pads pads)
+	  'metal 'input)
+  (bnodify 'gnd
+	  (>> center expanse (*path '(bottom-right-ground)) bottom-pads pads)
+	  'metal 'input)
+  (bnodify 'gnd
+	  (>> center expanse (*path '(bottom-left-ground)) bottom-pads pads)
+	  'metal 'input)
+  
+  (bnodify 'phi1 (>> center expanse blank (*path '(phi-1)) bottom-pads pads)
+	  'metal 'input)
+  (bnodify 'phi2 (>> center expanse blank (*path '(phi-2)) top-pads pads)
+	  'metal 'input))
+
+(declare (special *top-pad-field* *side-pad-field* *bottom-pad-field*))
+
+(defbnoder top-pads
+  (dotimes (i (width-of-field
+		(find-subfield-named 'top-data-bus *top-pad-field*)))
+    (bnodify (smash 'top-data-bus i)
+	   (>> center expanse (*path `((nth ,i) top-data-bus)) top-pads pads)
+	   'metal 'normal))
+  (bnodify '-data-bus-enable
+	 (>> center expanse padout (*path '(-data-bus-enable)) top-pads pads)
+	 'metal 'normal)
+  (dolist (p (list-fringe
+	       (find-subfield-named 'external-registers *top-pad-field*)))
+    (bnodify (join-path p)
+	   (>> center expanse (*path p) top-pads pads)
+	   'metal 'normal))
+  (dolist (p (list-fringe
+	       (find-subfield-named 'random-signals *top-pad-field*)))
+    (bnodify (join-path p)
+	   (>> center expanse (*path p) top-pads pads)
+	   'metal 'normal)))
+
+(defbnoder side-pads
+  (dotimes (i (width-of-field
+		(find-subfield-named 'side-data-bus *side-pad-field*)))
+    (bnodify (smash 'side-data-bus i)
+	   (>> center expanse (*path `((nth ,i) side-data-bus)) side-pads pads)
+	   'metal 'normal)))
+
+(defbnoder bottom-pads
+  (bnodify 'data-out (>> center expanse (*path '(data-out)) bottom-pads pads)
+	   'metal 'normal)
+  (dotimes (i (width-of-field
+		(find-subfield-named 'bottom-data-bus *bottom-pad-field*)))
+    (bnodify (smash 'bottom-data-bus i)
+	   (>> center expanse (*path `((nth ,i) bottom-data-bus)) bottom-pads pads)
+	   'metal 'normal))
+  (dolist (p (list-fringe (find-subfield-named 'control-inputs *bottom-pad-field*)))
+    (bnodify (join-path p)
+	   (>> center expanse (*path p) bottom-pads pads) 'metal))
+  (dolist (p (list-fringe (find-subfield-named 'external-predicates *bottom-pad-field*)))
+    (bnodify (join-path p)
+	   (>> center expanse (*path p) bottom-pads pads) 'metal))
+  (dotimes (i 9)
+    (bnodify (smash 'state i)
+	   (>> center expanse (*path `((nth ,i) state)) bottom-pads pads) 'metal)))
+
+(defun the-path (path)
+  (if (null path) *me* (the (car path) (the-path (cdr path)))))
+
+(defun connection-point-bnodes (path-to-regfil cps-to-snarf prefix)
+  (let ((regfil (the-path path-to-regfil)))
+    (let ((conns (the 'connection-points regfil)))
+      (dolist (c cps-to-snarf)
+	(let ((ll (cdr (assq c (cdr conns)))))
+	  (dolist (l ll)
+	    (bnodify (smash prefix (join-path (car l)))
+		   (the (*path `(,c ,(car l))) regfil) (caddr l))))))))
+
+(defbnoder main-reg-bnodes
+  (connection-point-bnodes '(main-regs) '(input output right-bus) 'main-regs))
+
+(defbnoder next-state-bnodes
+  (connection-point-bnodes '(next-state land-of-ns)
+			   '(input output right-bus) 'ns-regs))
+
+(defbnoder uarg-system-bnodes
+  (connection-point-bnodes '(data-path uarg-stacks land-of-uarg)
+			   '(right-bus input) 'ua-regs)
+  (dotimes (i 6)
+    (bnodify (smash 'read-bus i)
+	   (>> center (*rep i) read-bus uarg-stacks land-of-uarg)
+	   'metal)
+    (bnodify (smash 'write-bus i)
+	   (>> center (*rep i) write-bus uarg-stacks land-of-uarg)
+	   'metal)))
+
+(defun list-ofield-valid-field-paths (field side)
+  (loop for sf in (field-fringe field)
+	when (or (eq side (field-side sf))
+		 (and (eq side 'top)
+		      (null (field-side sf)))
+		 (eq (field-side sf) 'both))
+	append (list-valid-paths sf)))
+
+(defbnoder control-pla-bnodes
+  (dolist (p (list-ofield-valid-field-paths *control-pla-output-field* 'top))
+    (bnodify (smash (if (eq (cadr p) 'op-decoder) 'cont-top 'cont) (join-path p))
+	     (>> (*path p) top-ofield output-plane control-pla)
+	     (>> (*path `(layer . ,p)) top-ofield output-plane control-pla)))
+  (dolist (p (list-ofield-valid-field-paths *control-pla-output-field* 'bottom))
+    (bnodify (smash (if (eq (cadr p) 'op-decoder) 'cont-bot 'cont) (join-path p))
+	     (>> (*path p) bottom-ofield output-plane control-pla)
+	     (>> (*path `(layer . ,p)) bottom-ofield output-plane control-pla)))
+  (dotimes (i 9)
+    (bnodify (smash 'cont-state i)
+	   (>> (*path `((nth ,i) body)) input-plane control-pla)
+	   'diff)))
+
+(defun pla-field-bnodes (field path-to-pla prefix)
+  (let ((pla (the-path path-to-pla)))
+    (dolist (pp (list-valid-paths field))
+      (bnodify
+	(smash prefix (join-path pp))
+	(the (*path pp) pla)
+	(the (*path `(layer . ,pp)) pla)))))
+
+(defun pla-bnodes (prefix ifield ofield path)
+  (pla-field-bnodes ifield (cons 'inputs path) prefix)
+  (pla-field-bnodes ofield (cons 'outputs path) prefix))
+
+(defbnoder pla-bnodes
+  (pla-field-bnodes *pred-field* '(predicate-select land-of-ns) 'pred)
+  (pla-bnodes 'disp *disp-input-field* *disp-output-field* '(dispatch-decoder land-of-ns))
+  (pla-bnodes 'ns-op *ns-op-input-field* *ns-op-output-field* '(ns-op-decoder land-of-ns))
+  (pla-bnodes 'uarg-op *uarg-op-input-field* *uarg-op-output-field*
+	      '(uarg-op-decoder land-of-uarg))
+  (pla-bnodes 'constant *constant-decoder-input-field* *constant-decoder-output-field*
+	      '(constant-decoder decoders))
+  (pla-bnodes 'read-uarg *uarg-read-input-field* *uarg-read-output-field*
+	      '(uarg-read-decoder decoders))
+  (pla-bnodes 'load-uarg *uarg-load-input-field* *uarg-load-output-field*
+	      '(uarg-load-decoder decoders))
+  (pla-bnodes 'non-uarg *non-uarg-input-field* *non-uarg-output-field*
+	      '(non-uarg-decoder decoders)))
+
+(defbnoder random-nodes
+  (bnodify 'true-line (>> true-output-point predicate-select land-of-ns) 'diff)
+  (bnodify 'pc-freeze (>> pc-freeze-point (*path '(freeze control-inputs))
+			bottom-pads pads)
+	 'poly)
+  (bnodify 'freeze (>> start-pt freeze clock-circuits) 'metal)
+  (bnodify 'state-output-enable
+	 (>> read-state-point logic
+	     (*path '(load-state control-inputs))
+	     bottom-pads pads)
+	 'poly)
+  (bnodify 'state-input-enable
+	 (>> load-state-point logic
+	     (*path '(load-state control-inputs))
+	     bottom-pads pads)
+	 'poly))
+
+(defbnoder probe-bnodes
+  (bnodify 'probe-logic-input
+	   (>> center expanse probe-pad control-pad lsd-pads)
+	   'metal)
+  (bnodify 'data-pad-input
+	    (>> center expanse data-pad lsd-pads)
+	    'metal)
+  (bnodify 'lsd-phi-2
+	   (>> start-pt phi2-control-wire lsd-pads)
+	   'poly)
+  (bnodify 'lsd-phi-1
+	   (>> start-pt phi1-control-wire lsd-pads)
+	   'poly)
+  (bnodify 'lsd-control-input
+	   (>> start-pt control-input lsd-pads)
+	   'poly)
+  (bnodify 'lsd-output-value
+	   (>> start-pt data-out-wire lsd-pads)
+	   'poly)
+  (dotimes (i 23)
+    (bnodify (:join 'lsd-sb- i)
+	     (>> output-pt (*rep i) rep lsd)
+	     'poly))
+  (bnodify 'silly-input
+	   (>> center expanse input silly-probe-pair)
+	   'metal)
+  (bnodify 'silly-output
+	   (>> center expanse output silly-probe-pair)
+	   'metal)
+  (bnodify 'true-probe
+	   (>> center expanse pad true-probe)
+	   'metal))

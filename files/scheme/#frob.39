@@ -1,0 +1,25 @@
+;;; -*-LISP-*-
+
+(include frob)
+
+(layout completely-random-garbage (1100 15) =
+	(metal (0 900 0 15) (0 20 15 18) (900 1100 0 10) (1080 1100 10 18)	;upper VDD
+	       (826 846 0 513)				;VDD for registers
+	       (90 1105 521 546)			;middle GND connection 25 lambda
+	       (90 110 34 530)				;extra GND strap down leftpads
+	       (0 640 1295 1320) (640 908 1312 1320)	;lower VDD
+))
+
+(define frob
+	(call leftpads (trans -34 -18))
+	(call rightpads (trans (+ 90 58 390 33 340 (* 7 13) 124) -18))
+	(call copyright (rotate 0 1) (trans 1100 -1312))
+	(call simple-logo (trans 920 -1299))
+	(call completely-random-garbage)
+	(call allregs (trans 240 -5))
+	(call eval-pla (mirror y)
+	      (trans (+ 90 58)
+		     (+ -5 (+ -68 (* 11 -40)) -15 -222 -29 (+ -29 -10 (* 29 -14) -53))))
+	(call gc-pla (mirror y) (trans (+ 90 58 390 33) -1308)))
+
+(call frob)

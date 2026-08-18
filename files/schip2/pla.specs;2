@@ -1,0 +1,506 @@
+
+
+;This is the PLA construction for ((DSK SCHIP2) MICRO PLA)
+;The moon is 5 days, 3 hours, 57 minutes, and 6 seconds past the last quarter.
+;The sun is 27*18'15" north of west, 52*0'7" below the horizon.
+;That means it is now 9:07 PM on Friday, November 16, 1979.
+
+Making PLA MICRO-PLA, 9 AND bits, 28 OR outputs, 297 terms
+    Folded on STATE-0, Gnd-mesh 10, Gnd-width 20
+Eliding bit 8, leaving (STATE-10 STATE-7 STATE-6 STATE-5 STATE-4 STATE-3 STATE-2 STATE-1)
+Placing AND input for STATE-10 at X=0
+Placing AND input for STATE-7 at X=14
+Placing AND input for STATE-6 at X=28
+Placing AND input for STATE-5 at X=42
+Placing AND input for STATE-4 at X=56
+Placing AND input for STATE-3 at X=70
+Placing AND input for STATE-2 at X=84
+Placing AND input for STATE-1 at X=98
+Placing PLA-OUT for NEXT-0 at X=128
+Placing PLA-OUT for NEXT-1 at X=142
+Placing PLA-OUT for NEXT-2 at X=156
+Placing PLA-OUT for NEXT-3 at X=170
+Placing PLA-OUT for NEXT-4 at X=184
+Placing PLA-OUT for NEXT-5 at X=198
+Placing PLA-OUT for NEXT-6 at X=212
+Placing PLA-OUT for NEXT-7 at X=226
+Placing PLA-OUT for NEXT-10 at X=240
+Placing Break at X=254
+Placing PLA-OUT for NANO-OP-7 at X=264
+Placing PLA-OUT for NANO-OP-6 at X=278
+Placing PLA-OUT for NANO-OP-5 at X=292
+Placing PLA-OUT for NANO-OP-4 at X=306
+Placing PLA-OUT for NANO-OP-3 at X=320
+Placing PLA-OUT for NANO-OP-2 at X=334
+Placing PLA-OUT for NANO-OP-1 at X=348
+Placing PLA-OUT for NANO-OP-0 at X=362
+Placing PLA-OUT for FROM-0 at X=376
+Placing PLA-OUT for FROM-1 at X=390
+Placing PLA-OUT-GND at X=404
+Placing PLA-OUT for FROM-2 at X=414
+Placing PLA-OUT for FROM-3 at X=428
+Placing PLA-OUT for FROM-4 at X=442
+Placing PLA-OUT for FROM-5 at X=456
+Placing PLA-OUT for FROM-6 at X=470
+Placing PLA-OUT for TO-0 at X=484
+Placing PLA-OUT for TO-1 at X=498
+Placing PLA-OUT for TO-2 at X=512
+Placing PLA-OUT for TO-3 at X=526
+Even: ((0 377) 700003233 (0 777))
+Odd: ((0 377) 700003233 (400 777)), andY=-3, orY=-2
+Even: ((1 377) 1600260027 (1 777))
+Odd: ((1 377) 4040402 (401 777)), andY=-10, orY=-8
+Even: ((2 377) 1304403201 (2 777))
+Odd: ((2 377) 1252102202 (402 777)), andY=-17, orY=-16
+Even: ((4 377) 700003233 (4 777))
+Odd: ((4 377) 1070102164 (404 777)), andY=-24, orY=-22
+Even: ((6 377) 703301 (6 777))
+Odd: ((6 377) 4243302 (406 777)), andY=-31, orY=-30
+Even: ((10 377) 300260342 (10 777))
+Odd: ((10 377) 302001200 (410 777)), andY=-38, orY=-36
+Even: ((11 377) 1043441 (11 777))
+Odd: ((11 377) 704003172 (411 777)), andY=-45, orY=-44
+Even: ((12 377) 647102155 (12 777))
+Odd: ((12 377) 1700002242 (412 777)), andY=-52, orY=-50
+Even: ((14 377) 300001166 (14 777))
+Odd: ((14 377) 300101166 (414 777)), andY=-59, orY=-58
+Even: ((16 377) 1220102341 (16 777))
+Odd: ((16 377) 300001166 (416 777)), andY=-66, orY=-64
+Even: ((20 377) 702120345 (20 777))
+Odd: ((20 377) 703001376 (420 777)), andY=-73, orY=-72
+Even: ((21 377) 200421 (21 777))
+Odd: ((21 377) 300403422 (421 777)), andY=-80, orY=-78
+Even: ((22 377) 500002221 (22 777))
+Odd: ((22 377) 1400002222 (422 777)), andY=-87, orY=-86
+Even: ((24 377) 700003233 (24 777))
+Odd: ((24 377) 700003233 (424 777)), andY=-94, orY=-92
+Even: ((26 377) 47342070 (26 777))
+Odd: ((26 377) 3343072 (426 777)), andY=-101, orY=-100
+Even: ((30 377) 303274 (30 777))
+Odd: ((30 377) 1500001325 (430 777)), andY=-108, orY=-106
+Even: ((32 377) 1700242261 (32 777))
+Odd: ((32 377) 4023262 (432 777)), andY=-115, orY=-114
+Even: ((34 377) 703401233 (34 777))
+Odd: ((34 377) 703403233 (434 777)), andY=-122, orY=-120
+Even: ((36 377) 1701120361 (36 777))
+Odd: ((36 377) 4423362 (436 777)), andY=-129, orY=-128
+Even: ((40 377) 3040357 (40 777))
+Odd: ((40 377) 300001367 (440 777)), andY=-136, orY=-134
+Even: ((41 377) 700322171 (41 777))
+Odd: ((41 377) 501003412 (441 777)), andY=-153, orY=-152
+Even: ((42 377) 2403211 (42 777))
+Odd: ((42 377) 1403212 (442 777)), andY=-160, orY=-158
+Even: ((44 377) 3303431 (44 777))
+Odd: ((44 377) 1500260436 (444 777)), andY=-167, orY=-166
+Even: ((46 377) 4703311 (46 777))
+Odd: ((46 377) 4443312 (446 777)), andY=-174, orY=-172
+Even: ((50 377) 3303253 (50 777))
+Odd: ((50 377) 47342054 (450 777)), andY=-181, orY=-180
+Even: ((52 377) 3343044 (52 777))
+Odd: ((52 377) 1603003155 (452 777)), andY=-188, orY=-186
+Even: ((54 377) 3203 (54 777))
+Odd: ((54 377) 702403233 (454 777)), andY=-195, orY=-194
+Even: ((56 377) 3040037 (56 777))
+Odd: ((56 377) 1016502167 (456 777)), andY=-202, orY=-200
+Even: ((60 377) 300260037 (60 777))
+Odd: ((60 377) 1500260370 (460 777)), andY=-209, orY=-208
+Even: ((61 377) 1500260037 (61 777))
+Odd: ((61 377) 1023432 (461 777)), andY=-216, orY=-214
+Even: ((62 377) 1502003231 (62 777))
+Odd: ((62 377) 300202232 (462 777)), andY=-223, orY=-222
+Even: ((64 377) 304403414 (64 777))
+Odd: ((64 377) 1343142 (464 777)), andY=-230, orY=-228
+Even: ((66 377) 200220105 (66 777))
+Odd: ((66 377) 1603501164 (466 777)), andY=-237, orY=-236
+Even: ((70 377) 303313 (70 777))
+Odd: ((70 377) 603003316 (470 777)), andY=-244, orY=-242
+Even: ((72 377) 300403271 (72 777))
+Odd: ((72 377) 504403272 (472 777)), andY=-251, orY=-250
+Even: ((74 377) 2103_11 (74 777))
+Odd: ((74 377) 2103_11 (474 777)), andY=-258, orY=-256
+Even: ((76 377) 301003037 (76 777))
+Odd: ((76 377) 3120372 (476 777)), andY=-265, orY=-264
+Even: ((100 377) 4663140 (100 777))
+Odd: ((100 377) 700120333 (500 777)), andY=-272, orY=-270
+Even: ((101 377) 704403405 (101 777))
+Odd: ((101 377) 600003233 (501 777)), andY=-279, orY=-278
+Even: ((102 377) 3003205 (102 777))
+Odd: ((102 377) 3403206 (502 777)), andY=-286, orY=-284
+Even: ((104 377) 1071502164 (104 777))
+Odd: ((104 377) 63132 (504 777)), andY=-303, orY=-302
+Even: ((106 377) 4023305 (106 777))
+Odd: ((106 377) 303306 (506 777)), andY=-310, orY=-308
+Even: ((110 377) 3303247 (110 777))
+Odd: ((110 377) 3703241 (510 777)), andY=-317, orY=-316
+Even: ((111 377) 1023441 (111 777))
+Odd: ((111 377) 301003446 (511 777)), andY=-324, orY=-322
+Even: ((112 377) 4143245 (112 777))
+Odd: ((112 377) 3703246 (512 777)), andY=-331, orY=-330
+Even: ((114 377) 704403171 (114 777))
+Odd: ((114 377) 704403407 (514 777)), andY=-338, orY=-336
+Even: ((116 377) 1017502167 (116 777))
+Odd: ((116 377) 4423346 (516 777)), andY=-345, orY=-344
+Even: ((120 377) 700003233 (120 777))
+Odd: ((120 377) 700003233 (520 777)), andY=-352, orY=-350
+Even: ((121 377) 1700101425 (121 777))
+Odd: ((121 377) 4040426 (521 777)), andY=-359, orY=-358
+Even: ((122 377) 40225 (122 777))
+Odd: ((122 377) 3440226 (522 777)), andY=-366, orY=-364
+Even: ((124 377) 3124 (124 777))
+Odd: ((124 377) 300403411 (524 777)), andY=-373, orY=-372
+Even: ((126 377) 47342074 (126 777))
+Odd: ((126 377) 3343076 (526 777)), andY=-380, orY=-378
+Even: ((130 377) 1700001300 (130 777))
+Odd: ((130 377) 200276 (530 777)), andY=-387, orY=-386
+Even: ((132 377) 3643265 (132 777))
+Odd: ((132 377) 1603003157 (532 777)), andY=-394, orY=-392
+Even: ((134 377) 63134 (134 777))
+Odd: ((134 377) 323136 (534 777)), andY=-401, orY=-400
+Even: ((136 377) 1214502037 (136 777))
+Odd: ((136 377) 4423366 (536 777)), andY=-408, orY=-406
+Even: ((140 377) 3040424 (140 777))
+Odd: ((140 377) 704403344 (540 777)), andY=-415, orY=-414
+Even: ((141 377) 200220415 (141 777))
+Odd: ((141 377) 101003416 (541 777)), andY=-422, orY=-420
+Even: ((142 377) 700002215 (142 777))
+Odd: ((142 377) 1500002216 (542 777)), andY=-429, orY=-428
+Even: ((144 377) 301003404 (144 777))
+Odd: ((144 377) 1500260445 (544 777)), andY=-436, orY=-434
+Even: ((146 377) 4043315 (146 777))
+Odd: ((146 377) 323066 (546 777)), andY=-453, orY=-452
+Even: ((150 377) 1501003266 (150 777))
+Odd: ((150 377) 200270 (550 777)), andY=-460, orY=-458
+Even: ((152 377) 3343050 (152 777))
+Odd: ((152 377) 3303256 (552 777)), andY=-467, orY=-466
+Even: ((154 377) 501003234 (154 777))
+Odd: ((154 377) 1503401250 (554 777)), andY=-474, orY=-472
+Even: ((156 377) 3303355 (156 777))
+Odd: ((156 377) 4023356 (556 777)), andY=-481, orY=-480
+Even: ((160 377) 1500260360 (160 777))
+Odd: ((160 377) 1500260352 (560 777)), andY=-488, orY=-486
+Even: ((161 377) 1503001435 (161 777))
+Odd: ((161 377) 3263146 (561 777)), andY=-495, orY=-494
+Even: ((162 377) 400102233 (162 777))
+Odd: ((162 377) 2043236 (562 777)), andY=-502, orY=-500
+Even: ((164 377) 200220331 (164 777))
+Odd: ((164 377) 1603401165 (564 777)), andY=-509, orY=-508
+Even: ((166 377) 607502233 (166 777))
+Odd: ((166 377) 1201403336 (566 777)), andY=-516, orY=-514
+Even: ((170 377) 1500101321 (170 777))
+Odd: ((170 377) 603003322 (570 777)), andY=-523, orY=-522
+Even: ((172 377) 42056 (172 777))
+Odd: ((172 377) 123060 (572 777)), andY=-530, orY=-528
+Even: ((174 377) 1400401175 (174 777))
+Odd: ((174 377) 502403176 (574 777)), andY=-537, orY=-536
+Even: ((176 377) 300001375 (176 777))
+Odd: ((176 377) 300001037 (576 777)), andY=-544, orY=-542
+Even: ((200 377) 700001233 (200 777))
+Odd: ((200 377) 303326 (600 777)), andY=-551, orY=-550
+Even: ((201 377) 300001403 (201 777))
+Odd: ((201 377) 1214102037 (601 777)), andY=-558, orY=-556
+Even: ((202 377) 203000 (202 777))
+Odd: ((202 377) 1003204 (602 777)), andY=-565, orY=-564
+Even: ((204 377) 1070502164 (204 777))
+Odd: ((204 377) 1071102164 (604 777)), andY=-572, orY=-570
+Even: ((206 377) 1700101303 (206 777))
+Odd: ((206 377) 703304 (606 777)), andY=-579, orY=-578
+Even: ((210 377) 3703243 (210 777))
+Odd: ((210 377) 3703241 (610 777)), andY=-586, orY=-584
+Even: ((211 377) 1703001443 (211 777))
+Odd: ((211 377) 4303444 (611 777)), andY=-603, orY=-602
+Even: ((212 377) 4243157 (212 777))
+Odd: ((212 377) 1700302244 (612 777)), andY=-610, orY=-608
+Even: ((214 377) 704403406 (214 777))
+Odd: ((214 377) 704403170 (614 777)), andY=-617, orY=-616
+Even: ((216 377) 1102003343 (216 777))
+Odd: ((216 377) 1600260137 (616 777)), andY=-624, orY=-622
+Even: ((220 377) 1300003377 (220 777))
+Odd: ((220 377) 700003233 (620 777)), andY=-631, orY=-630
+Even: ((221 377) 1163423 (221 777))
+Odd: ((221 377) 700003171 (621 777)), andY=-638, orY=-636
+Even: ((222 377) 1100002223 (222 777))
+Odd: ((222 377) 1700002150 (622 777)), andY=-645, orY=-644
+Even: ((224 377) 700003233 (224 777))
+Odd: ((224 377) 4703235 (624 777)), andY=-652, orY=-650
+Even: ((226 377) 303323 (226 777))
+Odd: ((226 377) 1043074 (626 777)), andY=-659, orY=-658
+Even: ((230 377) 703277 (230 777))
+Odd: ((230 377) 1500001325 (630 777)), andY=-666, orY=-664
+Even: ((232 377) 703001263 (232 777))
+Odd: ((232 377) 3303264 (632 777)), andY=-673, orY=-672
+Even: ((234 377) 3703326 (234 777))
+Odd: ((234 377) 3703327 (634 777)), andY=-680, orY=-678
+Even: ((236 377) 3303363 (236 777))
+Odd: ((236 377) 4023364 (636 777)), andY=-687, orY=-686
+Even: ((240 377) 1015502167 (240 777))
+Odd: ((240 377) 1700101401 (640 777)), andY=-694, orY=-692
+Even: ((241 377) 700062413 (241 777))
+Odd: ((241 377) 500003171 (641 777)), andY=-701, orY=-700
+Even: ((242 377) 4003213 (242 777))
+Odd: ((242 377) 300002214 (642 777)), andY=-708, orY=-706
+Even: ((244 377) 1500260442 (244 777))
+Odd: ((244 377) 1500260434 (644 777)), andY=-715, orY=-714
+Even: ((246 377) 704403233 (246 777))
+Odd: ((246 377) 1700002314 (646 777)), andY=-722, orY=-720
+Even: ((250 377) 703101255 (250 777))
+Odd: ((250 377) 3303260 (650 777)), andY=-729, orY=-728
+Even: ((252 377) 1023156 (252 777))
+Odd: ((252 377) 42046 (652 777)), andY=-736, orY=-734
+Even: ((254 377) 1401003233 (254 777))
+Odd: ((254 377) 700403233 (654 777)), andY=-753, orY=-752
+Even: ((256 377) 1701120353 (256 777))
+Odd: ((256 377) 4423354 (656 777)), andY=-760, orY=-758
+Even: ((260 377) 1040364 (260 777))
+Odd: ((260 377) 1501120365 (660 777)), andY=-767, orY=-766
+Even: ((261 377) 700260171 (261 777))
+Odd: ((261 377) 640102172 (661 777)), andY=-774, orY=-772
+Even: ((262 377) 300001202 (262 777))
+Odd: ((262 377) 2103_11 (662 777)), andY=-781, orY=-780
+Even: ((264 377) 1603501330 (264 777))
+Odd: ((264 377) 3703326 (664 777)), andY=-788, orY=-786
+Even: ((266 377) 1603501165 (266 777))
+Odd: ((266 377) 3423334 (666 777)), andY=-795, orY=-794
+Even: ((270 377) 703001320 (270 777))
+Odd: ((270 377) 303313 (670 777)), andY=-802, orY=-800
+Even: ((272 377) 447102273 (272 777))
+Odd: ((272 377) 223056 (672 777)), andY=-809, orY=-808
+Even: ((274 377) 2103_11 (274 777))
+Odd: ((274 377) 200174 (674 777)), andY=-816, orY=-814
+Even: ((276 377) 3423373 (276 777))
+Odd: ((276 377) 1600403374 (676 777)), andY=-823, orY=-822
+Even: ((300 377) 1017102167 (300 777))
+Odd: ((300 377) 3040351 (700 777)), andY=-830, orY=-828
+Even: ((301 377) 640102170 (301 777))
+Odd: ((301 377) 640102171 (701 777)), andY=-837, orY=-836
+Even: ((302 377) 2003207 (302 777))
+Odd: ((302 377) 403210 (702 777)), andY=-844, orY=-842
+Even: ((304 377) 701001233 (304 777))
+Odd: ((304 377) 701101233 (704 777)), andY=-851, orY=-850
+Even: ((306 377) 443056 (306 777))
+Odd: ((306 377) 1304401310 (706 777)), andY=-858, orY=-856
+Even: ((310 377) 3703252 (310 777))
+Odd: ((310 377) 47342054 (710 777)), andY=-865, orY=-864
+Even: ((311 377) 703001447 (311 777))
+Odd: ((311 377) 600003172 (711 777)), andY=-872, orY=-870
+Even: ((312 377) 1243156 (312 777))
+Odd: ((312 377) 42042 (712 777)), andY=-879, orY=-878
+Even: ((314 377) 704403172 (314 777))
+Odd: ((314 377) 704403433 (714 777)), andY=-886, orY=-884
+Even: ((316 377) 610502344 (316 777))
+Odd: ((316 377) 4423350 (716 777)), andY=-903, orY=-902
+Even: ((320 377) 700003233 (320 777))
+Odd: ((320 377) 300260430 (720 777)), andY=-910, orY=-908
+Even: ((321 377) 300001427 (321 777))
+Odd: ((321 377) 1213502037 (721 777)), andY=-917, orY=-916
+Even: ((322 377) 1040227 (322 777))
+Odd: ((322 377) 1211102230 (722 777)), andY=-924, orY=-922
+Even: ((324 377) 301003410 (324 777))
+Odd: ((324 377) 1323144 (724 777)), andY=-931, orY=-930
+Even: ((326 377) 1043233 (326 777))
+Odd: ((326 377) 1023233 (726 777)), andY=-938, orY=-936
+Even: ((330 377) 200220061 (330 777))
+Odd: ((330 377) 400102307 (730 777)), andY=-945, orY=-944
+Even: ((332 377) 3303267 (332 777))
+Odd: ((332 377) 142052 (732 777)), andY=-952, orY=-950
+Even: ((334 377) 203000 (334 777))
+Odd: ((334 377) 3440335 (734 777)), andY=-959, orY=-958
+Even: ((336 377) 3040364 (336 777))
+Odd: ((336 377) 4440364 (736 777)), andY=-966, orY=-964
+Even: ((340 377) 1015102167 (340 777))
+Odd: ((340 377) 1600101371 (740 777)), andY=-973, orY=-972
+Even: ((341 377) 1500403417 (341 777))
+Odd: ((341 377) 500003420 (741 777)), andY=-980, orY=-978
+Even: ((342 377) 1600002217 (342 777))
+Odd: ((342 377) 1300002220 (742 777)), andY=-987, orY=-986
+Even: NIL
+Odd: ((344 377) 700003233 (744 777)), andY=-994, orY=-992
+Even: ((346 377) 303317 (346 777))
+Odd: ((346 377) 1023070 (746 777)), andY=-1001, orY=-1000
+Even: ((350 377) 200220275 (350 777))
+Odd: ((350 377) 703277 (750 777)), andY=-1008, orY=-1006
+Even: ((352 377) 3423257 (352 777))
+Odd: ((352 377) 1603003047 (752 777)), andY=-1015, orY=-1014
+Even: ((354 377) 703403251 (354 777))
+Odd: ((354 377) 1503501254 (754 777)), andY=-1022, orY=-1020
+Even: ((356 377) 1503101037 (356 777))
+Odd: ((356 377) 1016102167 (756 777)), andY=-1029, orY=-1028
+Even: ((360 377) 1501120347 (360 777))
+Odd: ((360 377) 203000 (760 777)), andY=-1036, orY=-1034
+Even: ((361 377) 1703001437 (361 777))
+Odd: ((361 377) 4303440 (761 777)), andY=-1053, orY=-1052
+Even: ((362 377) 1604403237 (362 777))
+Odd: ((362 377) 704403240 (762 777)), andY=-1060, orY=-1058
+Even: ((364 377) 100220332 (364 777))
+Odd: ((364 377) 1503_11 (764 777)), andY=-1067, orY=-1066
+Even: ((366 377) 1700101337 (366 777))
+Odd: ((366 377) 4040340 (766 777)), andY=-1074, orY=-1072
+Even: ((370 377) 703001324 (370 777))
+Odd: ((370 377) 1500101321 (770 777)), andY=-1081, orY=-1080
+Even: ((372 377) 123062 (372 777))
+Odd: ((372 377) 42064 (772 777)), andY=-1088, orY=-1086
+Even: ((374 377) 1300202177 (374 777))
+Odd: ((374 377) 1220502123 (774 777)), andY=-1095, orY=-1094
+Even: ((376 377) 1300001233 (376 777))
+Odd: ((376 377) 700260400 (776 777)), andY=-1102, orY=-1100
+Even: ((377 377) 504403173 (377 777))
+Odd: ((377 377) 3040224 (777 777)), andY=-1109, orY=-1108
+The number of lines used is 75
+Boundaries are -77.0 < X < 563.0, -1197.0 < Y < 86.0
+;This is the PLA construction for ((DSK SCHIP2) NANO PLA)
+;The moon is 5 days, 4 hours, 19 minutes, and 6 seconds past the last quarter.
+;The sun is 33*46'33" north of west, 55*28'47" below the horizon.
+;That means it is now 9:29 PM on Friday, November 16, 1979.
+
+Making PLA NANO-PLA, 16 AND bits, 51 OR outputs, 70 terms
+    Folded on NIL, Gnd-mesh 9, Gnd-width 20
+Placing AND input for TO-3 at X=0
+Placing AND input for TO-2 at X=14
+Placing AND input for TO-1 at X=28
+Placing AND input for TO-0 at X=42
+Placing AND input for FROM-3 at X=56
+Placing AND input for FROM-2 at X=70
+Placing AND input for FROM-1 at X=84
+Placing AND input for FROM-0 at X=98
+Placing AND input for NANO-AND-STATE-7 at X=112
+Placing AND input for NANO-AND-STATE-6 at X=126
+Placing AND input for NANO-AND-STATE-5 at X=140
+Placing AND input for NANO-AND-STATE-4 at X=154
+Placing AND input for NANO-AND-STATE-3 at X=168
+Placing AND input for NANO-AND-STATE-2 at X=182
+Placing AND input for NANO-AND-STATE-1 at X=196
+Placing AND input for NANO-AND-STATE-0 at X=210
+Placing PLA-OUT for NANO-OR-STATE-0, NANO-OR-STATE-1 at X=240
+Placing PLA-OUT for NANO-OR-STATE-2, NANO-OR-STATE-3 at X=254
+Placing PLA-OUT for NANO-OR-STATE-4, NANO-OR-STATE-5 at X=268
+Placing PLA-OUT for NANO-OR-STATE-6, NANO-OR-STATE-7 at X=282
+Placing PLA-OUT for FROM-CONSTANT, BRANCH-0 at X=296
+Placing PLA-OUT for BRANCH-1, BRANCH-2 at X=310
+Placing PLA-OUT for DISPATCH, NANO-RUN at X=324
+Placing PLA-OUT for ALLOW-INTERRUPTS, TO-FRAME-EXP at X=338
+Placing PLA-OUT for TO-DISPLACEMENT-EXP, TO-TYPE-EXP at X=352
+Placing PLA-OUT-GND at X=366
+Placing PLA-OUT for FROM-EXP, FROM-DECREMENTED-EXP at X=376
+Placing PLA-OUT for TO-ADDRESS-NEWCELL, TO-TYPE-NEWCELL at X=390
+Placing PLA-OUT for FROM-NEWCELL, FROM-INCREMENTED-NEWCELL at X=404
+Placing PLA-OUT for TO-ADDRESS-VAL, TO-TYPE-VAL at X=418
+Placing PLA-OUT for FROM-VAL, TO-ADDRESS-STACK at X=432
+Placing PLA-OUT for TO-ADDRESS-RETPC-COUNT-MARK, TO-TYPE-RETPC-COUNT-MARK at X=446
+Placing PLA-OUT for FROM-RETPC-COUNT-MARK, TO-TYPE-STACK at X=460
+Placing PLA-OUT for FROM-STACK, TO-INTERMEDIATE-ARGUMENT at X=474
+Placing PLA-OUT for FROM-INTERMEDIATE-ARGUMENT, TO-DISPLAY at X=488
+Placing PLA-OUT-GND at X=502
+Placing PLA-OUT for FROM-DISPLAY, TO-ARGS at X=512
+Placing PLA-OUT for FROM-ARGS, TO-MEMTOP at X=526
+Placing PLA-OUT for FROM-MEMTOP, FROM-NIL at X=540
+Placing PLA-OUT for READ, MERGE-MARK-1 at X=554
+Placing PLA-OUT for MERGE-MARK-0, SET-GC-NEEDED-IF-ADDRESS-NEWCELL=BUS at X=568
+Placing PLA-OUT for CLR-GC-NEEDED, READ-INTERRUPT at X=582
+Placing PLA-OUT for WRITE, ALE at X=596
+Placing PLA-OUT for CDR, NIL at X=610
+State 100000: 2040020002 at andY=-3, orY=-2
+State 40000: 1020000000020003 at andY=-10, orY=-8
+State 140000: 10004_22 at andY=-17, orY=-16
+State 20000: 20000002040020005 at andY=-24, orY=-22
+State 120000: 1020000000020006 at andY=-31, orY=-30
+State 60000: 10004020201 at andY=-38, orY=-36
+State 160000: 50000040000020010 at andY=-45, orY=-44
+State 10000: 21020_22 at andY=-52, orY=-50
+State 110000: 2002020110 at andY=-59, orY=-58
+State 50000: 20000002040020013 at andY=-66, orY=-64
+State 150000: 10004020014 at andY=-73, orY=-72
+State 30000: 1020000000020203 at andY=-80, orY=-78
+State 130000: 20000040000020112 at andY=-87, orY=-86
+State 70000: 40100021000000000 at andY=-94, orY=-92
+State 1000: 100000000000000 at andY=-101, orY=-100
+State 101000: 4100000000000000 at andY=-108, orY=-106
+State 41000: 400 at andY=-115, orY=-114
+State 141000: 40100000000000000 at andY=-122, orY=-120
+State 21000: 100000000007000 at andY=-139, orY=-138
+State 121000: 40100000000000000 at andY=-146, orY=-144
+State 61000: 40100000000007000 at andY=-153, orY=-152
+State 161000: 4400 at andY=-160, orY=-158
+State 11000: 10_33 at andY=-167, orY=-166
+State 111000: 20_22 at andY=-174, orY=-172
+State 51000: 100000000020016 at andY=-181, orY=-180
+State 151000: 2_22 at andY=-188, orY=-186
+State 31000: 40_22 at andY=-195, orY=-194
+State 400: 20000000000020100 at andY=-202, orY=-200
+State 100400: 10000000000020007 at andY=-209, orY=-208
+State 40400: 20000000000020105 at andY=-216, orY=-214
+State 140400: 10000000000020111 at andY=-223, orY=-222
+State 101400: 50000 at andY=-230, orY=-228
+State 41400: 10000 at andY=-237, orY=-236
+State 141400: 20000000000000000 at andY=-244, orY=-242
+State 21400: 10000000000000000 at andY=-251, orY=-250
+State 121400: 10200000000000000 at andY=-258, orY=-256
+State 61400: 50200000000000000 at andY=-275, orY=-274
+State 161400: 6000 at andY=-282, orY=-280
+State 11400: 50000000000000000 at andY=-289, orY=-288
+State 111400: 2000000000000000 at andY=-296, orY=-294
+State 51400: 3000 at andY=-303, orY=-302
+State 151400: 2000 at andY=-310, orY=-308
+State 31400: 1000 at andY=-317, orY=-316
+State 131400: 5000 at andY=-324, orY=-322
+State 71400: 100000 at andY=-331, orY=-330
+State 1010: 200000 at andY=-338, orY=-336
+State 1004: 300000 at andY=-345, orY=-344
+State 1014: 700000 at andY=-352, orY=-350
+State 1002: 10_22 at andY=-359, orY=-358
+State 1012: 14_22 at andY=-366, orY=-364
+State 1006: 200_22 at andY=-373, orY=-372
+State 1016: 300_22 at andY=-380, orY=-378
+State 1001: 4_33 at andY=-387, orY=-386
+State 1011: 6_33 at andY=-394, orY=-392
+State 1005: 20_33 at andY=-411, orY=-410
+State 1015: 21_33 at andY=-418, orY=-416
+State 1003: 10000000000000 at andY=-425, orY=-424
+State 1013: 2000000000000 at andY=-432, orY=-430
+State 1007: 400000000000 at andY=-439, orY=-438
+State 1017: 1_41 at andY=-446, orY=-444
+State 400: 1_22 at andY=-453, orY=-452
+State 600: 20_22 at andY=-460, orY=-458
+State 500: 400_22 at andY=-467, orY=-466
+State 700: 10_33 at andY=-474, orY=-472
+State 440: 40_33 at andY=-481, orY=-480
+State 640: 20000000000000 at andY=-488, orY=-486
+State 540: 4000000000000 at andY=-495, orY=-494
+State 740: 1000000000000 at andY=-502, orY=-500
+State 420: 2_41 at andY=-509, orY=-508
+State 620: 40000000000000 at andY=-516, orY=-514
+The number of lines used is 35
+Boundaries are -77.0 < X < 647.0, -597.0 < Y < 88.0
+;This is the PLA construction for ((DSK SCHIP2) CONTRL PLA)
+;The moon is 5 days, 4 hours, 28 minutes, and 19 seconds past the last quarter.
+;The sun is 36*47'53" north of west, 56*52'21" below the horizon.
+;That means it is now 9:39 PM on Friday, November 16, 1979.
+
+Making PLA CONTROL, 10 AND bits, 10 OR outputs, 11 terms
+    Folded on NIL, Gnd-mesh 99, Gnd-width 8
+Placing AND input for DISPATCH at X=0
+Placing AND input for NANO-RUN at X=14
+Placing AND input for EXTERNAL-FREEZE at X=28
+Placing AND input for EXTERNAL-READ-STATE at X=42
+Placing AND input for EXTERNAL-LOAD-STATE at X=56
+Placing AND input for ALLOW-INTERRUPTS at X=70
+Placing AND input for EXTERNAL-INTERRUPT-REQUEST at X=84
+Placing AND input for READ at X=98
+Placing AND input for PH1 at X=112
+Placing AND input for READ-INTERRUPT at X=126
+Placing PLA-OUT for MICRO-FROM-NEXT, MICRO-HOLD at X=156
+Placing PLA-OUT for MICRO-FROM-DISPATCH, MICRO-FROM-INTERRUPT at X=170
+Placing PLA-OUT for MICRO-MSB-FROM-BUS, MICRO-MSB-FROM-0 at X=184
+Placing PLA-OUT for PADS-IN, NANO-HOLD at X=198
+Placing PLA-OUT for NANO-FROM-MICRO, NANO-FROM-NEXT at X=212
+State 400: 1 at andY=-3, orY=-2
+State 400: 400 at andY=-10, orY=-8
+State 402: 1002 at andY=-17, orY=-16
+State 404: 202 at andY=-24, orY=-22
+State 410: 26 at andY=-31, orY=-30
+State 420: 424 at andY=-38, orY=-36
+State 401: 44 at andY=-45, orY=-44
+State 401: 44 at andY=-52, orY=-50
+State 541: 10 at andY=-59, orY=-58
+State 20: 100 at andY=-66, orY=-64
+State 200: 100 at andY=-73, orY=-72
+The number of lines used is 6
+Boundaries are -53.0 < X < 237.0, -137.0 < Y < 76.0

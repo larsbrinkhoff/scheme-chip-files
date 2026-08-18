@@ -1,0 +1,871 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                               6.978
+
+                        Project Assignment 2
+
+                    Detailed Project Description
+
+
+
+
+                         Prof. Lynn Conway
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                         Guy L. Steele Jr.
+
+
+
+
+
+
+
+
+
+
+
+(c) 1978 Guy L. Steele Jr.
+
+                               SIMPLE
+                       Introductory Overview
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	For my project I am designing a small integrated
+micro-processor for LISP expressions.  Because no computer science
+project is complete without an acronym, I will refer to this project
+as the "Small Integrated Micro-Processor for Lisp Expressions", or
+"SIMPLE".
+
+	SIMPLE is essentially a pointer-shuffler.  Like most simple
+microprocessors, it is to be connected to a single memory which
+holds both the program to be interpreted by the processor and the
+data on which the interpreted program is to operate.  Unlike most
+microprocessors, SIMPLE does not treat its memory as a linear array
+of words of bits.  In particular, the linearity of memory has
+nothing to do with the organization of the interpreted code; there
+is no linearly advancing "program counter".  Instead, each memory
+word contains two quantities, a "type" and a "pointer".  Normally a
+pointer is a datum which, when fed to the memory system, specifies
+one or more words to be retrieved or written into.  Thus a pointer
+is an address; but the fact that addresses can be treated as numbers
+for arithmetic purposes is used only to a very limited extent.  It
+is more appropriate to think of a pointer as simply a symbol with
+which some words are associated.  The type accompanying a pointer
+determines how many words are associated with the pointer, and their
+intended interpretation.  For some types, the pointer is not an
+address at all, but some kind of "immediate data", such as a number
+or a character.
+
+	One interesting type is the "list cell".  A pointer with
+type "list" is associated with two words, called the CAR and the CDR
+of the list cell.  Each of these words in turn contains a
+type/pointer pair, and so may point to other list cells.  Using
+these list cells we can construct binary trees in the usual LISP
+manner.  By thinking of CAR pointers as "downward" and CDR pointers
+as "rightward", we can, again in the usual LISP manner, construct
+n-ary trees, using CDR pointers to chain the pointers from a single
+node, and CAR pointers to point to sons of the node.
+
+	The "code" interpreted by the microprocessor is in the form
+of such a tree.  The pointer to such a tree will have a type, of
+course.  However, in this context the type is interpreted not simply
+as a storage type but as an operation code.  This operation may
+require certain arguments.  If so, these arguments are calculated by
+recursively evaluating subnodes of the node, according to their
+respective operation codes.  Typical operation codes include "refer
+to variable", "conditional", "function call", and "immediate
+constant value".
+
+	The recursive evaluation process requires the use of a stack.
+This stack is maintained as a linked list in memory.
+
+                              SIMPLE
+                    External Pin Specifications
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	SIMPLE is expected to be connected to a memory system
+providing 1K (1024) thirteen-bit words.  Each word is divided into
+three type bits T0-T2 and ten address bits A0-A9.  SIMPLE
+communicates with the outside world via thirty-seven pins:
+
+(13) IT0-IT2, IA0-IA9  (input)
+	Input data from the memory system.
+(13) OT0-OT2, OA0-OA9  (output)
+	Output data to the memory system.  Addresses and write data
+	are multiplexed on OA0-OA9 according to the ADR and WRITE
+	pins.  (The output pads actually contain this information
+	only if the probe controls are zero -- see below.)
+(2)  ADR, WRITE  (output)
+	When ADR is high, the outputs OA0-OA9 contain an address
+	for the memory system; in this case OT0-OT2 are irrelevant.
+	When WRITE is high, the outputs OT0-OT2, OA0-OA9 contain write
+	data for the memory system.  In either case, the outputs are
+	maintained for a short time after the control signal goes
+	from high to low to permit proper latching of the data.
+	When both lines are low, the memory system is expected to
+	be presenting to the input pins IT0-IT2, IA0-IA9 the memory
+	data for the address last latched.  SIMPLE never raises
+	both ADR and WRITE simultaneously.
+(3)  PC0-PC2  (input)
+	These signals are for testing only, and are normally tied
+	to ground.  The output pins normally contain addresses or
+	write data for the memory system.  If the probe controls
+	PC0-PC2 are non-zero, then various signals internal to the
+	chip are gated onto the output pins instead.
+	(N.B.  The drawings show five pins PC1-PC5, which are
+	individual signals.  Layout constraints seem to indicate
+	that the number of pads should be reduced to save area on the
+	chip.  Hence, I here assume that I can reduce the five pads
+	to three by using a binary encoding of the probe signals.)
+(1)  STUFF  (input)
+	This signal is for testing only, and is normally tied to
+	ground.  If this signal is high, the state bits which
+	serve as the "micro-PC's" for the internal control FSMs
+	are forcibly loaded from the input pins IT0-IT2, IA0-IA9.
+	In this way the FSMs can be forced into any given state.
+	(This facility is also used to initialize the chip; for
+	this purpose the input pins should all be zero.)
+(1)  FREEZE  (input)
+	This signal is for testing only, and is normally tied to ground.
+	If this signal is high, the FSMs which control the chip
+	recirculate in the same state instead of advancing.  This
+	signal defers to STUFF.
+(2)  PHI1, PHI2  (input)
+	Two-phase clock signals.
+(2)  VDD, GND  (input)
+	Power supply lines.
+(37) pins total.
+
+                              SIMPLE
+                         "Instruction Set"
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	The "instruction set" processed by SIMPLE is actually a
+modified version of SCHEME, a dialect of LISP.  The tree-like
+expressions are essentially LISP S-expressions which constitute a
+slightly "compiled" version of the usual LISP code.  The main effect
+of this compilation is to pre-calculate the positions of variables
+in the environment so that variable references do not require
+search.  This in turn simplifies the structure of the environment
+and of procedures.
+
+	When the chip is initialized, it takes a given expression
+(how it is given is described elsewhere), and uses a null
+environment to evaluate it.  If that evaluation ever terminates, the
+chip drops dead.  It also drops dead if it runs out of memory.
+
+	When the chip is asked to evaluate an expression, it
+examines the type field.  This provides eight "op codes":
+	0 = constant list		4 = procedure
+	1 = constant symbol		5 = conditional (if-then-else)
+	2 = variable reference		6 = procedure call
+	3 = constant closure		7 = quoted constant The
+address part of the word has different purposes depending on the
+type.  For type 2, it is the negative of the position in the
+environment of the variable to be referenced.  For types 0, 1, 3, 5,
+and 6, the address points to the first of two consecutive words;
+the first is the CDR, and the second the CAR.  For types 4 and 7,
+the address points to a single word, referred to as the "CDR" for
+compatibility with the previous case.
+
+	The evaluation of type 0 (list), 1 (symbol), or 3 (closure)
+simply results in that object; such objects are "self-evaluating".
+(Notice that symbols are not the same as variables here; this usage
+has been "compiled out".  The only purpose for symbols here is that
+they are atomic, as opposed to lists, which are not.)
+
+	The evaluation of type 7 (quote) returns the CDR of the
+object.  In this way any object whatsoever, not just a list, symbol,
+or closure, can be included as a constant datum in a program.
+
+	The evaluation of type 2 (variable reference) chains (CDRs)
+down the environment one less than the negative of the number in the
+address part of the expression pointer.  It then takes the CAR, and
+returns the value so found.
+
+	The evaluation of a procedure (type 4) results in a pointer
+to a newly-allocated word pair.  This pointer has type 3 (closure).
+The CAR of the pair contains the CDR of the procedure; this is the
+code body of the procedure.  The CDR of the pair contains the
+current environment.  In this way the code and the encironment are
+bound up together (as a "FUNARG") for later application.
+
+	A conditional (type 5) is a "3-list"; that is, it points to
+a cell whose CDR points to another cell whose CDR points to another
+cell whose CDR should be NIL (the zero type/zero address pointer).
+The successive CARs in this list are respectively a predicate
+expression (IF), a consequent expression (THEN), and an alternative
+expression (ELSE).  The predicate expression is evaluated first;
+depending on whether the result is non-NIL or NIL, then the
+consequent or alternative is evaluated, throwing away the other one,
+to produce the value of the conditional.
+
+	A procedure call (type 6) is the most complicated of the
+lot.  It is a list of indefinite length, chained together by CDR
+pointers.  Each CDR pointer except the last MUST have type 0 (list).
+The last CDR pointer should have a zero address and a NON-zero type.
+This last type specifies the operation to be performed.  In CDRing
+down the list, SIMPLE evaluates each of the expressions in the CAR,
+saving the resulting values.  These values are available as
+arguments to the operation to be performed.  The operations
+available are:
+	0 = <more arguments>		4 = EQ
+	1 = CAR				5 = ATOM
+	2 = CDR				6 = LIST
+	3 = CONS			7 = FUNCALL
+For operations CAR, CDR, and ATOM there should be one argument;
+for CONS and EQ, two.  No checking is performed for this.
+
+	CAR, CDR, CONS, EQ, ATOM, and LIST are the standard LISP
+primitive operations.  FUNCALL is the operation which calls a user
+procedure (actually a closure).  The LAST argument (NOT the first!)
+MUST be a closure (this is not checked for!), which is applied to
+the preceding arguments.  (NO checking is performed to see whether
+the correct number of arguments has been supplied!) The body (CAR)
+of the closure is evaluated in an environment produced by tacking
+(NCONCing) ALL the arguments onto the front of the environment (CDR)
+of the closure.  In this way "lexical scoping" is achieved as in
+SCHEME or ALGOL.  Notice that the closure itself is added to the
+environment along with the other arguments.  In this way the
+procedure can refer to itself recursively.
+
+	As an example, an expression calling for the evaluation
+of (APPEND '(A B C) '(D E F)), including the definition of APPEND,
+is shown in an accompanying diagram.
+
+                              SIMPLE
+                          Initialization
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	The chip is initialized by holding all input pins IT0-IT2,
+IA0-IA9 low while raising STUFF, and stepping the clock for a few
+cycles.  Then STUFF should be lowered.  Whenever FREEZE is also low
+during a clock cycle, the chip will run.
+
+	The initial contents of memory should be as follows:
+Location	Contents	Remarks
+   0		   0|0		CDR part of NIL (points to NIL)
+   1		   0|0		CAR part of NIL (points to NIL)
+   2		   xxx		CDR part of T
+   3		   xxx		CAR part of T
+   4		   0|p		Beginning of free storage
+   5		   exp		Expression to be evaluated
+
+	NIL must be at location 0, and T at location 2.  These are
+used as returned values by the built-in predicates EQ and ATOM.
+Notice that NIL is considered to be a list.  Location 5 is the
+expression to be evaluated.  Additional cells in the expression may
+occupy succeeding words as appropriate.  Location 4 should point at
+the last word used in the initial expression.  Words after that
+pointed to by location 4 are assumed to be free for allocation by
+the "garbage collector".  (Actually, SIMPLE has no garbage
+collector.  When storage has been once allocated, it drops dead.)
+The actual free storage pointer is not maintained in location 4; it
+is not changed.  It is only used to initialize the free storage
+pointer internal to the chip.
+
+                              SIMPLE
+                  Register/Logic Level Description
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	Internally SIMPLE is organized into two parts.  One part,
+EVAL, is concerned with the evaluation algorithm.  The other part is
+concerned with storage management, and is called GC.  One way to
+think about this division is that GC supplies a set of "subroutines"
+which are used by EVAL to deal with the memory system.  In this way
+EVAL can deal with the details of the evaluation of the code in
+terms of a linked-list memory system.  GC implements this memory
+system in terms of the usual "linear-array" memory system.
+
+	Each of the two parts, EVAL and GC, is itself divided into
+two parts: registers and control.  The registers provide storage for
+type/pointer words, and are connected by a common bus in each part.
+The control is a finite-state machine implemented as a PLA.  Each
+PLA is organized as a micro-code ROM, addressed by a "micro-PC" and
+yielding a set of control signals, including register controls and a
+new micro-PC indicating the next state.
+
+	EVAL has five registers, called V (Value), X (Expression), N
+(Environment), L (List of arguments), and C (Control stack).  Each
+can hold a thirteen-bit word of three type bits T0-T2 and ten
+address bits A0-A9.  (These bits are therefore referred to as VT0,
+VT1, XA0, NA6, etc.)  They are connected together by a common bus
+called the E bus.  Any of these registers can be loaded from the bus
+(according to the signals LDV, LDX, LDN, LDL, LDC) or read from the
+bus (according to the signals RDV, RDX, RDN, RDL, RDC).  In
+addition, register X has incrementation logic associated with it.
+The signal RDX+ causes the contents of X, plus 1, to be read onto the
+E bus.  (This incrementer constitutes the "arithmetic" portion of
+EVAL's ALU.)  The type bits do not participate in the incrementation,
+only the address bits.  (If the address bits of X are all ones,
+then incrementing X reads an all-zero address part, but does not
+read an incremented type.)
+
+	GC has three-and-a-half registers, called P, Q, R, and S.
+They are connected by a common bus called the G bus.
+They can be loaded from the G bus (according to the signals LDP,
+LDQ, LDR, LDS) and read back onto the G bus (according to the signals
+RDP, RDQ, RDR).  Register S cannot be read back onto the G bus.
+The output pads O are ordinarily driven from the contents of
+register S; thus register S serves as the latch for the output pads.
+Register P, like register X, has associated incrementation logic;
+the contents of P, plus 1, can be read onto the G bus according
+to the signal RDP+.  Register P is also special (and unlike X)
+in that its type bits are always zero.  Reading register P always
+forces zeroes onto GT0-GT2, and loading P always discards the
+type bits.
+
+	Here is a complete list of the signals produced by the
+two finite-state machines EVAL and GC:
+
+EVAL	Signal name			Remarks
+    7	ENSTATE0-ENSTATE6		Next state
+    7	EOSTATE0-EOSTATE6		Old (current) state
+    2	ET DISP, EAZ/ETZ/EQV DISP	Dispatch selectors
+    5	LDV, LDX, LDN, LDL, LDC		Register load controls
+    6	RDV, RDX, RDX+, RDN, RDL, RDC	Register read controls
+    4	GCOP0-GCOP3			GC OPeration request
+    3	LIT0-LIT2			Lieral value
+    2	EA LIT, ET LIT			Literal read controls
+Total 36 signals
+
+GC	Signal name			Remarks
+    6	GNSTATE0-GNSTATE6		Next state
+    6	GOSTATE0-GOSTATE6		Old (current) state
+    2	GCOP DISP, GA ZERO DISP		Dispatch selectors
+    4	LDP, LDQ, LDR, LDS		Register load controls
+    4	RDP, RDP+, RDQ, RDR		Register read controls
+    3	CONN I, CONN EA, CONN ET	Internal bus connections
+    1	STEP EVAL			Advance EVAL FSM
+    2	ADR, WRITE			Memory controls
+Total 28 signals
+
+	The two finite state machines are clocked in parallel.  At
+each step a new state is latched for each FSM.  This new state can
+come from one of three sources: the old state (OSTATE), the next
+state (NSTATE), or the input pads (I).  It comes from I if STUFF is
+high.  It comes from OSTATE if STUFF is low and FREEZE is high.
+Otherwise, it comes from NSTATE.  The preceding contains two lies.
+One is that the EVAL FSM actually uses OSTATE if either FREEZE is
+high OR if STEP EVAL is not asserted by the GC FSM; in this way GC
+controls the advance of EVAL.
+
+	The other lie is that each FSM has two dispatch control
+lines.  If either one is asserted (it should never occur that both
+are asserted), then certain control signals are OR'd with the low
+bits of NSTATE to produce the new state (if so selected by STUFF and
+FREEZE).  This latter facility provides for conditional dispatching
+in the "microcode" for the FSMs:  if the microword provides
+zero-bits in the low bits of NSTATE, then the next microinstruction
+is selected according to the control signals specified.  Some of the
+control signals may be effectively masked by specifying one-bits in
+NSTATE corresponding to those signals.  The control signals which
+may be dispatched on, and their corresponding dispatch selectors,
+are:
+
+FSM	Selector		Signals
+EVAL	ET DISP			ET0-ET2		(8-way dispatch)
+EVAL	EAZ/ETZ/EQV DISP 	EA ZERO, ET ZERO, EQV	(8-way)
+GC	GCOP DISP		GCOP0-GCOP3		(16-way)
+GC	GA ZERO DISP		GA ZERO			(2-way)
+
+	EA ZERO is asserted if the address bits on the E bus are all
+zero.  ET ZERO similarly is asserted if the type bits on the E bus
+are all zero.  EQV is asserted if all the E bus bits match the bits
+in the V register.  GA ZERO is asserted if all the address bits on
+the G bus are zero.
+
+	The EVAL FSM can read certain constants onto the E bus,
+rather than reading the contents of a register.  This is done by
+asserting EA LIT or ET LIT.  These respectively read (six 0's,
+LIT0-LIT2, 0) onto EA0-EA9, and LIT0-LIT2 onto ET0-ET2.  In this way
+any constant type can be specified, and a small range of EVEN
+addresses. 
+
+	The GC FSM can connect the busses in certain ways.  The
+signal CONN I connects the input pads to the G bus; the input pads
+thus serve as a "read-only register" to the G bus in much the same
+way that the S register (to which the output pads are normally tied)
+serves as a "write-only register".  The signal CONN EA connects the
+address bits of the E and G busses together; similarly CONN ET
+independentlt connects the type bits of the E and G busses.  When
+they are so tied, only one of EVAL and GC should be attempting to
+read something onto its bus; the other may then load one or more
+registers from this source.  Thus this bus connection facility
+provides for bidirectional communication between the two sets of
+registers; only one direction may be used per EVAL step, however.
+
+                              SIMPLE
+                        Tentative Microcode
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	Here we present proposed microcode for the two FSMs.
+Remember, in reading it, that the two machines are clocked in
+parallel, but EVAL advances only when stepped by the STEP EVAL
+signal from GC.
+
+	The basic protocol is that GC is in a loop, constantly
+performing GCOP DISP according to the operation GCOP requested by
+the current EVAL microcode word.  When GC has performed the
+requested operation, it steps EVAL and then returns to its loop.
+
+	There are basically five kinds of operation EVAL can
+request:  NOP, CAR/CDR, CONS/XCONS, RPLACD, and load/store Q.  NOP
+means do nothing; it is used when EVAL just wants to shuffle things
+on the E bus.  GC takes two cycles to perform a NOP: one to dispatch
+on the GCOP, and one to STEP EVAL.  (The synchrony of the two FSMs
+prevents these two operations from being simultaneous.)  Thus EVAL
+proceeds at at most half the speed of GC.
+
+	CAR/CDR operations request GC to perform a CAR or CDR
+operation on memory.  Many variants of this are provided to optimize
+data shuffling between the E and G busses.  A general convention is
+that after a CAR/CDR operation the result of the operation is left
+in Q, and the original operand is left in R.  The basic CAR and CDR
+operations take their operand from the E bus; the result is left in
+Q.  The CDRQ, CARQ, CARR variants take their operands from the
+indicated register, and return the result to the E bus (and also put
+it in Q).  The CDRRX, CARRX, CDRQX variants take their operands from
+the indicated register, put the result in Q, and make no attempt to
+use the E bus.  In this way EVAL can request GC to do something
+useful while simultaneously doing something else with the E bus.
+
+	The CONS/XCONS operations accept a CAR/CDR pointer from the
+E bus, and take the contents of Q to be the CDR/CAR pointer, and
+then allocate a new two-word cell.  A pointer to the result, with
+type 0 (list), is left in Q.
+
+	The RPLACDR operation alters the CDR of the cell pointed to
+by R to be what is passed from the E bus.
+
+	The load/store Q operations allow EVAL to access the Q
+register.  RDQ requests GC to pass the contents of Q back to the E
+bus.  RDQA asks for just the address bits; EVAL typically supplies
+the type bits from a literal using ET LIT.  LDQ stuffs the E bus
+contents into Q.  RDQCDRRX is a combination of RDQ and CDRRX useful
+in odd circumstances.
+
+	The initialization is a bit peculiar.  EVAL begins at state
+INIT and GC at state GC.  The first thing EVAL does is put a pointer
+in register C with type 2.  This 2 is also gated into the address
+bits, providing a 4 there.  The 4 is irrelevant to the value placed
+in C, but is needed by GC, which will connect the E and G busses on
+that cycle.  This 4 is used to fatch the initial free storage
+pointer, and is also placed in Q so that EVAL can later request CARQ
+to get the expression to be evaluated.  EVAL also initializes
+register N to contain NIL (a zero type/zero address pointer).
+
+	Register C always contains a control stack for the recursive
+evaluation.  Quantities which need to be saved are consed onto this
+stack.  The CDR pointers which chain the stack cells together are
+usually of type 0 (list), but sometimes have other type codes which
+encode "return addresses" within the EVAL microcode.  At the state
+labelled POPJ, the EVAL FSM dispatches on the type code of what is
+in C.  This specifies what to do next on a return from a "recursive
+call" to EVAL.  The type 2 pointer which is initially placed in C
+specifies that EVAL should "drop dead", as the expression evaluation
+has been completed.  (The current microcode does not show this, but
+maybe EVAL shoudld arrange to write the result pointer into some
+convenient place like location 6?)
+
+	The microcode is written in a "LISPy" form, as a list of
+microwords.  A symbol is a tag denoting the address of the following
+microinstruction..  A list is a set of signals forming a single
+microcode word.  In general, a signal like LDC is asserted iff its
+name is present in the microinstruction.  Multi-bit fields are
+specified by a list of the field name and the value.  LIT is
+specified numerically, but GCOP is specified symbolically.  The
+NSTATE and OSTATE fields are assumed to be handled specially by the
+microassembler.  OSTATE is just the address of the current state.
+NSTATE may be explicitly specified by (GOTO <tag>), or implicitly
+specified by the rule that omitting a (GOTO <tag>) means that the
+next state is the TEXTUALLY following microinstruction.  (This does
+NOT imply that the microinstructions have consecutive "addresses",
+but only that one has the address of another in its NSTATE field.)
+The address of a microinstruction may be constrained by an "="
+specifier (this idea is borrowed from the microassembler used by DEC
+for KL10 microcode).  A specification such as "(= 1 * *)" means that
+the addresses of the next four (2 to the power <number of *'s>)
+microinstructions are constrained to end in 100, 101, 110, 111 in
+that order.  Thus an explicit 1 or 0 forces an address bit to be
+that, while a * indicates that either may be true, and all
+combinations are used in lexicographic order for textually
+successive instructions.  After the 2-to-the-power-<number-of-*'s>
+instructions, one writes "(=)" to mark the end of the table;  this
+is used for error-checking by the microassembler.  This
+address-alignment facility is used for aligning dispatch tables.
+
+(SETQ EVALCODE
+      '(INIT (ET-LIT EA-LIT (LIT 2) LDC)
+	     (EA-LIT ET-LIT (LIT 0) LDN)
+	     ((GCOP CARQ) LDX ET-DISP (GOTO EVAL))
+	EVAL
+	(= * * *)
+	     (RDX LDV (GOTO POPJ))			;LIST
+	     (RDX LDV (GOTO POPJ))			;SYMBOL
+	     ((GCOP LDQ) RDN (GOTO VAR1))		;VARIABLE
+	     (RDX LDV (GOTO POPJ))			;CLOSURE
+	     ((GCOP CDR) RDX (GOTO PROC1))		;PROCEDURE
+	     ((GCOP CDR) RDX (GOTO IF1))		;IF
+	     (EA-LIT ET-LIT (LIT 0) LDL (GOTO EVARGS))	;COMBINATION
+	     ((GCOP CDR) RDX (GOTO QUOTE1))		;QUOTE
+	(=)
+	VAR1
+	     (RDX+ LDV EAZ-ETZ-EQV-DISP)
+	(= * 1 1)					;EA ZERO DISP
+	     ((GCOP CDRQX) RDV LDX (GOTO VAR1))		;NONZERO
+	     ((GCOP CARQ) LDV (GOTO POPJ))		;ZERO
+	(=)
+	PROC1
+	     ((GCOP XCONS) RDN)
+	     ((GCOP RDQA) ET-LIT (LIT 3) LDV (GOTO POPJ))
+	QUOTE1
+	     ((GCOP RDQ) LDV (GOTO POPJ))
+	IF1
+	     ((GCOP XCONS) RDC)
+	     ((GCOP CONS) RDN)
+	     ((GCOP RDQA) ET-LIT (LIT 1) LDC)		;IF2
+	     ((GCOP CAR) RDX)
+	     ((GCOP RDQ) LDX ET-DISP (GOTO EVAL))
+	POPJ
+	     ((GCOP CAR) RDC ET-DISP)
+	(= 1 * *)					;ONLY ET1-ET2 RELEVANT
+	     ((GCOP CONS) RDV (GOTO EV3))		;EV2
+	     ((GCOP RDQCDRRX) LDN (GOTO IF3))		;IF2
+	DEAD
+	     ((GOTO DEAD))				;TOP LEVEL
+	     ((GOTO DEAD))				;???
+	(=)
+	IF3
+	     ((GCOP CDRQ) LDC)
+	     ((GCOP CARRX) RDV EAZ-ETZ-EQV-DISP)
+	IF4
+	(= * 1 1)					;EA ZERO DISP
+	     ((GCOP CARQ) LDX ET-DISP (GOTO EVAL))	;NONZERO
+	     ((GCOP CDRQX) (GOTO IF4))			;ZERO
+	(=)
+
+	EV1
+	     ((GCOP XCONS) RDC)
+	     ((GCOP CONS) RDN)
+	     ((GCOP CONS) RDL)
+	     ((GCOP RDQA) ET-LIT (LIT 0) LDC)		;EV2
+	     ((GCOP CAR) RDX)
+	     ((GCOP RDQ) LDX ET-DISP (GOTO EVAL))
+	EV3
+	     ((GCOP RDQ) LDL)
+	     ((GCOP CDR) RDC)
+	     ((GCOP CARQ) LDN)
+	     ((GCOP CDRRX))
+	     ((GCOP CDRQ) LDC)
+	     ((GCOP CARR) LDX ET-DISP (GOTO EVARGS))
+	EVARGS
+	(= * * *)
+	     ((GCOP CDR) RDX (GOTO EV1))		;MORE
+	     ((GCOP CAR) RDV (GOTO STOREV))		;CAR
+	     ((GCOP CDR) RDV (GOTO STOREV))		;CDR
+	     ((GCOP CDR) RDL (GOTO CONS1))		;CONS
+	     (RDV EAZ-ETZ-EQV-DISP (GOTO ATOM1))	;ATOM
+	     ((GCOP CDR) RDL (GOTO EQ1))		;EQ
+	     (RDL LDV (GOTO POPJ))			;LIST
+	     ((GCOP CDR) RDV (GOTO FUN1))		;FUNCALL
+	(=)
+	CONS1
+	     ((GCOP CARQ))
+	     ((GCOP XCONS) RDV)
+	STOREV
+	     ((GCOP RDQ) LDV (GOTO POPJ))		;PUT Q INTO V, POPJ
+	EQ1
+	     ((GCOP CARQ) EAZ-ETZ-EQV-DISP)
+	(= 1 1 *)					;EQV DISP
+	     (EA-LIT ET-LIT (LIT 0) LDV (GOTO POPJ))	;NOT EQ
+	     (EA-LIT ET-LIT (LIT 1) LDV (GOTO POPJ))	;EQ
+	(=)
+	ATOM1
+	(= 1 * 1)					;ET ZERO DISP
+	     (EA-LIT ET-LIT (LIT 1) LDV (GOTO POPJ))	;ATOM
+	     (EA-LIT ET-LIT (LIT 0) LDV (GOTO POPJ))	;LIST
+	(=)
+	FUN1
+	     ((GCOP RDQ) LDN)
+	     ((GCOP CDR) RDL EAZ-ETZ-EQV-DISP)
+	FUN2
+	(= * 1 1)					;EA ZERO DISP
+	     ((GCOP CDRQ) EAZ-ETZ-EQV-DISP (GOTO FUN2))	;NONZERO
+	     ((GCOP RPLACDR) RDN (GOTO FUN3))		;ZERO
+	(=)
+	FUN3
+	     (RDL LDN)
+	     ((GCOP CAR) RDV)
+	     ((GCOP RDQ) LDX ET-DISP (GOTO EVAL))))
+
+(SETQ GCCODE
+      '(GC (CONN-EA LDS LDQ ADR)			;EVAL SUPPLIES 4
+	   (ADR)
+	   (ADR CONN-I LDP STEP-EVAL (GOTO LOOP))	;READ INITIAL FREE PTR
+	LOOP
+	   (GCOP-DISP)
+	(= * * * *)
+	   (STEP-EVAL (GOTO LOOP))			;NOP
+	   (CONN-EA CONN-ET LDS LDR ADR (GOTO CDR1))	;CDR
+	   (RDP LDQ (GOTO CAR1))			;CAR
+	   (RDQ LDS LDR ADR (GOTO CDRQ1))		;CDRQ
+	CARQ0 (RDP LDR (GOTO CARQ1))			;CARQ
+	   (RDR LDQ (GOTO CARQ0))			;CARR
+	   (RDR LDS ADR (GOTO CDR1))			;CDRRX
+	   (RDP LDQ (GOTO CARRX1))			;CARRX
+	   (RDQ LDS LDR ADR (GOTO CDR1))		;CDRQX
+	   (RDP+ LDS LDR ADR GA-ZERO-DISP (GOTO CONS1))	;CONS
+	   (RDP+ LDS LDR ADR GA-ZERO-DISP (GOTO XCONS1))	;XCONS
+	   (RDR LDS ADRR (GOTO RPLACDR1))		;RPLACDR
+	   (CONN-EA CONN-ET LDQ STEP-EVAL (GOTO LOOP))	;LDQ
+	   (CONN-EA CONN-ET RDQ STEP-EVAL (GOTO LOOP))	;RDQ
+	   (CONN-EA RDQ STEP-EVAL (GOTO LOOP))		;RDQA
+	   (RDR LDS ADR (GOTO RDQCDRRX1))		;RDQCDRRX
+	(=)
+	CDR1
+	   (ADR (GOTO CAR3))
+	CAR1
+	   (CONN-EA CONN-ET LDP LDR)
+	CAR2
+	   (RDP+ LDS ADR)
+	   (ADR RDQ LDP)
+	CAR3
+	   (ADR CONN-I LDQ STEP-EVAL (GOTO LOOP))
+	CARQ1
+	   (RDQ LDP)
+	   (RDP+ LDS ADR)
+	   (ADR RDR LDP)
+	   (ADR RDQ LDR)
+	   (CONN-I CONN-EA CONN-ET LDQ STEP-EVAL (GOTO LOOP))
+	CARRX1
+	   (RDR LDP (GOTO CAR2))
+
+	RPLACDR1
+	   (ADR)
+	   (ADR)
+	   (CONN-EA CONN-ET LDS LDQ)
+	   (WRITE)
+	   (WRITE (GOTO CONS6))
+	XCONS1
+	(= *)
+	   (ADR RDR LDP (GOTO XCONS2))
+	GCDEAD (GOTO GCDEAD)				;FREE PTR WRAPPED AROUND
+	(=)
+	XCONS2
+	   (ADR RDQ LDR)
+	   (CONN-EA CONN-ET LDS (GOTO CONS3))
+	CONS1
+	(= *)
+	   (ADR RDR LDP (GOTO CONS2))
+	   (GOTO GCDEAD)
+	(=)
+	CONS2
+	   (ADR CONN-EA CONN-ET LDR)
+	   (RDQ LDS)
+	CONS3
+	   (WRITE RDP LDQ)
+	   (WRITE)
+	   (WRITE)
+	   (RDP+ LDS)				;LEAVE GAP BETWEEN WRITE AND ADR
+	   (ADR)
+	   (ADR)
+	   (ADR)
+	   (RDR LDS)
+	   (WRITE RDP+ LDR)
+	   (WRITE RDR LDP)
+	CONS6
+	   (WRITE STEP-EVAL (GOTO LOOP))
+	RDQCDRRX1
+	   (ADR RDQ LDR)
+	   (ADR CONN-I LDQ)
+	   (RDR STEP-EVAL (GOTO LOOP))))
+
+                              SIMPLE
+               Circuit Diagrams and Tentative Layout
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	The accompanying drawings constitute a complete proposed
+circuit diagram for SIMPLE.  They also indicate an approximate
+layout strategy.  There are one omissions and three changes.  The
+routing of clock signals and power is not completely shown.  The
+"probe muxes" are not planned to be in the positions shown, but will
+lie horizontally just above the PLAs where the signals emerge; they
+were drawn as they were to avoid cluttering (!) the diagrams.  The
+pad layout ought to be changed, putting some pads along the top.
+The probe control pads PC1-PC5 should be replaced by three
+binary-encoded pads PC0-PC2.
+
+	The main diagram shows the planned general layout of the
+chip.  This is broken into five general areas, for each of which
+there is an expanded diagram.  These diagrams in turn make use of
+cells (such as register bits) which are individually documented. 
+
+	I have shown the inputs IT0-IT2, IA0-IA9 as being connected
+to super-buffers in order to reduce the apparent capacitance to the
+outside world.  When GC connects both I and E to the G bus, the I
+signals can have to drive three long busses and one or more
+registers.  Are these superbuffers indeed a good idea in this
+context?
+
+	Also, I have shown the use of clocked drivers consisting of
+an inverter and an inverting superbuffer for driving register
+signals gated by PHI1.  The gating of PHI1 is to allow for possible
+pre-charging of the busses (is this a good idea?).  There is one
+driver for each register of thirteen bits.  Hence each driver is
+planned to drive thirteen min-sized gates down a poly wire.  The
+PHI1 signal will be routed to the clocked drivers on metal, not
+poly.  Buffering of PHI2 has not been shown in these diagrams.
+(Basically, I'm still a little in the dark at this point about the
+details of clock routing, such as how much buffering is needed and
+how much power the clock lines need to be able to carry.)
+
+                              SIMPLE
+                           Area Estimate
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	Each FSM has about 60 states.  At 7 lambda per state, plus
+about 100 lambda for pullups and in/out gating, that comes to 520
+lambda for the height of the PLAs.  I think each register bit can be
+kept down to about 35 lambda in height (counting 7 lambda for
+running each of VDD, GND, E BUS, and I horizontally in metal, plus
+an additional 7 lambda for the metal in the inverters in the
+registers).  This times 13 bits per register comes to 455 lambda.
+Pads at the upper edge contribute about 130 lambda.  The probe
+multiplexor will be perhaps 70 lambda, and the random logic for
+state multiplexing perhaps 50 lambda (?).  This adds up to
+520+455+130+120=1220 lambda, or 3.6 mm in height.  Note that running
+15 pads along each side requires 15*80=1200 lambda, so this works
+out about right.
+
+	As for width, the two PLAs together have 13 input bits and
+64 output bits.  Each input bit takes 14 lambda and each output bit
+7 lambda.  This gives a minimum of 602 lambda.  The pads along
+either side contribute 260 lambda.  The minimum width is therefore
+602+260=862 lambda, or 2.6 mm in width.  If we allow that the
+complicated register cells take double the width of a simple
+register cell, and allow two cell widths for the probe lines, two
+for the input lines I routed down, and two for the EA LIT, ET LIT,
+CONN I, CONN EA, and CONN ET gating, and two for the input
+superbuffers and EA ZERO/ET ZERO lines, we get 20 register cell
+widths which must fit along the E and G busses.  The space available
+within the PLA width estimate is about 600 lambda.  This gives 30
+lambda as the width of a register cell.  This may be a little tight.
+We'll see.
+
+	The overall area estimate is thus something like maybe 3.7
+mm high by 2.7 mm wide.
+
+                              SIMPLE
+                    A Few Remarks on the Future
+                         Guy L. Steele Jr.
+                          9 November 1978
+
+	You may have noticed that there are a few glaring omissions,
+deficiencies, and loose ends in the design.  Please tell me about them!
+But first, here are a few remarks about some things I know I have
+left out, and inelegancies due to limited area.
+
+	I regard SIMPLE as "merely" a prototype for some larger chip
+to be designed in the rosy future, called, say, just "A Micro-
+Processor for LISP Expressions" (AMPLE???).  AMPLE should provide
+ample pointer-crunching power for real applications.  SIMPLE is
+intended to provide a simple testbed for only a few of the ideas.
+AMPLE would include many more features and be a complete working
+"LISP" system.
+
+	An inelegancy, for example, is that a special type "symbol"
+is provided and nothing is done with it.  In SIMPLE, a symbol is
+just an atomic list (?!).  I suppose one might use its CAR for a
+global value cell and its CDR for a property list.
+
+	Also, a conditional expression need not occupy three
+word-pairs.  I did it that way to simplify the microcode in my mind.
+I may change my mind again tomorrow.
+
+	One extremely glaring omission in SIMPLE is that GC is not
+really a garbage collector, but only a storage allocator.  once
+you have consed memory once, that's it.  (This mode was once
+used on the 7090: "How could anyone write a program so complicated
+that it had to CONS 32K of memory??"  But how soon we learned!)
+
+	Another omission is that there is no way to do RPLACA, and
+the RPLACD operation is not made available to the user -- it is used
+only to perform an NCONC when augmenting the environment during a
+FUNCALL operation.  More generally, many nice primitive operators
+such as NULL and MEMQ were omitted.  (Note, however, that the
+apparently complicated operator LIST was included.  This is actually
+the simplest of the lot, for when it is to be performed a list of
+the arguments is already available!  There is a slight
+inconsistency, however, and I am not sure whether it is worth
+fixing.  In order to preserve the left-to-right order of evaluation
+(which in SIMPLE you cannot detect anyway because there are no
+side-effct operators...), the arguments in a procedure call shoudl
+appear in order.  This means that the list of values is in reverse
+order.  The CONS operator accounts for this, but this implies that
+the LIST operator is actually a REVERSE-LIST operator.  C'est la vie.)
+
+	The method of allowing recursion by passing an applied
+closure as one of its "arguments" was swiped from Backus' Turing
+Lecture (see CACM).  This permits the omission of SCHEME's LABELS
+operator, which is fairly complicated to implement.  It provides the
+power of LISP's LABEL operator, which will suffice for SIMPLE.
+AMPLE will probably want LABEL in all its glory.  It may also want
+other special forms, such as COND and CATCH (as in SCHEME).
+
+	Note that no explicit iteration constant is provided.  It
+can be obtained by using recursion.  The evaluation mechanism, like
+SCHEME's, is "tail-recursive"; thus obviously iterative algorithms
+expressed recursively do in fact behave iteratively.  Unfortunately
+for SIMPLE, while the control stack does not grow unboundedly during
+such an iteration, many cells may be consed onto the stack and then
+thrown away again.  Only a garbage collector will solve this
+problem. 
+
+	In AMPLE the word size will probably be much larger -- say
+five bits of type and perhaps thirty-two of address.  (These
+numbers, like those in SIMPLE, are carefully chosen to make the word
+size and number of output pins prime.)  Some attention to this has
+been paid in the design of SIMPLE -- this is why each register has
+its own signal driver superbuffers, etc.  One thing I did not do in
+SIMPLE is use tri-state pads for the memory data connections.
+Tri-state pads will be an absolute necessity for a 37-bit-word
+AMPLE!  I did not use such pads in SIMPLE because they were not in
+the cell library and I had no time to design them.  I would
+appreciate any other comments about how scaling to a word size three
+times greater may have to affect the design.
+ 

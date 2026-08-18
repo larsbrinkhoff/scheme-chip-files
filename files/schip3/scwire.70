@@ -1,0 +1,333 @@
+;;; -*- mode:lisp -*-
+
+;;; SCHEME-81 Field and Wiring Specifications
+
+;;; The following sorts of objects are defined herein:
+;;;  	FIELDs are descriptions of collections of things.
+;;; 	PLAs have their inputs and outputs described in terms of
+;;; fields, they also have other info, and a program. DEFPLA defines
+;;; >and< creates the PLA, DEFPLA-TYPE creates a kind of PLA that
+;;; may then be called with ELEMENT.
+;;;  	CKTs are completely defined circuits.
+;;;  	MODULEs are "black-boxes" with the defined fields as inputs
+;;; and outputs.  They are expected to be replaced eventually by CKTs.
+;;;  	SYSTEMs are "inline definitions" of objects, they may call
+;;; CKTs and MODULEs as elements, and, like PLAs they are defined and
+;;; created. 
+
+;;; To make ZWEI happy:
+(defmacro defscwire-macro (name)
+  `(defmacro ,name (name &body body) ()))
+
+(defscwire-macro deffield)
+(defscwire-macro defpla)
+(defscwire-macro subfield)
+(defscwire-macro defmodule)
+(defscwire-macro defckt)
+(defscwire-macro def-system)
+(defscwire-macro defpla-type)
+
+;;;; Field Definitions
+
+;;; State input to control PLA
+(deffield control-pla-state)
+
+;;; Result field of the control PLA
+(deffield control-pla-result
+  (subfield ns-output (same-field control-ns-output))
+  (subfield predicate-select (same-field control-pla-predicate-select))
+  (subfield register-controls (same-field control-pla-register-controls))
+  (subfield memory-signals (same-field control-pla-memory-signals))
+  (subfield random-signals (same-field control-pla-random-signals)))
+
+;;; Controls NS box and provides explicit sources for NS.
+(deffield control-ns-output
+  (subfield true-explicit-ns (same-field control-pla-state))
+  (subfield false-explicit-ns (same-field control-pla-state))
+  (subfield true-ns-control (same-field ns-control))
+  (subfield false-ns-control (same-field ns-control))
+  (subfield wait-outputs
+    (subbit wait-for-memdone)
+    (subbit relocate-requested-or-returned?)))
+
+(deffield ns-control
+  (subfield ns-source	  ; these connect to SOURCE lines of registers
+    (subbit true-explicit)
+    (subbit false-explicit)
+    (subbit inc)
+    (subbit stack)
+    (subbit dispatch-user-type)
+    (subbit dispatch-extra-type-cont))
+  (subfield ns-stack-op
+    (subbit push)
+    (subbit pop))
+  (subfield ns-stack-push-source
+    (subbit inc)
+    (subbit true-explicit)
+    (subbit false-explicit)))
+
+;;; Predicate Select output from control PLA
+;;; Also one of the input fields to the predicate select box.
+(deffield control-pla-predicate-select)
+
+;;; Register and UARG controls
+(deffield control-pla-register-controls
+  (subfield true-uarg-ops (same-field conditional-uarg-ops))
+  (subfield false-uarg-ops (same-field conditional-uarg-ops))
+  (subfield uncond-uarg-ops (same-field unconditional-uarg-ops))
+  (subfield uarg-data
+    (subfield arg1 (same-field uarg-spec))
+    (subfield arg2 (same-field uarg-spec))
+    (subfield target (same-field uarg-spec)))
+  (subfield explicit-uargs
+    (subfield explicit-read (same-field uarg-spec))
+    (subfield explicit-write (same-field uarg-spec)))
+  (subfield local-register-operations
+	    (same-field local-register-operations))
+  (subfield type-source
+	    (subbit enable)
+	    (subfield index coded))
+  (subfield datum-source
+	    (subbit enable)
+	    (subfield index coded))
+  (subfield low-bit
+	    (subbit zero)
+	    (subbit one)))
+
+(deffield conditional-uarg-ops
+  (subfield arg1
+	(subbit push-top)
+	(subbit push-trans)
+	(subbit push-data)
+	(subbit pop)
+	(subbit source-trans))
+   (subfield arg2	
+	(subbit push-top)
+	(subbit push-trans)
+	(subbit push-data)
+	(subbit pop)
+	(subbit source-trans))
+   (subfield target
+	(subbit push-top)
+	(subbit push-trans)
+	(subbit push-data)
+	(subbit pop)
+	(subbit source-trans)))
+
+(deffield unconditional-uarg-ops
+  (subbit arg1-source-read)
+  (subbit arg2-source-read)
+  (subbit target-source-read)
+  (subbit target-source-write)
+  (subbit explicit-source-read)
+  (subbit explicit-source-write))
+
+;;; This ought to be filled in
+(deffield local-register-operations
+  (subfield free (subfield datum (subbit increment)))
+  (subfield env-stack
+	    (subfield count
+		      (subbit increment)
+		      (subbit decrement)))
+  (subfield exp (subfield datum (subbit right-shift-0)))
+  (subfield val
+	    (subbit type-to-datum)
+	    (subfield datum
+		      (subbit left-shift-1)
+		      (subbit left-shift-0)
+		      (subbit increment)
+		      (subbit decrement)))
+  (subfield old (subfield datum (subbit increment)))
+  (subfield scan (subfield memory-address (subbit increment)))
+  (subfield temp-reg-0 (subfield datum (subbit decrement)))
+  (subfield count (subfield datum (subbit decrement)))
+  (subbit array-index-test)
+)
+
+;;; also this
+(deffield control-pla-random-signals
+  (subfield thargs-flag (subbit set))
+  (subfield cont-flag (subbit set))
+  (subfield i-am-ready-to-gc (subbit set))
+  (subfield i-need-gc
+	    (subbit set-if)
+	    (subbit set))
+  (subbit val)
+  (subbit halted)
+  (subbit external-interrupt-grant)
+  (subbit cons-server-interrupt-grant)
+  (subbit dma-interrupt-grant))
+
+;;; These are the names of pads
+(deffield control-pla-memory-signals
+  (subbit read-mar)
+  (subbit read-mbr)
+  (subbit write-mar)
+  (subbit write-mbr)
+  (subbit read-sbus-error-code)
+  (subbit read-interrupt-number)
+  (subbit write-sbus-cons)
+  (subbit read-sbus-relocate-request)
+  (subbit write-sbus-relocate-value)
+  (subbit write-sbus-relocate-request)
+  (subbit read-sbus-relocate-value))
+
+
+;;; Sense line output of register array.
+;;; Input to Predicate select box.
+(deffield register-sense-lines)
+
+;;; Predicates that come from pads
+(deffield pad-sense-lines
+  (subbit sbus-error-flag)
+  (subbit external-interrupt-request)
+  (subbit cons-server-interrupt-request)
+  (subbit dma-interrupt-request)
+  (subbit relocate-request-to-me)
+  (subbit -somebody-isnt-ready-to-gc)
+  (subbit -somebody-needs-gc))
+
+;;; Connected to TYPE field of some registers. Probably defined elsewhere
+(deffield dispatch-type)
+
+;;; These are the "real" register control lines
+(deffield register-file-control-lines)
+
+	     
+;;;; PLA specifications
+
+;;; The Biggie
+(defpla control-pla
+  ((field state-input (same-field control-pla-state)
+	  (mode 'input)
+	  (clocked 'phi1))
+   (field result (same-field control-pla-result)
+	  (mode 'output)
+	  (clocked 'phi2))
+   (field state-output (same-field control-pla-state)
+	  (mode 'output)
+	  (clocked nil)))
+  *control-pla-program*)
+
+;;; Turns result of the control PLA into real register file commands
+(defpla register-file-control-decoder
+  ((field global-read-spec (same-field uarg-spec)
+	  (mode 'input) (clocked nil))
+   (field global-write-spec (same-field uarg-spec)
+	  (mode 'input) (clocked nil))
+   (field local-op-spec (same-field local-register-operations)
+	  (mode 'input) (clocked nil))
+   (field register-control (same-field register-file-control-lines)
+	  (mode 'output) (clocked nil)))
+  *register-file-control-decoder-program*)
+
+;;; Predicate Box and selector
+(defpla predicate-select-box
+  ((field predicate-select (same-field control-pla-predicate-select)
+	  (mode 'input) (clocked nil))
+   (field register-sense-lines (same-field register-sense-lines)
+	  (mode 'input) (clocked 'phi1))
+   (field pad-sense-lines (same-field pad-sense-lines)
+	  (mode 'input) (clocked nil))
+   (bit true (mode 'output) (clocked nil)))
+  *predicate-select-program*)
+
+;;; Dispatch Decoders share AND plane
+
+(defpla dispatch-decoder
+  ((field input (same-field dispatch-type) (mode 'input) (clocked nil))
+   (field user-type-output (same-field control-pla-state)
+	  (mode 'output) (clocked nil))
+   (field extra-type-cont-output (same-field control-pla-state)
+	  (mode 'output) (clocked nil)))
+ *dispatch-decoder-program*)
+
+;;; Source of type constants
+
+(defpla type-constant-decoder
+  )
+
+(defpla datum-constant-decoder
+  )							;*** We need one.
+
+
+
+(defmodule uarg-stack-element
+  (field data-bus (same-field uarg-spec))
+  (field trans-bus (same-field uarg-spec))
+  (field read-bus (same-field uarg-spec))
+  (field write-bus (same-field uarg-spec))   ;; arg1 arg2 dont need this
+  (control push-top)
+  (control push-trans)
+  (control push-data)
+  (control pop)
+  (control source-trans)		  
+  (control source-read)
+  (control source-write))                    ;; or this
+
+(defsystem i-am-ready-to-gc-ff
+  (node set)
+  (node val)
+  (element rr register)
+  (element iv inverter)
+  (element set-and and-gate)
+  (element hold-and and-gate)
+  (element set-pass e-fet)
+  (element pd pulldown)
+  (= (>> *phi1*) (>> input-1 set-and) (>> input-1 hold-and))
+  (= (>> set) (>> input-2 set-and) (>> input iv))
+  (= (>> output iv) (>> input-2 hold-and))
+  (= (>> output set-and) (>> gate set-pass))
+  (= (>> val) (>> drain set-pass))
+  (= (>> source set-pass) (>> input rr))
+  (= (>> output hold-and) (>> phi1-hold rr))
+  (= (>> output rr) (>> gate pd))
+  (= (>> drain pd)
+     (>> -somebody-isnt-ready-to-gc)))
+
+(defsystem i-need-to-gc-ff
+  (node set-if)
+  (node set)
+  (node val)
+  (element rr register)
+  (element iv inverter)
+  (element true-and-set and-gate)
+  (element settor or-gate)
+  (element set-and and-gate)
+  (element hold-and and-gate)
+  (element set-pass e-fet)
+  (element pd pulldown)
+  (= (>> *true*) (>> input-1 true-and-set))
+  (= (>> set-if) (>> input-2 true-and-set))
+  (= (>> output true-and-set) (>> input-1 settor))
+  (= (>> set) (>> input-2 settor))
+  (= (>> *phi1*) (>> input-1 set-and) (>> input-1 hold-and))
+  (= (>> output settor) (>> input-2 set-and) (>> input iv))
+  (= (>> output iv) (>> input-2 hold-and))
+  (= (>> output set-and) (>> gate set-pass))
+  (= (>> val) (>> drain set-pass))
+  (= (>> source set-pass) (>> input rr))
+  (= (>> output hold-and) (>> phi1-hold rr))
+  (= (>> output rr) (>> gate pd))
+  (= (>> drain pd)
+     (>> -somebody-needs-gc)))
+
+(defsystem memory-wait-circuitry
+  (element wait-and-not-memdone and-gate)
+  (element relocator or-gate)
+  (element relocate-and-not-done and-gate)
+  (element freezor 3-input-or-gate)
+  (= (>> -memory-done) (>> input-1 wait-and-not-memdone))
+  (= (>> wait-for-memdone wait-outputs ns-output control-pla)
+     (>> input-2 wait-and-not-memdone))
+  (= (>> relocate-request-to-me) (>> input-1 relocator))
+  (= (>> relocate-request-from-me-acknowledged)
+     (>> input-2 relocator))
+  (= (>> output relocator) (>> input-1 relocate-and-not-done))
+  (= (>> relocate-requested-or-returned? wait-outputs ns-output
+	 control-pla)
+     (>> input-2 relocate-and-not-done))
+  (= (>> output wait-and-not-memdone) (>> input-1 freezor))
+  (= (>> output relocate-and-not-done) (>> input-2 freezor))
+  (= (>> freeze) (>> input-3 freezor))
+  (= (>> output freezor) (>> *pc-freeze*)))	  ;a global node

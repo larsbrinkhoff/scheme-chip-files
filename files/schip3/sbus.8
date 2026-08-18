@@ -1,0 +1,155 @@
+;;; S-expression bus specs (draft)
+
+;;; The S-expression bus has the following lines:
+
+SBUS-DATA	32 bits, subdivided as follows:
+		SBUS-TYPE	n bits
+		SBUS-ADDRESS	32-n bits; also called SBUS-DATUM
+SBUS-OP		5-bit operation code
+SBUS-TRIMOS	3 lines for TRIMOSBUS sequencing
+SBUS-BUSY	asserted by bus master; not asserted if no master
+SBUS-GRANT	[daisy-chained or something]
+???
+
+While SBUS-BUSY is asserted, the bus master may initiate one or more
+transactions.  Each transaction consists of one or more cycles, where
+each cycle corresponds to one advancing of the TRIMOSBUS sequencer.
+During a cycle, the sender asserts SBUS-DATA and SBUS-OP, and then
+advances his sequencer.  Each other processors then examines the OP and DATA,
+latches it if appropriate, and then advances its sequencer.  When all
+processors have so advanced, the cycle has ended.
+
+The bus master is not always the sender.  Who is to be the sender depends
+on the OP values and associated protocols.  Typically on the first cycle
+of a transaction the bus master sends out a request, possibly
+followed by more cycles to transmit additional arguments.  For a broadcast
+message stepping the bus constitutes acknowledgement.  For a message to
+a particular respondent, the respondent normally sends at least one
+return message, which may be a reply or an error signal.
+
+Conventions for SBUS data.
+
+The high two bits of the TYPE field describe the meaning of the data.  00
+or 01 means that the ADDRESS field identifies a two-pointer cell, whose
+two 32-bit halves are called the car and cdr.  This is called a list
+pointer.  11 means that the DATUM field identifies no other object, but
+is immediate data.  This is called an "inum pointer"; one type is called
+fixnum.  10 means that the ADDRESS field identifies a set of 32-bit
+pointer cells; the car operation on such a pointer yields a fixnum whose
+DATUM field is the number of cells in the set.  This is an array pointer.
+
+In general, it is permissible for the possessor of a pointer to alter the
+type field of that pointer as long as it does not move from one of the
+three classes to another.  (If it does, the integrity of the storage
+system is compromised.)
+
+
+Transactions.
+
+Each transaction takes one or more arguments from the master and then
+optionally produces one result.  Some transactions may be responded to by
+any processor; this is done by requiring every processor to examine the
+first argument (passed during the first cycle of a transition), which may
+not be an inum pointer.  The address part determines which processor is
+to respond.  By convention all addresses with the high bit zero are
+reserved to the on-chip storage allocator, and addresses with the high
+bit one to be parceled out to other devices.
+
+The usual protocol is for the bus master to initiate a request by using
+an OP such as CAR or CONS on the first cycle, then send any other arguments
+with OP=OKAY for the next few cycles; then the respondent replies with
+a single cycle with OP=OKAY and DATA=the reply, or OP=ERROR and DATA=an error
+number.
+
+The possible operations are as follows (-> indicates a result is normally
+returned; if not, then either a dummy OKAY cycle or an ERROR cycle occurs
+anyway.  ? indicates any processor can respond, on the basis of the first
+argument, which may not be an INUM).
+
+? CAR(ARG) -> RESULT
+	RESULT is the first half of ARG, which may not be an inum.
+		Cycle	Op	Data	Sender
+		1	CAR	ARG	Bus master
+		2	OKAY	RESULT	Respondent
+	     or 2	ERROR	error#	Respondent
+
+? CDR(ARG) -> RESULT
+	RESULT is the second half of ARG, which may not be an inum.
+
+? RPLACA(ARG,NEWLEFT)
+	The left half of ARG1 is altered to be NEWRIGHT.
+	ARG1 must be a list pointer.
+
+? RPLACD(ARG,NEWRIGHT)
+	The left half of ARG1 is altered to be NEWRIGHT.
+	ARG1 must be a list pointer.
+
+? AREF(ARRAY,INDEX) -> RESULT
+	INDEX must be an inum whose DATUM is between zero (inclusive)
+	and the length (car) of ARRAY (exclusive).  RESULT is the
+	contents of the INDEX'th pointer cell of ARRAY, which must be
+	an array pointer.
+
+? ASET(ARRAY,INDEX,NEWVAL)
+	INDEX must be an inum whose DATUM is between zero (inclusive)
+	and the length (car) of ARRAY (exclusive).  The INDEX'th pointer
+	cell of ARRAY, which must be an array pointer, is altered to be
+	NEWVAL.
+
+  CONS(ARG1,ARG2) -> RESULT
+	A new pointer cell is allocated, the two halves initialized to
+	ARG1 and ARG2, and a list pointer with type=0 is returned.
+	This is always handled by the on-chip storage allocator.
+
+  NCONS(ARG) -> RESULT
+	This is equivalent to CONS(ARG,0) -> RESULT; that is, the
+	right half of the allocated cell is set to zero (which
+	is a list pointer to the empty list, of course).
+	This is always handled by the on-chip storage allocator.
+
+  ACONS(LENGTH) -> RESULT
+	An array with LENGTH pointer cells is allocated, and a pointer
+	to it with type 1000...0 is returned.  LENGTH must be an inum.
+	This is always handled by the on-chip storage allocator.
+
+? RELOCATE(ARG) -> RESULT
+	This is used only during garbage collection.  ARG should
+	be a pointer (not an inum) into the "old space" of whatever
+	processor owns that address.  The processor should respond
+	with the "new address" for that object.  This may entail
+	copying that object first.  In the on-chip storage allocator,
+	if the car of the object points into newspace, then that
+	is the correct result; otherwise the object is copied.
+
+? SET-MEMTOP(ARG)
+	The MEMTOP register is initialized from ARG, which should be an
+	inum indicating the size of (half of the) memory, in 64-bit
+	pointer cells.
+	This is always handled by the on-chip storage allocator.
+
+? SET-FREE-POINTERS(ARG1,ARG2)
+	The free pointers for the two semispaces of the appropriate processor
+	are initialized.
+
+? GET-ALLOC-PTR(ARG) -> RESULT
+	The argument is ignored, except in that it determines who should
+	handle the message.  The result is an inum.
+
+  FLIP(ARG) broadcast
+
+
+
+Error returns.
+
+If the operation fails for some reason, an error code is returned in the
+DATA field of the SBUS as an INUM of type FIXNUM.  Some of the error
+codes are:
+
+INUM-NOT-ALLOWED
+INUM-REQUIRED
+ARRAY-REQUIRED
+LIST-REQUIRED
+INVALID-ARRAY-SIZE
+INDEX-OUT-OF-RANGE
+NON-EXISTENT-MEMORY (probably asserted after a long timeout)
+WRITE-INTO-READ-ONLY ?

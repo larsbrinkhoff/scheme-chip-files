@@ -1,0 +1,269 @@
+-*-Text-*-
+
+Constructs in output language.
+
+*) PROG
+
+The purpose of a PROG is to allow the simulator to use RETURN.
+It will never have a name or any variables to be bound.
+For the compiler, it means that the statements are to be executed in
+order.
+
+*) PROGN
+
+This means that the rest of the list is made of statements to be
+executed in order.
+
+Sometimes there will be (PROGN 'comment-data number).  This is
+equivalent to just <number> just as it would be in Lisp.
+
+*) PROGN-VALUE
+
+This is like PROGN but it is regarded as having a "value" which is
+returned to the containing construct.  The value is that of the last
+expression in the PROGN-VALUE.
+
+*) SAME-STATE
+
+This identifies a list of statements that should all be executed and
+can be done in any order, or in any combinations in parallel.
+The only kind of jump that can appear is a subroutine call.
+
+*) SAME-STATE-PROG
+
+This identifies a list of statements that can be done sequentially or
+in parallel, but if they are done sequentially they must not be
+interchanged.  No statement depends on the results of any previous
+statement in the SAME-STATE-PROG, but it may depend on things which
+will be clobbered by later statements.
+
+A jump other than a subroutine call can appear only as the last
+statement.  Normally, we expect the compiler to realize automatically
+that any unconditional jump can be done in parallel with the previous
+instruction.  So the only jumps which are actually same-stated
+explicitly are conditional ones; this is done to declare that the
+conditional is not testing anything that was computed by a previous
+statement in the same-state-prog.
+
+The compiler should also automatically assume SAME-STATE-PROG between
+a construct (SAME-STATE-PROG (POP-ARG ...) (POP-ARG ...) ... (URETURN))
+and whatever precedes it.
+
+*) SAME-CYCLE
+
+This identifies a list of statements which MUST be executed in
+parallel, because otherwise there would be a timing error.  This is
+needed only in communication off the chip.  The things that must be
+done in one instruction include all branches of any nested IFs that
+appear inside the SAME-CYCLE!
+
+*) SAME-STATE-PROG1
+
+This has the same constraints on parallelism as SAME-STATE-PROG, but
+it is used as a condition in an IF.  The first statement is itself
+suitable for being a condition, and its value serves as the condition
+for the IF.
+
+*) SAME-CYCLE-PROG1
+
+This is like SAME-STATE-PROG1 in its interaction with IF, but its
+constraints on parallelism are the same as SAME-CYCLE.
+
+*) SAME-CYCLE-VALUE
+
+This is like SAME-CYCLE but it is regarded as having a "value" which
+is returned to the containing construct.  The value is that of the
+last expression in the SAME-CYCLE-VALUE.
+
+*) (IF condition if-true if-false)
+
+This stands for conditional execution.  <condition> should be a call
+to =?, or a SAME-STATE-PROG1 or SAME-CYCLE-PROG1 which starts with a
+call to =?
+
+*) (=? exp1 exp2)
+
+This is a condition which is true if the value of <exp1> equals that
+of <exp2>.  All conditions are either of this form or composit and
+made out of one or more other conditions.
+
+*) NOT, AND and OR
+
+These take conditions as their arguments and the result is a
+condition.
+
+*) (GOTO pc)
+
+This indicates an unconditional jump to a specific place (<pc>).
+
+*) (DISPATCH expression table)
+
+This means jump to an address which is the sum of the value of
+<expression> and the address of the dispatch table <table>.
+The name <table> is specified in the DEFDISPATCHes which define the
+entry points.
+
+*) (WAIT-UNTIL condition)
+
+This means to loop until the condition is true.  It is ok for
+SAME-STATE or SAME-CYCLE to cause other things to be done at the same
+time as the busy wait (in fact, sometimes we depend on it).  Then they
+are done each time the instruction is repeated.
+
+*) (URETURN)
+
+This means jump to a pc popped off the microcode pc stack.
+
+*) (CALL-PC pc)
+
+This means jump to <pc> and push on the microcode call stack the
+address of the following microinstruction.
+
+*) (PUSH-ARG (ARG-STACK-READ-ONLY expression) arg-stack)
+
+This means push onto <arg-stack> somethingwhich says that the value of
+the corresponding argument is the value of <expression>.  <expression>
+is either a use of READ-REG or a use of MAKE-POINTER.
+
+*) (PUSH-ARG (ARG-STACK-READ-WRITE register) arg-stack)
+
+This means push onto <arg-stack> something which says that the value
+of the corresponding argument is located in <register>.
+
+*) (POP-ARG arg-stack)
+
+This means that the top entry on <arg-stack> should be discarded.
+
+*) (ASSERT bit)
+
+This means to connect <bit> to a 1 signal.  <bit> is a bus (or
+subfield of one) of width one.
+
+*) (PUT-WORD-ON-SBUS exp)
+
+This means to connect the WORD subfield of the sbus to signals
+containing the value of <exp>, so that that value is sent off the
+chip.
+
+*) (READ-SBUS-DATA)
+
+This refers to a value which is whatever the external world is putting
+on the WORD subfield of the sbus.
+
+Interrupts (so to speak)
+
+*) (ENABLE-GOTO-SBUS-ERROR)
+
+If during the instruction in which this occurs the bit (BITVEC ERROR
+SBUS) is on, (GOTO SBUS-ERROR) is forced.
+
+*) If the flag ENABLE-CONS-SERVER is set, then (UCALL
+CONS-SERVER-ENTRY) can be forced at any time if the bit (BITVEC
+CONS-SERVER-REQUEST SBUS) is set.
+
+*) What the microcode calls "interrupts" are polled for explicitly by
+the microcode, and are no special concern of the hardware.
+
+Data manipulation
+
+*) (READ-REG regname)
+
+This refers to the contents of the register <regname>.
+<regname> can be an argument register.  This means to use the value of
+the place pointed to by the entry at the top of the
+corresponding argument stack.
+
+*) (WRITE-REG regname expression)
+
+This means to store into <regname> the value of <expression>.
+<regname> can be an argument register.  This means to write into the
+place pointed to by the entry at the top of the corresponding argument
+stack.
+
+*) (WRITE-SUBFIELD subfield register expression)
+
+This means store into just the subfield <subfield> of <register> the
+value of <expression>.
+
+*) (EXTRACT field expression)
+
+This refers to the value of the specified subfield <field> of the
+value of <expression>.  The type of the value of <expression> should
+be the same as the last element of <field>.
+
+*) (MODIFY field expression subfield-expression)
+
+This refers to the value obtained by starting with the value of
+<expression> and changing the subfield <field> of it to contain the
+value of <subfield-expression>.  It does not write in any registers;
+it simply produces a new value which could be stored with WRITE-REG.
+
+*) (ADD-VALUES exp1 exp2 width)
+
+This refers to a value which is the sum of the values of <exp1> and
+<exp2>.  Those two values must be of the same type.  <width> is the
+width of that type, supplied for the simulator's sake.
+
+<exp2> can be a constant or a symbol with a constant value.
+
+*) (LEFT-SHIFT-WITH-0-OF expression width)
+
+This refers to the result of shifting the value of <expression> left
+one place, bringing in a 0.  <width> is the width of <expression>.
+
+*) (LEFT-SHIFT-WITH-1-OF expression width)
+
+This is like the previous function but shifts in a 1.
+
+*) (RIGHT-SHIFT-WITH-0-OF expression)
+
+This is similar but shifts right.  The width is not needed by the
+simulator for this function.
+
+*) (PCLSR-SAVE register)
+
+This causes the contents of <register> to be saved in a special
+save-register belonging to <register>.
+
+*) (PCLSR-RESTORE register)
+
+This means to store in <register> the value in its special
+save-register.
+
+DEFLOGIC and related things.
+
+*) (DEFLOGIC name args body)
+
+This defines a logic flag named <name>.  It is a function of <args>
+computed by <body>.  <body> should be an expression whose value is of
+type BIT.  It would usually involve VNOT, VAND, VEQL, etc.  Values of
+type BIT can also be obtained by fetching registers or subfields of
+type BIT.  =? does NOT produce a value of type BIT; it is a predicate.
+
+*) (logic-flag-name args ...)
+
+This refers to the value that <logic-flag-name> when computed from the
+values of the specified args.
+
+*) (VNOT expression)
+
+This refers to the bit-wise complement of the value of <expression>.
+It has the same width as <expression>.
+
+VNOT is not allowed just in DEFLOGICs.  You could also ASSIGN
+something to the result of a VNOT.
+
+*) VAND, VOR, VXOR
+
+These are like VNOT (but take two args).
+
+*) (VEQL exp1 exp2)
+
+This refers to a BIT value which is 1 if <exp1> and <exp2> are equal,
+0 otherwise.  Note the difference between this and =? and (VNOT (VXOR ...)).
+
+*) (VALL field-type exp)
+
+This refers to a value of type BIT which is 1 if all the bits of the
+value of <exp> are.  <field-type> should be the type of <exp> so the
+simulator can get the width.

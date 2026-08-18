@@ -1,0 +1,19 @@
+;;; -*-LISP-*-
+
+(eval-when (eval load)
+  #Q(load "ai:schip3;pkg dcl")
+  #Q(pkg-goto 'schip)
+  (load "cwalk" #Q 'schip)
+  (load "xlang")
+  (load "fields")
+  (load "pass1")
+  (defmacro if-not-simulating (&rest forms)
+    (if (null (cdr forms)) (car forms) `(progn 'compile ,@forms)))
+  (load "ucode")
+  (load "hcwalk")
+  (load "pass2")
+  (load "pass2e")
+  (pass2)
+  (print "phase 1 complete"))
+
+

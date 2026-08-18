@@ -1,0 +1,61 @@
+;;; -*- mode:LISP -*-
+
+;;; Init file for hacking SCHEME-81
+
+(pkg-goto 'dpl)
+
+(defun load-scheme-81 ()
+  
+  (load-patches ':silent)
+
+  (setq inhibit-fdefine-warnings ':just-warn)
+
+;;; Random Utilities
+  (defsystem random-loads
+    (:module loads ("batali;lmutil qfasl"
+		   "batali;zwei qfasl"
+		   "batali;sys qfasl"
+		   "dpl1;dplast"))
+    (:module reads ("batali;plas"
+		   "schip3;sysdef"))
+    (:fasload loads)
+    (:readfile reads (:fasload loads)))
+  (make-system 'random-loads ':silent ':noconfirm)
+
+  ;; Load the systems
+  (dolist (s '(data-path plas schip))
+    (make-system s ':silent ':noconfirm))
+  
+  ;; Load PLA programming
+  (or (boundp '*control-and-array*)
+      (load-program-arrays "schip3;code arrays"))
+
+  ;; Load LOGO fonts
+  (or (boundp '20vg) (load-logo-fonts)))
+
+(defun make-scheme-81 ()
+  
+  (let ((*scheme-81-maker-codes*))
+    (setq *scheme-81-maker-codes* (all-scheme-81))
+    (if (y-or-n-p "Make Logo?")
+	()
+	(setq *scheme-81-maker-codes* (delq 'logo *scheme-81-maker-codes*)))
+    
+    ;; Prepare various things
+    (setq *faking-it* nil *make-fake-pads* nil)
+    (initialize-plas)
+    
+    ;; Make it
+    (partq scheme-81 scheme-81)
+    
+    ;; Flash planes
+    (flash-scheme-81)
+    
+    ;; insert bnodes
+    (bnode-scheme-81 t)
+    
+    'done))
+
+(if (yes-or-no-p "Load Scheme-81? (yes or no)")
+    (load-scheme-81))
+

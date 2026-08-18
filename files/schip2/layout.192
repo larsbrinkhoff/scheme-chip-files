@@ -1,0 +1,738 @@
+;;; -*- Mode:Lisp; Base:10.-*-
+
+; Layout Language System   by Jack Holloway and Gerald Jay Sussman
+
+; Cables - route to {left,right} of a wire, 
+; Align - make the transform that aligns a symbol's pt with pt
+; Connect - make connection to wire
+
+;Problems
+;overlap of flashes?
+
+;;;macros
+
+(declare (macros t))
+(putprop 'debug '((dsk liblsp) debug fasl) 'autoload)
+
+(defmacro defvar (variable &optional initial-value)
+   `(progn 'compile
+	   (declare (special ,variable))
+	   (or (boundp ',variable) (setq ,variable ,initial-value))))
+
+;(declare (eval (read)))
+
+;(cond ((status feature lispm)
+;       (defmacro defun& args `(defun . , args)))
+;      (t
+;       (progn 'compile
+	      (defmacro + args `(plus . ,args))		;sigh
+	      (defmacro - args `(difference . ,args))
+	      (defmacro * args `(times . ,args))
+	      (defmacro // args `(quotient . ,args))
+;)))
+	
+(declare (special *instance* *boxlist* *genvar*
+		  *X *Y *XY *origin *inf
+		  *poly-overhang* *diffusion-overhang*))
+
+(setq base 10. ibase 10. *nopoint t)
+
+(setq *instance* 'the-top *boxlist* nil *inf 1000000.0
+      *poly-overhang* 2  *diffusion-overhang* 1  *implant-overhang* 2)
+
+(putprop 'diff 2 'default-width)
+(putprop 'poly 2 'default-width)
+(putprop 'metal 3 'default-width)
+(putprop 'implant 2 'default-width)
+(putprop 'cut 2 'default-width)
+
+(defun concat n
+    (implode (mapcan '(lambda (x) (explode x))
+		     (listify n))))
+
+(defmacro >= args `(not (< . ,args)))
+(defmacro / args `(not (< . ,args)))
+(defmacro <= args `(not (> . ,args)))
+(defmacro / args `(not (> . ,args)))
+(defmacro neq args `(not (eq . ,args)))
+(defmacro / args `(not (= . ,args)))
+
+(macro first (x) (displace x `(car ,(cadr x))))
+(macro second (x) (displace x `(cadr ,(cadr x)))) 
+(macro third (x) (displace x `(caddr ,(cadr x)))) 
+(macro fourth (x) (displace x `(cadddr ,(cadr x))))
+(macro fifth (x) (displace x `(car (cddddr ,(cadr x)))))
+(macro sixth (x) (displace x `(cadr (cddddr ,(cadr x)))))
+(macro seventh (x) (displace x `(caddr (cddddr ,(cadr x)))))
+
+(macro rest1 (x) (displace x `(cdr ,(cadr x))))
+(macro rest2 (x) (displace x `(cddr ,(cadr x))))
+(macro rest3 (x) (displace x `(cdddr ,(cadr x))))
+(macro rest4 (x) (displace x `(cddddr ,(cadr x))))
+
+(defmacro if (p c . a)
+   `(cond (,p ,c)
+	  (t . ,a)))
+
+
+;MAPC with a prog body instead of a function.  <form> evaluates to a list,
+;and <body> is executed with <var> bound to successive elements of the list.
+(DEFMACRO DOLIST ((VAR FORM) &REST BODY)
+   (LET ((DUMMY (GENSYM))) 
+     `(DO ((,DUMMY ,FORM (CDR ,DUMMY))
+           (,VAR))
+          ((NULL ,DUMMY))
+         (SETQ ,VAR (CAR ,DUMMY))
+         . ,BODY)))
+
+;Repeat a number of times.  <form> evaluates to the number of times,
+;and <body> is executed with <var> bound to 0, 1, ...
+(defmacro dotimes ((var form) &rest body)
+   (let ((dummy (gensym)))
+     `(do ((,var 0 (1+ ,var))
+	   (,dummy ,form))
+	  ((>= ,var ,dummy))
+	. ,body)))
+
+(defmacro pt (x y) `(list* 'pt ,x ,y))
+(defmacro pt? (x) `(and (not (atom ,x)) (eq (car ,x) 'pt)))
+(defmacro x-of (x) `(cadr ,x))
+(defmacro y-of (y) `(cddr ,y))
+
+(defmacro the-x path `(x-of (the-pt . ,path)))
+(defmacro the-y path `(y-of (the-pt . ,path)))
+(defun max-x (p1 p2) (if (greaterp (x-of p1) (x-of p2)) p1 p2))
+(defun max-y (p1 p2) (if (greaterp (y-of p1) (y-of p2)) p1 p2))
+(defun min-x (p1 p2) (if (greaterp (x-of p1) (x-of p2)) p2 p1))
+(defun min-y (p1 p2) (if (greaterp (y-of p1) (y-of p2)) p2 p1))
+
+(defmacro set-the (x y)
+   `(let ((obj ,y))
+       (putprop *instance* obj ,x)
+       (if (symbolp obj)
+	   (addprop obj (cons ,x *instance*) 'name))))
+
+(defmacro the path
+   `(the-1 ',path))
+
+(defun the-1 (path)
+       (cond ((null (cdr path))
+	      (or (get-the *instance* (car path))
+		  (error '|Losing path| path 'fail-act)))
+	 (t (let* ((instance (the-1 (cdr path)))
+		   (thing (get-the instance (car path))))
+		  (cond ((null thing) (error '|Losing path| path 'fail-act))
+			((atom thing) thing)
+			((pt? thing) (error '|Untransformed point?|) thing)
+			(t thing))))))
+
+
+(defun the-pt fexpr (path)
+       (the-pt-1 *instance* (reverse path)))
+
+(defun the-pt-1 (obj rev-path)
+       (cond ((null obj) (error '|Losing reversed path| rev-path 'fail-act))
+	     ((null (cdr rev-path))
+	      (let ((p (get-the-pt obj (car rev-path))))
+		   (if (pt? p) p (error '|Not a pt| (list rev-path obj)))))
+	     (t (let ((part (get-the obj (car rev-path))))
+		     (transform (the-pt-1 part (cdr rev-path))
+			        (get-the part 'transform))))))
+
+(defun the-point-relative (tail head)
+       (the-pt-1 *instance* (reverse (append head tail))))
+
+(defun get-the (symbol indicator)
+       (or (get symbol indicator)
+	   (let ((p (get symbol 'prototype)))
+		(and p (get p indicator)))))
+
+(setq *origin (pt 0 0))
+
+(defun get-the-pt (obj name)
+       (or (get-the obj name)
+	   (caseq name
+		  (LOWER-LEFT *origin)
+		  (LOWER-RIGHT
+		   (let ((h-pitch (get-the obj 'h-pitch)))
+			(if h-pitch
+			    (let ((ll (get-the-pt obj 'lower-left)))
+				 (pt (+ (x-of ll) h-pitch)
+				     (y-of ll)))
+			    nil)))
+		  (UPPER-LEFT
+		   (let ((v-pitch (get-the obj 'v-pitch)))
+			(if v-pitch
+			    (let ((ll (get-the-pt obj 'lower-left)))
+				 (pt (x-of ll) (+ (y-of ll) v-pitch)))
+			    nil)))
+		  (UPPER-RIGHT
+		   (let ((h-pitch (get-the obj 'h-pitch))
+			 (v-pitch (get-the obj 'v-pitch)))
+			(if (and h-pitch v-pitch)
+			    (let ((ll (get-the-pt obj 'lower-left)))
+				 (pt (+ (x-of ll) h-pitch)
+				     (+ (y-of ll) v-pitch))) 
+			    nil)))
+		  (t (error '|Losing point| (list obj name))))))
+
+(defun make-object () (intern (gensym)))
+
+(defun addprop (sym val prop)
+   (putprop sym (cons val (get sym prop)) prop))
+
+(defmacro objectify stuff
+	  `(let ((new-object (make-object)))
+		(addprop *instance* new-object 'parts)
+		(putprop new-object *instance* 'parent)
+		(let ((*instance* new-object)
+		      (*boxlist* nil)
+		      (*genvar* 0))
+		     ,@stuff
+		     (putprop new-object *boxlist* 'boxlist)
+		     new-object)))
+
+
+;   (call* (proto . args) . xfrms)
+
+(defmacro call* (proto . xfrms)
+   (let ((fn (if (atom proto) proto (car proto)))
+	 (args (if (atom proto) nil `(list . ,(cdr proto))))
+	 (xlist (convert-xfrm-syntax xfrms)))
+	`(call ',fn ,args . ,xlist)))
+
+(defun& call (proto-name args &rest xfrm-list)
+   (let ((proto (invoke proto-name args)))
+	(objectify (set-the' PROTOTYPE proto)
+		   (set-the' TRANSFORM
+			     (collapse-xfrms xfrm-list)))))
+
+(defun invoke (proto-name args)
+   (let ((proto (cdr (assoc args (get proto-name 'expansions)))))
+	(if (null proto)
+	    (let* ((*instance* 'defined-symbols)
+		   (fn (get proto-name 'layout)))
+		  (cond (fn
+			 (setq proto (objectify (set-the' TYPE proto-name)
+						(apply fn args)))
+			 (addprop proto-name (cons args proto) 'expansions)
+			 (addprop 'defined-symbols proto 'ordered-definitions))
+			(t (format t '|~S is not a deflayout - invoke| proto-name)
+			   (break t)))))
+	proto))
+
+
+(defun inherit-names (access-path names)
+    (mapc '(lambda (name)
+	      (set-the name (the-pt-1 *instance* (reverse (cons name access-path)))))
+	  names))
+
+(defun deflayout fexpr (l)
+    (remlayout (car l))
+    (putprop (car l) `(lambda . ,(cdr l)) 'layout)
+    (car l))
+
+(defun remlayout (type) 
+   (mapc '(lambda (expansion)
+	      (remproto (cdr expansion)))
+	 (get type 'expansions)))
+
+(defun remproto (proto)
+   (prog nil
+	 (cond ((or (null proto) (eq proto 'the-top)) (return nil))
+	       ((eq proto 'defined-symbols)
+		(format t '|~%Deleting the Defined-Instances????|)
+		(break t)
+		(return nil))
+	       ((eq (get proto 'parent) 'defined-symbols)
+		(putprop 'defined-symbols
+			 (delq proto (get 'defined-symbols 'parts))
+			 'parts))
+	       (t (format t '|~%~S not a part of Defined Symbols| proto)
+		  (break t)))
+	 (remprop proto 'boxlist)			;flush its parts
+	 (mapc '(lambda (caller)				;flush whoever uses us
+			(cond ((null (plist (cdr caller))))
+			      ((and (eq (car caller) 'prototype)	;he calls us PROTOTYPE
+				     (get (cdr caller) 'parent))
+			       (remproto (get (cdr caller) 'parent)))	;he's an instance
+			      (t (remproto (cdr caller)))))
+							;he's referenced us by an invoke
+	       (get proto 'name))
+	 (mapc '(lambda (part)				;flush our children
+			(rem-addprop (get part 'prototype) part 'name)
+			(setplist part nil))
+	       (get proto 'parts))
+	 (rem-addprop (get proto 'type) proto 'expansions)	;no longer expanded
+	 (setplist proto nil)))
+
+(defun rem-addprop (atom thing ind)
+   (putprop atom (remassq-cdr thing (get atom ind)) ind))
+
+(defun remassq-cdr (thing list)
+   (cond ((null list) nil)
+	 ((eq thing (cdar list)) (cdr list))
+	 (t (cons (car list) (remassq-cdr thing (cdr list))))))
+
+(defun remassq (thing list)
+   (cond ((null list) nil)
+	 ((eq thing (caar list)) (cdr list))
+	 (t (cons (car list) (remassq thing (cdr list))))))
+
+(defun rassq (thing alist)
+       (cond ((null alist) nil)
+	     ((eq thing (cdar alist)) (car alist))
+	     (t (rassq thing (cdr alist)))))
+
+; (boxes {layer,(layer width)} starting-pt . transform-list) - creates string of boxes
+
+(defmacro boxes (layer pt . rest)
+   (let ((layer (if (atom layer) layer (car layer)))
+	 (width (if (atom layer) (get layer 'default-width) (cadr layer)))
+	 (path (decode-path-list rest)))
+	`(boxes-1 ',layer ,width ,pt . ,path)))
+
+(defun decode-path-list (path)
+   (and path `(',(caar path) ,(if (eq (cadar path) '*) ''* (cadar path))
+			      . ,(decode-path-list (cdr path)))))
+
+; like (boxes ...) except objectifies the string of boxes
+
+(defmacro wire (layer pt . rest)
+   (let ((layer (if (atom layer) layer (car layer)))
+	 (width (if (atom layer) (get layer 'default-width) (cadr layer)))
+	 (path (decode-path-list rest)))
+	`(wire-1 ',layer ,width ,pt . ,path)))
+
+(defun& wire-1 (layer width pt &rest path)
+   (let ((width (if width width (get layer 'default-width))))
+	(objectify (set-the' start pt)
+		   (set-the' end (wire-path layer width pt path)))))
+
+(defun& boxes-1 (layer width pt &rest path)
+   (let ((width (if width width (get layer 'default-width))))
+	(wire-path layer width pt path)))
+
+(defun wire-path (layer width start path)
+   (let ((x (x-of start))
+	 (y (y-of start)))
+      (do ((x0 x x1)
+	   (y0 y y1)
+	   (x1 x)
+	   (y1 y)
+	   (arg start)
+	   value
+	   (path path (cddr path))
+	   (w2 (// width 2.0))
+	   (dir))
+	  ((null path) (setq *x x1 *y y1 *xy (pt x1 y1)))
+	  (if (null (cdr path)) (error '|Odd length path| `(,layer ,start . ,path)))
+	  (setq arg (if (eq (second path) '*) arg (second path)))
+	  (caseq (car path)
+	      ((X +X -X) (setq value (if (or (atom arg) (neq (car arg) 'pt))
+					 arg
+					 (x-of arg))
+			       dir 'X))
+	      ((Y +Y -Y) (setq value (if (or (atom arg) (neq (car arg) 'pt))
+					 arg
+					 (y-of arg))
+			       dir 'Y)))
+	  (caseq (car path)
+		 (X (setq x1 value))
+		 (+X (setq x1 (+ x0 value)))
+		 (-X (setq x1 (- x0 value)))
+		 (Y (setq y1 value))
+		 (+Y (setq y1 (+ y0 value)))
+		 (-Y (setq y1 (- y0 value)))
+		 (t (error '|Bad path name| path 'fail-act)))
+	  (caseq dir
+	     (Y (box layer
+		     (- x0 w2) (+ x0 w2)
+		     y0 (cond ((null (cddr path)) y1)
+			      ((lessp y1 y0) (- y1 w2))
+			      (t (+ y1 w2)))))
+	     (X (box layer
+		     x0 (cond ((null (cddr path)) x1)
+			      ((lessp x1 x0) (- x1 w2))
+			      (t (+ x1 w2)))
+		     (- y0 w2) (+ y0 w2)))))))
+
+(defun box (layer x0 x1 y0 y1)
+   (push `(box ,layer ,(pt x0 y0) ,(pt x1 y1)) *boxlist*))
+
+(defmacro contact (shape type pt)
+   (caseq shape
+      (S `(contact-1 ',type 2 2 ,pt))
+      (V `(contact-1 ',type 2 4 ,pt))
+      (H `(contact-1 ',type 4 2 ,pt))))
+
+(defun contact-1 (type width height pt)
+   (box 'cuts
+	(- (x-of pt) (// width 2.0))
+	(+ (x-of pt) (// width 2.0))
+	(- (y-of pt) (// height 2.0))
+	(+ (y-of pt) (// height 2.0)))
+   (box 'metal
+	(- (x-of pt) (// width 2.0) 1)
+	(+ (x-of pt) (// width 2.0) 1)
+	(- (y-of pt) (// height 2.0) 1)
+	(+ (y-of pt) (// height 2.0) 1))
+   (box type						;Underlying poly or diffusion
+	(- (x-of pt) (// width 2.0) 1)
+	(+ (x-of pt) (// width 2.0) 1)
+	(- (y-of pt) (// height 2.0) 1)
+	(+ (y-of pt) (// height 2.0) 1)))
+
+;;;Transform
+;(trans pt) (mirror x/y) (rot 0 1) 
+
+(defun xfrm (rxx ryx rxy ryy xx yy)
+   `(,rxx ,ryx ,rxy ,ryy ,xx ,yy))
+(defmacro rxx (xfrm) `(car ,xfrm))
+(defmacro ryx (xfrm) `(cadr ,xfrm))
+(defmacro rxy (xfrm) `(caddr ,xfrm))
+(defmacro ryy (xfrm) `(cadddr ,xfrm))
+(defmacro xx (xfrm) `(car (cddddr ,xfrm)))
+(defmacro yy (xfrm) `(cadr (cddddr ,xfrm)))
+
+(defmacro set-rxx (xfrm x) `(rplaca ,xfrm ,x))
+(defmacro set-ryx (xfrm x) `(rplaca (cdr ,xfrm) ,x))
+(defmacro set-rxy (xfrm x) `(rplaca (cddr ,xfrm) ,x))
+(defmacro set-ryy (xfrm x) `(rplaca (cdddr ,xfrm) ,x))
+(defmacro set-xx (xfrm x) `(rplaca (cddddr ,xfrm) ,x))
+(defmacro set-yy (xfrm x) `(rplaca (cdr (cddddr ,xfrm)) ,x))
+
+(defun transform (pt transform)
+       (cond (transform (pt (+ (* (rxx transform) (x-of pt))
+			       (* (rxy transform) (y-of pt))
+			       (xx transform))
+			    (+ (* (ryx transform) (x-of pt))
+			       (* (ryy transform) (y-of pt))
+			       (yy transform))))
+
+	     (t pt)))
+
+(setq xfrm-pattern '(rxx ryx rxy ryy xx yy))
+
+(defun collapse-xfrms (xfrms)
+   (let ((current (xfrm 1 0 0 1 0 0)))	;identity
+      (do ((xfrms xfrms (cddr xfrms)))
+	  ((null xfrms) current)
+	  (if (null (cdr xfrms)) (error '|Odd length transform list| xfrms))
+	  (let ((arg (second xfrms)))
+	       (caseq (first xfrms)
+		      (TRANS				;TRANS pt
+		       (set-xx current (+ (xx current) (x-of arg)))
+		       (set-yy current (+ (yy current) (y-of arg))))
+		      (MIRROR				;MIRROR {X,Y}
+		       (caseq arg
+			      (X (set-rxx current (- 0 (rxx current)))
+				 (set-rxy current (- 0 (rxy current)))
+				 (set-xx current (- 0 (xx current))))
+			      (Y (set-ryx current (- 0 (ryx current)))
+				 (set-ryy current (- 0 (ryy current)))
+				 (set-yy current (- 0 (yy current))))))
+		      (ROT				;ROT (x{0,1,-1} y{0,1,-1})
+		       (let ((x (first arg))
+			     (y (second arg)))
+			    (let ((row (do-rot (rxx current) (ryx current) x y)))
+				 (set-rxx current (x-of row))
+				 (set-ryx current (y-of row)))
+			    (let ((row (do-rot (rxy current) (ryy current) x y)))
+				 (set-rxy current (x-of row))
+				 (set-ryy current (y-of row)))
+			    (let ((row (do-rot (xx current) (yy current) x y)))
+				 (set-xx current (x-of row))
+				 (set-yy current (y-of row))))))))))
+
+(defun compose (nxfrm xfrms)
+       (cond ((null xfrms) nxfrm)
+	     (t (xfrm (+ (* (rxx xfrms) (rxx nxfrm))
+			 (* (rxy xfrms) (ryx nxfrm)))
+		      (+ (* (ryx xfrms) (rxx nxfrm))
+			 (* (ryy xfrms) (ryx nxfrm)))
+		      (+ (* (rxx xfrms) (rxy nxfrm))
+			 (* (rxy xfrms) (ryy nxfrm)))
+		      (+ (* (ryx xfrms) (rxy nxfrm))
+			 (* (ryy xfrms) (ryy nxfrm)))
+		      (+ (* (rxx xfrms) (xx nxfrm))
+			 (* (rxy xfrms) (yy nxfrm))
+			 (xx xfrms))
+		      (+ (* (ryx xfrms) (xx nxfrm))
+			 (* (ryy xfrms) (yy nxfrm))
+			 (yy xfrms))))))
+
+(defun convert-xfrm-syntax (xfrms)
+    (and xfrms (caseq (caar xfrms)
+		      (TRANS					;TRANS pt
+		       `('TRANS ,(cadar xfrms) . ,(convert-xfrm-syntax (cdr xfrms))))
+		      (MIRROR
+		       `('MIRROR ',(cadar xfrms) . ,(convert-xfrm-syntax (cdr xfrms))))
+		      (ROT
+		       `('ROT (list ,(cadar xfrms) ,(caddar xfrms))
+			      . ,(convert-xfrm-syntax (cdr xfrms)))))))
+
+
+;;; multiply by [rx  ry]
+;;;             [-ry rx]
+;;;	[x y] *
+
+(defun do-rot (x y rx ry)
+   (pt (+ (* x rx) (* y (- 0 ry)))
+       (+ (* x ry) (* y rx))))
+
+(defun align (instance internal-point external-point)
+       (let ((current (or (get-the instance 'transform) (xfrm 1 0 0 1 0 0))))
+	    (set-xx current (+ (xx current)
+			       (- (x-of external-point) (x-of internal-point))))
+	    (set-yy current (+ (yy current)
+			       (- (y-of external-point) (y-of internal-point))))
+	    (putprop instance current 'transform)))
+
+;; Compatibility kludge for Steele System:
+(defun layout fexpr (l)
+       (putprop (car l)
+		`(lambda () 
+			 (set-the' h-pitch ,(caadr l))
+			 (set-the' v-pitch ,(cadadr l))
+			 . ,(cdddr l))
+		'layout)
+       (car l))
+
+(defun poly fexpr (l)
+       (mapc '(lambda (b) (apply 'box (cons 'poly b))) l))
+
+(defun diff fexpr (l)
+       (mapc '(lambda (b) (apply 'box (cons 'diff b))) l))
+
+(defun metal fexpr (l)
+       (mapc '(lambda (b) (apply 'box (cons 'metal b))) l))
+
+(defun cuts fexpr (l)
+       (mapc '(lambda (b)
+		 (let ((x (first b)) (y (second b)) (shape (caddr b)))
+		      (caseq shape
+			     (S (box 'cuts (- x 1) (+ x 1) (- y 1) (+ y 1)))
+			     (H (box 'cuts (- x 2) (+ x 2) (- y 1) (+ y 1)))
+			     (V (box 'cuts (- x 1) (+ x 1) (- y 2) (+ y 2))))))
+	     l))
+
+(defun implant fexpr (l)
+       (mapc '(lambda (b) (apply 'box (cons 'implant b))) l))
+
+;(column <prototype> nil <size> <name> <first-bit> <last-bit>) or
+;(column <layout-fcn> <arg-list> <size> <name-> <first-bit> <last-bit>)
+
+(declare (special *i* *j*))
+
+(deflayout column (proto args size name first last)
+	   (make-column proto args size name first last))
+
+(defun make-column (proto args size name first last)
+    (do ((i 0 (1+ i))
+	 (part-no first (if (< first last) (1+ part-no) (1- part-no)))
+	 (pitch)
+	 (y 0 (if (> size 0) (+ y pitch) (- y pitch))))
+	((= i (abs size))
+	 (set-the' v-pitch y))
+	(setq *j* part-no)
+	(let ((obj (call proto args 'TRANS (pt 0 y))))
+	     (set-the (concat name '- part-no) obj)
+	     (setq pitch (get-the obj 'v-pitch)))))
+    
+
+(deflayout row (proto args size name first last)
+	   (make-row proto args size name first last))
+
+(defun make-row (proto args size name first last)
+    (do ((i 0 (1+ i))
+	 (part-no first (if (< first last) (1+ part-no) (1- part-no)))
+	 (pitch)
+	 (x 0 (if (> size 0) (+ x pitch) (- x pitch))))
+	((= i (abs size))
+	 (set-the' h-pitch x))
+	(setq *i* part-no)
+	(let ((obj (call proto args 'TRANS (pt x 0))))
+	     (set-the (concat name '- part-no) obj)
+	     (setq pitch (get-the obj 'h-pitch)))))
+
+(defun make-display-list (thing)
+    (append (get-the thing 'boxlist)
+	    (mapcan '(lambda (part)
+		       (cond ((get part 'prototype)
+			      `((call ,(get-the part 'prototype)
+				      ,(get-the part 'type)
+				      ,(get-the part 'transform))))
+			     (t (let ((xfrm (get-the part 'transform)))
+				     (mapcar '(lambda (box)
+						 `(box ,(second box)
+						       ,(transform (caddr box) xfrm)
+						       ,(transform (cadddr box) xfrm)))
+					     (make-display-list part))))))
+		    (get-the thing 'parts))))
+
+
+(defun st (obj rot)
+       (stipple-to-file obj (mapcar 'fix (boundaries obj)) '|ai:schip2;foo xgp| rot))
+       
+
+;;;CIF output stuff
+(declare (special *initial-symbol-number *lambda-size
+		  *unit-x *abell *only-outline))
+
+
+(setq *initial-symbol-number 1000.)			;may change
+(setq *lambda-size 200.)				;centimicrons (UGH)
+
+(defun& cifout (&optional (symnum *initial-symbol-number)
+			  (*only-outline nil)
+			  (*abell t))
+       (format t '|~%(Initial CIF symbol number is ~D) ;| symnum)
+       (do ((symnum symnum (+ symnum 1))
+	    (symbols (reverse (get 'defined-symbols 'ordered-definitions))
+		     (cdr symbols))
+	    (prinlevel 3) (prinlength 20))
+	   ((null symbols) (princ '|End|))
+	   (symbol-out (car symbols) symnum)))
+
+(defun symbol-out (symbol symnum)
+       (terpri)
+       (princ '|Define Symbol |) (princ symnum)
+       (princ '| |) (princ *lambda-size)
+       (princ '| |) (princ 2) (princ '|; |)
+       (putprop symbol symnum 'cifsymnum)
+       (princ `(Name: ,(get symbol 'type)
+		      ,(car (rassq symbol
+				   (get (get symbol 'type) 'expansions)))))
+       (princ '|;|)
+       (and *abell (abell-symbol symbol))
+       (cond (*only-outline (output-outline symbol))
+	     (t (mapc 'box-out (get symbol 'boxlist))
+		(mapc 'part-out (get symbol 'parts))	;instance parts?
+		(comments-out symbol)))
+       (terpri)
+       (princ '|Definition Finished;|)
+       (tyo 12.))
+
+(defun box-out (box)
+       (let ((layer (cadr box)) (pt1 (caddr box)) (pt2 (cadddr box)))
+	    (terpri)
+	    (princ '|Layer |)
+	    (let ((c (get layer 'cifname)))
+		 (if c (princ c) (error '|Undefined Layer| box)))
+	    (princ '|; |)
+	    (let ((minx (min (x-of pt1) (x-of pt2)))
+		  (maxx (max (x-of pt1) (x-of pt2)))
+		  (miny (min (y-of pt1) (y-of pt2)))
+		  (maxy (max (y-of pt1) (y-of pt2))))
+		 (princ '|Box Length |)
+		 (princ (scale (- maxx minx)))
+		 (princ '| Width |)
+		 (princ (scale (- maxy miny)))
+		 (princ '| Center |)
+		 (princ (scale (average minx maxx)))
+		 (princ '|, |)
+		 (princ (scale (average miny maxy)))
+		 (princ '|;|))))
+
+(defun average (x y) (quotient (plus x y) 2.0))
+
+(defun scale (x) (fix (plus .5 (times x 2.0))))
+
+(defprop diff ND cifname)
+(defprop poly NP cifname)
+(defprop cuts NC cifname)
+(defprop metal NM cifname)
+(defprop implant NI cifname)
+
+(defprop outline NX cifname)
+
+(defun part-out (part)
+       (cond ((get part 'prototype) (instance-out part))
+	     (t						;better be a wire!
+	      (let ((xfrm (get part 'transform)))
+		   (mapc '(lambda (box)
+			     (box-out
+			      `(box ,(second box)
+				    ,(transform (third box) xfrm)
+				    ,(transform (fourth box) xfrm))))
+			 (get part 'boxlist)))
+	      (if (get part 'parts) (error '|Complex non-prototype| part)))))
+
+
+(defun instance-out (instance)
+       (let ((proto (get instance 'prototype)))
+	    (let ((num (get proto 'cifsymnum)))
+		 (if num
+		     (progn (terpri)
+			    (princ '|Call symbol |)
+			    (princ num)
+			    (transform-out (get instance 'transform))
+			    (princ '|; |)
+			    (terpri)
+			    (princ `(Type: ,(get (get instance 'prototype) 'type)
+						 Instance: ,instance))
+			    (princ '|;|))
+		     (error '|Undefined Instance| instance)))))
+
+(setq *unit-x (pt 1 0))
+
+(defun transform-out (transform)
+       (let ((rxx (rxx transform)) (ryy (ryy transform))
+	     (ryx (ryx transform)) (rxy (rxy transform)))
+	    (let ((det (- (* rxx ryy) (* ryx rxy))))
+		 (if (minusp det)
+		     (progn (princ '| Mirrored in X|)
+			    (setq rxx (- 0 rxx))
+			    (setq ryx (- 0 ryx)))))
+	    (let ((rot (transform *unit-x (xfrm rxx ryx rxy ryy 0 0))))
+		 (if (not (equal rot *unit-x))
+		     (progn (princ '| Rotated to |)
+			    (princ (x-of rot))
+			    (princ '|, |)
+			    (princ (y-of rot))))))
+       (if (not (and (zerop (xx transform)) (zerop (yy transform))))
+	   (progn (princ '| then Translated to |)
+		  (princ (scale (xx transform)))
+		  (princ '|, |)
+		  (princ (scale (yy transform))))))
+
+(defun comments-out (symbol)
+   (do ((l (plist symbol) (cddr l))) ((null l))
+       (if (null (cdr l)) (error '|Improper plist| symbol))
+       (caseq (car l)
+	      ((boxlist type parts parent cifsymnum))
+	      (name
+	       (terpri)
+	       (princ (cons 'Instances: (mapcar 'cdr (cadr l))))
+	       (princ '|;|))	      
+	      (t (terpri) (princ '|(|)
+		 (princ (car l)) (princ '|: |) (prin1 (cadr l))
+		 (princ '|)|) (princ '|;|)))))
+
+(defun abell-symbol (symbol)
+       (terpri)
+       (princ '|9 |)
+       (princ (abell-name symbol))
+       (princ '|;|)
+       (do ((l (plist symbol) (cddr l))) ((null l))
+	  (and (pt? (cadr l))
+	       (progn (terpri)
+		      (princ '|8 |)
+		      (princ (scale (x-of (cadr l))))
+		      (princ '| |)
+		      (princ (scale (y-of (cadr l))))
+		      (princ '|;|)))))
+
+
+(defun output-outline (symbol)
+       (box-out (boundary symbol)))
+
+(defun abell-name (symbol)
+       (let ((n (sym-position symbol (get (get symbol 'type) 'expansions))))
+	    (if (= n 1) (get symbol 'type) (concat (get symbol 'type) '- n))))
+
+(defun sym-position (sym l)
+       (cond ((null l) (break |losey-losey|))
+	     ((eq sym (cdar l)) 1)
+	     (t (+ 1 (sym-position sym (cdr l))))))

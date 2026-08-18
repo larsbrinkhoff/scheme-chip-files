@@ -1,0 +1,58 @@
+;;; -*- mode: LISP; base: 10. -*-
+
+;;; Translating memory dumps
+
+(defun convert-list (list)
+  (do ((pow (^ 2 (1- (length list))) (// pow 2))
+       (ll list (cdr ll))
+       (ans 0 (if (= (car ll) 1) (+ ans pow) ans)))
+      ((null ll) ans)))
+
+;;; addresses have mnums, top-data, bot-data, and cdr-bit
+(defun a-mnum (val) (load-byte val 25 5))
+(defun a-dtop (val) (load-byte val 20 5))
+(defun a-dbot (val) (load-byte val 1 19))
+(defun a-cdbt (val) (load-byte val 0 1))
+
+;;; pointers have types, mnums, top-data and bot-data
+(defun p-type (val) (load-byte val 29 7))
+(defun p-mnum (val) (load-byte val 24 5))
+(defun p-dtop (val) (load-byte val 19 5))
+(defun p-dbot (val) (load-byte val 0 19))
+
+(defun mdtran (file buffer-name)
+  (let ((ostream (zwei:make-output-buffer buffer-name))
+	(istream (open file ':read))
+	oblist data adr val)
+    (unwind-protect
+      (progn
+	(format ostream ";;; -*- mode: LISP -*-~2%")
+	(format ostream ";;; MDTRAN of ~A~&;;; Produced " file)
+	(time:print-current-date ostream)
+	(read istream)
+	(read istream)
+	(read istream)
+	(format ostream "~2%;;; OBLIST~%(")
+	(setq oblist (read istream))
+	(dolist (ob oblist)
+	  (format ostream "~% (~A ~D)"
+		  (car ob) (convert-list (cadr ob))))
+	(format ostream ")~2%")
+	(format ostream ";;; MEMORY-CONTENTS~%")
+	(:forever
+	 (if (eq (setq data (read istream 'eof)) 'eof)
+	     (return t))
+	 (setq adr (convert-list (car data))
+	       val (convert-list (cadr data)))
+	 (format ostream "~%((~D ~D ~D ~D) (~D ~D ~D ~D))"
+		 (a-mnum adr)
+		 (a-dtop adr)
+		 (a-dbot adr)
+		 (a-cdbt adr)
+		 (p-type val)
+		 (p-mnum val)
+		 (p-dtop val)
+		 (p-dbot val))))
+      (close istream)
+      (close ostream))
+    'done))

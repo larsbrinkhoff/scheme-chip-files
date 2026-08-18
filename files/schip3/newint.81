@@ -1,0 +1,505 @@
+;;; -*-LISP-*-
+;;; SCHEME Microcode by GJS, HANSON, GLS, JAR, H, TK, NLM.
+
+(defpc boot-load
+  (reset env)
+  (reset cont)
+  (reset thargs)
+  (assign-extra-type cont done)
+  (save cont)
+  (assign exp (get-input))
+  (assign intvector (right (fetch exp)))
+  (goto execute-left-exp))
+
+(defdispatch done (extra-type-cont pointer)
+   (goto done))
+
+
+;;; Constants.
+
+(defdispatch (symbol character-string list array) (type-exp pointer)
+  (assign val (fetch exp))
+  (goto pop-return))
+
+(defdispatch *nil (type-exp non-pointer)
+  (assign val (make-pointer *nil 0))
+  (goto pop-return))
+
+(defdispatch *t (type-exp non-pointer)
+  (assign val (make-pointer *t 0))
+  (goto pop-return))
+
+(defdispatch (fixnum character unbound) (type-exp non-pointer)
+  (assign val (fetch exp))
+  (goto pop-return))
+
+(defdispatch procedure (type-exp pointer)
+  (assign val
+	  (make-pointer closure
+			(pcons (fetch exp)
+			       (fetch env))))
+  (goto pop-return))
+
+
+
+;;; Variable Reference and Assignment
+
+
+;;; Global variables.
+
+(defdispatch global (type-exp pointer)
+  (assign val (left (fetch exp)))
+  (goto pop-return))
+
+(defdispatch set-global (type-exp pointer)
+  (set-left (fetch exp) (fetch val))
+  (goto pop-return))
+
+(defdispatch unbound-global? (type-exp pointer)
+  (assign val (left (fetch exp)))
+  (if (istype? (fetch val) unbound) (goto *t) (goto *nil)))
+
+(defdispatch makunbound-global (type-exp pointer)
+  (set-left (fetch exp) (make-pointer unbound 0))
+  (goto *nil))
+
+;;; Local (lexically-scoped) variables.
+
+(defdispatch local (type-exp non-pointer)
+	     (ucall lookup-exp micropc local-return))
+
+(defdispatch local-return lookup-return
+  (assign val (fetch vcell))
+  (goto pop-return))
+
+
+(defdispatch set-car-local (type-exp non-pointer)
+	     (ucall lookup-exp micropc set-car-local-return))
+
+(defdispatch set-car-local-return lookup-return
+  (set-left (fetch vcell) (fetch val))
+  (goto pop-return))
+
+
+(defdispatch set-cdr-local (type-exp non-pointer)
+	     (ucall lookup-exp micropc set-cdr-local-return))
+
+(defdispatch set-cdr-local-return lookup-return
+  (set-right (fetch vcell) (fetch val))
+  (goto pop-return))
+
+(defdispatch unbound-local? (type-exp non-pointer)
+	     (ucall lookup-exp micropc unbound-local-return))
+
+(defdispatch unbound-local-return lookup-return
+  (if (istype? (fetch vcell) unbound) (goto *t) (goto *nil)))
+
+
+(defdispatch makunbound-car-local (type-exp non-pointer)
+	     (ucall lookup-exp micropc makunbound-car-local-return))
+
+(defdispatch makunbound-car-local-return lookup-return
+  (set-left (fetch vcell) (make-pointer unbound 0))
+  (goto *nil))
+
+
+(defdispatch makunbound-cdr-local (type-exp non-pointer)
+	     (ucall lookup-exp micropc makunbound-cdr-local-return))
+
+(defdispatch makunbound-cdr-local-return lookup-return
+  (set-right (fetch vcell) (make-pointer unbound 0))
+  (goto *nil))
+
+
+;;; Environment searching routines.
+
+;;; Allows destructuring LET, side effects on env, rest args, etc.
+;;; This guy ought to check for an unbound marker?
+
+(defpc lookup-exp
+       (assign vcell (fetch env))
+       (goto general-car-cdr))
+
+;;; Does a general car-cdr operation on VCELL according
+;;; to the encoding in datum field of EXP.
+
+(defpc general-car-cdr
+       (if (exp=0-except-low-bit?)
+	   (dispatch micropc lookup-return)
+	   (block (if (exp-low-bit-set?)
+		      (assign vcell (left (fetch vcell)))
+		      (assign vcell (right (fetch vcell))))
+		  (rightshift-exp)
+		  (goto general-car-cdr))))
+
+;;; conditionals
+
+(defdispatch conditional (type-exp pointer)
+  (if (istype? (fetch val) *nil)
+      (goto execute-right-exp)
+      (goto execute-left-exp)))
+
+;;; sequences
+
+(defdispatch sequence (type-exp pointer)
+  (assign-extra-type cont sequence-return)
+  (goto sequence-send))
+
+;;; combinations.
+
+(defdispatch first-argument (type-exp pointer)
+  (assign-extra-type cont first-argument-return)
+  (goto sequence-send))
+
+(defdispatch first-argument-return (extra-type-cont pointer)
+  (assign thargs (pncons (fetch val)))
+  (goto sequence-return))
+
+(defdispatch next-argument (type-exp pointer)
+  (save thargs)
+  (assign-extra-type cont next-argument-return)
+  (goto sequence-send))
+
+(defdispatch next-argument-return (extra-type-cont pointer)
+  (restore thargs)
+  (assign thargs (pcons (fetch val) (fetch thargs)))
+  (goto sequence-return))
+
+(defdispatch last-argument (type-exp pointer)
+  (save thargs)
+  (assign-extra-type cont last-argument-return)
+  (goto sequence-send))
+
+(defdispatch last-argument-return (extra-type-cont pointer)
+  (assign exp (fetch cont))
+  (restore thargs)
+  (assign cont (pcons (fetch val) (fetch thargs)))	;will save anyway!
+  (goto execute-function))
+
+(defdispatch apply-1-arg (type-exp pointer)
+  (assign-extra-type cont apply-1-arg-return)
+  (goto sequence-send))
+
+(defdispatch apply-1-arg-return (extra-type-cont pointer)
+  (assign exp (fetch cont))
+  (assign cont (pncons (fetch val)))			;may as well
+  (goto execute-function))
+
+(defdispatch apply-no-args (type-exp pointer)
+  (assign-extra-type cont internal-apply-no-args)
+  (save cont)
+  (goto execute-left-exp))
+
+(defdispatch spread-argument (type-exp pointer)		;can remove this, leaving
+  (assign-extra-type cont spread-argument-return)	; spread-partial-argument, 
+  (goto sequence-send))					; at some cost
+
+(defdispatch spread-argument-return (extra-type-cont pointer)
+  (assign thargs (fetch val))
+  (goto execute-function))
+
+(defdispatch spread-partial-argument (type-exp pointer)
+  (assign-extra-type cont spread-partial-argument-return)
+  (goto sequence-send))
+
+(defdispatch spread-partial-argument-return (extra-type-cont pointer)
+  (assign thargs (fetch val))
+  (goto sequence-return))
+
+;;; combination support procedures
+
+(defdispatch execute-function (extra-type-cont pointer)
+  (assign-extra-type cont internal-apply)		;cont has thargs!
+  (save cont)
+  (restore env)
+  (goto execute-exp))
+
+(defdispatch internal-apply (extra-type-cont pointer)
+  (assign thargs (fetch cont))				;undoing confusion
+  (goto internal-apply-1))
+
+(defdispatch internal-apply-no-args (extra-type-cont pointer)
+  (assign thargs (make-pointer *nil 0))
+  (goto internal-apply-1))
+
+(defdispatch internal-apply-1 (type-exp non-pointer)
+  (if (valid-function? (fetch val))
+      (dispatch val type-val)
+      (ucall signal-error-interrupt micropc internal-apply-1)))
+
+;;; All procedures are either 1 or 2 arg primitive operators (see next page) or
+;;;  they are closures, control points or interrupt points.
+
+(defdispatch closure (type-val pointer)
+  (assign env (pcons (fetch thargs) (right (fetch val))))
+  (assign exp (left (left (fetch val))))
+  (goto execute-exp))
+
+
+;;; SCODE Control Structures.
+
+(defpc sequence-send
+  (duplicate env)
+  (goto save-right-eval-left-exp))
+
+(defpc save-right-eval-left-exp
+  (assign cont (right (fetch exp)))
+  (save cont)
+  (goto execute-left-exp))
+
+(defdispatch sequence-return (extra-type-cont pointer)
+  (restore env)
+  (goto execute-cont))
+
+(defdispatch execute-cont (extra-type-cont pointer)
+  (assign exp (fetch cont))
+  (goto execute-exp))
+
+(defpc execute-left-exp
+  (assign exp (left (fetch exp)))
+  (goto execute-exp))
+
+(defpc execute-right-exp
+  (assign exp (right (fetch exp)))
+  (goto execute-exp))
+
+(defpc execute-exp
+  (if (interrupt?)				;interrupt pending and none in progress now
+      (goto process-interrupt)
+      (dispatch exp type-exp)))
+
+(defpc pop-return
+  (restore cont)
+  (goto pop-return-1))
+
+(defdispatch pop-return-1 (type-exp non-pointer)
+  (if (istype? (fetch val) unbound)
+      (ucall signal-error-interrupt micropc pop-return-1)
+      (dispatch-extra-type cont extra-type-cont)))
+
+;;; zero-arg primitives
+
+(defdispatch primitive-array-cons-immediate (type-exp non-pointer)
+  (assign val (array-cons (make-pointer fixnum (fetch exp))))
+  (goto pop-return))
+
+(defdispatch garbage-collect (type-exp non-pointer)
+	     (ucall make-control-point micropc garbage-collect-1))
+
+(defdispatch garbage-collect-1 make-control-point-return
+	     (assert-gc-in-progress)
+	     (assign val (relocate (pcons (fetch val) (fetch intvector))))
+	     (drop-gc-in-progress)
+	     (await-not-gc-in-progress?)
+	     (assign intvector (right (fetch val)))
+	     (assign val (left (fetch val)))
+	     (assign exp (make-pointer *nil 0))
+	     (goto control-point-1))
+
+(defdispatch allow-interrupts (type-exp non-pointer)
+	     (drop-interrupt-in-progress)
+	     (goto *nil))
+
+;;; one-arg primitives.
+
+(defdispatch primitive-apply-1 (type-exp pointer)
+  (assign-extra-type cont execute-cont)
+  (goto save-right-eval-left-exp))
+
+(defdispatch primitive-car (type-exp non-pointer)
+  (assign val (left (fetch val)))
+  (goto pop-return))
+
+(defdispatch primitive-cdr (type-exp non-pointer)
+  (assign val (right (fetch val)))
+  (goto pop-return))
+
+(defdispatch primitive-general-car-cdr (type-exp non-pointer)
+  (assign vcell (fetch val))
+  (ucall general-car-cdr micropc primitive-general-car-cdr-return))
+
+(defdispatch primitive-general-car-cdr-return lookup-return
+  (assign val (fetch vcell))
+  (goto pop-return))
+
+(defdispatch primitive-array-cons (type-exp non-pointer)
+  (assign val (array-cons (fetch val)))
+  (goto pop-return))
+
+(defdispatch primitive-array-ref-immediate (type-exp non-pointer)
+  (assign val (array-ref (fetch val) (make-pointer fixnum (fetch exp))))
+  (goto pop-return))
+
+(defdispatch primitive-type (type-exp non-pointer)
+  (assign val (make-pointer fixnum (type-to-address (fetch val))))
+  (goto pop-return))
+
+(defdispatch primitive-pointer-type? (type-exp non-pointer)
+  (if (pointer? (fetch val)) (goto *t) (goto *nil)))
+
+(defdispatch primitive-lsh-0 (type-exp non-pointer)
+  (leftshift-val-0)
+  (goto pop-return))
+
+(defdispatch primitive-lsh-1 (type-exp non-pointer)
+  (leftshift-val-1)
+  (goto pop-return))
+
+(defdispatch primitive-zerop (type-exp non-pointer)
+  (if (val-address=0?) (goto *t) (goto *nil)))
+
+(defdispatch primitive-sub1 (type-exp non-pointer)
+  (decrement-val)
+  (goto pop-return))
+
+(defdispatch primitive-add1 (type-exp non-pointer)
+  (increment-val)
+  (goto pop-return))
+
+;;; Two-arg Primitives.
+
+(defdispatch primitive-apply-2 (type-exp pointer)
+  (assign thargs (fetch val))
+  (goto primitive-apply-N))
+
+(defdispatch primitive-apply-N (type-exp pointer)
+  (assign-extra-type cont primitive-apply-N-return)
+  (save thargs)
+  (goto save-right-eval-left-exp))
+
+(defdispatch primitive-apply-N-return (extra-type-cont pointer)
+  (restore thargs)
+  (goto execute-cont))
+
+(defdispatch primitive-cons (type-exp non-pointer)
+  (assign val (pcons (fetch val) (fetch thargs)))
+  (goto pop-return))
+
+(defdispatch primitive-eq (type-exp non-pointer)
+  (if (val=thargs?) (goto *t) (goto *nil)))
+
+(defdispatch primitive-rplaca (type-exp non-pointer)
+  (set-left (fetch val) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-rplacd (type-exp non-pointer)
+  (set-right (fetch val) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-general-rplaca (type-exp non-pointer)
+  (assign vcell (fetch val))
+  (ucall general-car-cdr micropc primitive-general-rplaca-return))
+
+(defdispatch primitive-general-rplaca-return lookup-return
+  (set-left (fetch vcell) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-general-rplacd (type-exp non-pointer)
+  (assign vcell (fetch val))
+  (ucall general-car-cdr micropc primitive-general-rplacd-return))
+
+(defdispatch primitive-general-rplacd-return lookup-return
+  (set-right (fetch vcell) (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-set-type (type-exp non-pointer)
+  (set-type val (fetch thargs))
+  (goto pop-return))
+
+(defdispatch primitive-array-ref (type-exp non-pointer)
+  (assign val (array-ref (fetch val) (fetch thargs)))
+  (goto pop-return))
+
+(defdispatch primitive-array-set-immediate (type-exp non-pointer)
+  (array-set (fetch val)				;array pointer
+	     (make-pointer fixnum (fetch exp))		;index
+	     (fetch thargs))				;value to be stored.
+  (goto pop-return))
+
+(defdispatch primitive-array-set (type-exp non-pointer)
+  (array-set (fetch val)
+	     (left (fetch thargs))
+	     (left (right (fetch thargs))))
+  (goto pop-return))
+
+;;; Interpreter Control Functions
+
+(defdispatch get-control-point (type-exp pointer)
+  (ucall make-control-point micropc get-control-point-1))
+
+(defdispatch get-control-point-1 make-control-point-return
+  (goto sequence))
+
+(defpc make-control-point
+	(assign val
+		(make-pointer control-point
+			      (pcons (get-state cont)
+				     (pcons (get-state env)
+					    (get-state thargs)))))
+	(dispatch micropc make-control-point-return))
+
+(defdispatch control-point (type-val pointer)
+	     (assign exp (left (fetch thargs)))
+	     (goto control-point-1))
+
+(defpc control-point-1
+       (ucall restore-control-point micropc control-point-2))
+
+(defdispatch control-point-2 restore-control-point-return
+	     (assign val (fetch exp))
+	     (goto pop-return))
+
+(defpc restore-control-point
+       (set-state cont (left (fetch val)))
+       (assign vcell (right (fetch val)))
+       (set-state env (left (fetch vcell)))
+       (set-state thargs (right (fetch vcell)))
+       (dispatch micropc restore-control-point-return))
+
+;;; interrupt points
+
+(defpc process-interrupt
+       (assert-interrupt-in-progress)
+       (save cont)
+       (assign-extra-type cont interrupt-restore)
+       (save env)
+       (assign env (fetch val))				;(save val)
+       (save env)
+       (assign env (fetch exp))				;(save exp)
+       (ucall make-control-point micropc process-interrupt-1))
+
+(defdispatch process-interrupt-1 make-control-point-return
+       (reset cont)
+       (reset env)
+       (reset thargs)
+       (assign exp (array-ref (fetch intvector) (get-input)))
+       (assign thargs (fetch val))
+       (assign-extra-type cont done)
+       (goto execute-exp))
+
+(defdispatch interrupt-restore (type-exp pointer)
+	     (ucall restore-control-point micropc interrupt-restore-1))
+
+(defdispatch interrupt-restore-1 restore-control-point-return
+	(assign exp (fetch env))
+	(restore env)					;(restore val)
+	(assign val (fetch env))
+	(restore env)
+	(restore cont)
+	(goto execute-exp))
+
+(defpc signal-error-interrupt
+       (save cont)
+       (assign cont (make-pointer (fetch micropc) 0))
+       (assign-extra-type cont signal-error-interrupt-return)
+       (ucall make-control-point micropc signal-error-interrupt-1))
+
+(defdispatch signal-error-interrupt-1 make-control-point-return
+       (assign thargs (fetch val))
+       (assign val (array-ref (fetch intvector) (make-pointer fixnum 0)))
+       (goto internal-apply-1))
+
+(defdispatch signal-error-interrupt-return (extra-type-cont pointer)
+	     (assign exp (fetch cont))
+	     (restore cont)
+	     (goto execute-exp))

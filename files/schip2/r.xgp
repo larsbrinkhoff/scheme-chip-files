@@ -1,0 +1,205 @@
+;kset schip2;stip20 kst
+;VSP 0
+;FFCUT 1
+;LFTMAR 50
+;SKIP 1
+HH  J####FD HH  IO##OIHH        HH   DD  IIMMIIHH DDDBBBBBJJBF##FBJJBBBBBBBBFFFF
+HH  JJNFFFD HH  AG##GAHH        HH   DD  IIMMIIHH DDDBBBBBJJBF##FBJJBBBBBBBBFFFF
+HH       DD HH  AG##GAHH        HH   DD  IIMMIIHH DDD     HH FFFF HH        DDDD
+HH       DD HH DDFFFF HH        HH  FFFF IIMMIIHH DDD     HH      HH            
+HH       DD HH DDDDDD HH        HH  F##F AAEEAIHH DDD     HH      HH            
+JJBBJJJJ DD HH DDDDDD HH        HH  F##F AAGGGOJJ DDD     HH      HH         JJJ
+JJBBJ##J DD HH DDD    HH        HH  N##N   F####JBFFFBBBBBJJBBBBBBJJBBBBBBBBBJ##
+JJBBJ##J DD HHHLLLHH  HH        HH  J##J   F####JJNNNJJBBBJJBBBBBBJJBBBBBBBBBJ##
+JJBBJJJJ DD HHHLLLHH  HH        HH  JJJJ   FFFNJJJNNNJJBBBJJBBBBBBJJBBBBBBBBBJJJ
+HH   HH  DD HH DDD    HH        HH    HH   DDDD   DDD     HH      HH            
+LLDDDLLDDDD HH DDD    HH        HH    HH   DDDD   DDD     HH      HH            
+LLDDDLLDDDD HH DDD    HH        HH    HHHHHLLLLHH DDD     HH      HH            
+NNFFFNNFFFFBJJBFFFFFFBJJBBBBBBBBJJBBBBJJJJJNNNNJJBFFFFFFBBJJBBBBBBJJBBBBBBBBBBBB
+NNFFFNNFFFFBJJBF####FBJJBBBBBBBBJJBBBBBBBBBFFFFBBBF####FBBJJBBBBBBJJBBBBBBBBBBBB
+JJBBBJJBBBBBJJBF####FBJJBBBBBBBBJJBBBBBBBBBFFFFFFFF####FBBJJBBBBBBJJBBBBBBBBBBBB
+JJBBBJJBBBBBJJBFFFFFFBJJBBBBBBBBJJBBBBBBBBBFFFFFFFFFFFFFBBJJBBBBBBJJBBBBBBBBBBBB
+            HH        HH        HH                        HH      HH            
+            HH        HH        HH                        HH      HH            
+HHHHHHHHHHHHHH        HH                                                        
+HHHHHHHHHHHHHH        HH                                                        
+                      HH                                                    DDDD
+                      HH                                                    DDDD
+HHHHHHHHHHHHHHHHHHHHHHHH                                                    DD  
+HHHHHHHHHHHHHHHHHHHHHHHH                                                    DD  
+HH                                                                          DD  
+JJBBBBBBBBBBBBFFFFFFBBBB                                             BBBBBBBFFBB
+JJBBBBBBBFFFFFF####FBBBB                                             BBBBBBBFFBB
+JJBBBBBCCGGGGFF####FBBBB                                             BBBBBBBFFBB
+JJBBBBBCCGGCCBFFFFFFBBBB                                             BBBBBBBFFBB
+HH     IIMMII     DD                                                        DD  
+HH     IIMMII     DD                                                        DD  
+HH     IIMMII     DD                                                        DD  
+JJBBBBBKKOOKKBBBBBFFBBBB                                             FFFF   DDDD
+JJBBBBBKKOOKKBBBBBFFBBBB                                             F##FBJJNNNN
+JJBBJJJKKOOKKJBBBBFFBBBB                                             F##FBJJNNNN
+HH  HHHIIMMIIH    DD  HH                                             FFFFBBBFFFF
+HH  HHHIIMMIIH    DD  HH                                                    DDDD
+HH  HHHAAEEAIH    DD  HH                                                    DDDD
+HH  JJNGGGEAIH    DD  HH                                                    DDDD
+HH  J####FD HH    DD  HH                                             BBBBBBBFFFF
+HH  J####FD HH    DD  HH                                             BBBBBBBFFFF
+HH  JJNFFFD HH        HH                                             BBBBBBBFFFF
+HH       DD HH        HH                                                    DDDD
+HH       DD HH DDDDDD HH                                                        
+HH       DD HH DDDDDD HH                                                        
+JJBBJJJJ DD HH DDDDDD HH                                                     JJJ
+JJBBJ##J DD HH DDD    HH                                             BBBBBBBBJ##
+JJBBJ##J DD HHHLLLHH  HH                                             BBBBBBBBJ##
+JJBBJJJJ DD HHHLLLHH  HH                                             BBBBBBBBJJJ
+HH   HH  DD HH DDD    HH                                                        
+LLDDDLLDDDD HH DDD    HH                                                        
+LLDDDLLDDDD HH DDD    HH                                                        
+NNFFFNNFFFFBJJBFFFFFFBJJ                                             BBBBBBBBBBB
+NNFFFNNFFFFBJJBF####FBJJ                                             BBBBBBBBBBB
+JJBBBJJBBBBBJJBF####FBJJ                                             BBBBBBBBBBB
+JJBBBJJBBBBBJJBFFFFFFBJJ                                             BBBBBBBBBBB
+            HH        HH                                                        
+            HH        HH                                                        
+HHHHHHHHHHHHHH        HH                                                        
+HHHHHHHHHHHHHH        HH                                                        
+                      HH                                                    DDDD
+                      HH                                                    DDDD
+HHHHHHHHHHHHHHHHHHHHHHHH                                                    DD  
+HHHHHHHHHHHHHHHHHHHHHHHH                                                    DD  
+HH                                                                          DD  
+JJBBBBBBBBBBBBFFFFFFBBBB                                             BBBBBBBFFBB
+JJBBBBBBBFFFFFF####FBBBB                                             BBBBBBBFFBB
+JJBBBBBCCGGGGFF####FBBBB                                             BBBBBBBFFBB
+JJBBBBBCCGGCCBFFFFFFBBBB                                             BBBBBBBFFBB
+HH     IIMMII     DD                                                        DD  
+HH     IIMMII     DD                                                        DD  
+HH     IIMMII     DD                                                        DD  
+JJBBBBBKKOOKKBBBBBFFBBBB                                             FFFF   DDDD
+JJBBBBBKKOOKKBBBBBFFBBBB                                             F##FBJJNNNN
+JJBBJJJKKOOKKJBBBBFFBBBB                                             F##FBJJNNNN
+HH  HHHIIMMIIH    DD  HH                                             FFFFBBBFFFF
+HH  HHHIIMMIIH    DD  HH                                                    DDDD
+HH  HHHAAEEAIH    DD  HH                                                    DDDD
+HH  JJNGGGEAIH    DD  HH                                                    DDDD
+HH  J####FD HH    DD  HH                                             BBBBBBBFFFF
+HH  J####FD HH    DD  HH                                             BBBBBBBFFFF
+HH  JJNFFFD HH        HH                                             BBBBBBBFFFF
+HH       DD HH        HH                                                    DDDD
+HH       DD HH DDDDDD HH                                                        
+HH       DD HH DDDDDD HH                                                        
+JJBBJJJJ DD HH DDDDDD HH                                                     JJJ
+JJBBJ##J DD HH DDD    HH                                             BBBBBBBBJ##
+JJBBJ##J DD HHHLLLHH  HH                                             BBBBBBBBJ##
+JJBBJJJJ DD HHHLLLHH  HH                                             BBBBBBBBJJJ
+HH   HH  DD HH DDD    HH                                                        
+LLDDDLLDDDD HH DDD    HH                                                        
+LLDDDLLDDDD HH DDD    HH                                                        
+NNFFFNNFFFFBJJBFFFFFFBJJ                                             BBBBBBBBBBB
+NNFFFNNFFFFBJJBF####FBJJ                                             BBBBBBBBBBB
+JJBBBJJBBBBBJJBF####FBJJ                                             BBBBBBBBBBB
+JJBBBJJBBBBBJJBFFFFFFBJJ                                             BBBBBBBBBBB
+            HH        HH                                                        
+            HH        HH                                                        
+            HH        HH  HHHHHHHH                        HH      HH            
+            HH        HH  HHHHHHHH                        HH      HH            
+            HH        HH  HH                              HH      HH            
+            HH        HH  HH                              HH      HH            
+            HH        HH  HH                              HH      HH            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+BBBBBBBBBBBBBBBBBBBBBBBB                                             FFFF       
+BBBBBBBBBBBBBBBBBBBBBBBB                                             F##FBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             F##FBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             FFFFBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+                                                                     BBBBBBBBBBB
+                                                                     BBBBBBBBBBB
+                                                                     BBBBBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                     BBBBBBBBBBB
+                                                                     BBBBBBBBBBB
+                                                                     BBBBBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+BBBBBBBBBBBBBBBBBBBBBBBB                                             FFFF       
+BBBBBBBBBBBBBBBBBBBBBBBB                                             F##FBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             F##FBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             FFFFBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+                                                                     BBBBBBBBBBB
+                                                                     BBBBBBBBBBB
+                                                                     BBBBBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                     BBBBBBBBBBB
+                                                                     BBBBBBBBBBB
+                                                                     BBBBBBBBBBB
+                                                                                
+                                                                                
+                                                                                
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBB                                             BBBBBBBBBBB
+                                                                                
+                                                                                
+                          HH    HH                        HH      HH            
+                          HH    HH                        HH      HH            
+                          HH    HH   DDDDDDDDDDDDDDDDDDDDDLLDDD   HH            
+                          HH    HH   DDDDDDDDDDDDDDDDDDDDDLLDDD   HH            
+                          HH    HH   DD                   HH DD   HH            
+                          HH    HH   DD                   HH DD   HH            
+                          HH    HH   DD                   HH DD   HH            
+BBBBBBBBBBBBBBBBBBBBBBBBBBJJBBBBJJBBBFFBBBFFFFFFFFFFFBBBBBJJBFFBBBJJBBBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBBBBJJBBBBJJBBBFFBBBF####FFGGGGCCBBBJJBFFBBBJJBBBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBBBBJJBBBBJJBBBFFBBBF####FBCCGGCCBBBJJBFFBBBJJBBBBBBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBBBBJJBBBBJJBBBFFBBBFFFFFFBKKOOKKJBBJJBFFBBBJJBBBBBBBBBBBB
+                          HH    HHHH DD    DD    IIMMIIH  HH DD   HH            
+                          HH    HHHH DD    DD    IIMMIIH  HH DD   HH            
+                          HH      HH DD    DD    IIMMIIH  HH DD   HH            
+BBBBBBBBBBBBBBBBBBBBBBBBBBJJBFFFFFNNFFFBBBBFFBBBBKKOOKKJBBJJBFFFFFNNFFFFF       
+BBBBBBBBBBBBBBBBBBBBBBBBBBJJBF##FFNNFFFBBBBFFBBBBCCGGCKJBBJJBFFFFFNNFF##FBBBBBBB
+BBBBBBBBBBBBBBBBBBBBBBBBBBJJBF##FFNNFFFBBCCGGCCBBCCGGCKJBBJJBFFFFFNNFF##FBBBBBBB

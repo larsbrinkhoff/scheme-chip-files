@@ -1,0 +1,53 @@
+;;; -*- mode:LISP; package:SCHIP -*-
+
+;;; Lispm hunk package
+
+;;; Simulate HUNKs on LM using ARRAYs.
+ 
+(defmacro makhunk (arg)
+  `(let ((z ,arg))
+     (cond ((listp z)
+	    (make-hunk-list z))
+	   (t (make-hunk-of-size z)))))
+
+(defmacro make-hunk-of-size (size)
+    `(make-array nil 'art-q ,size))
+  
+(defmacro make-hunk-list (z)
+    (prog (len fill temp)
+	  (cond ((fixp z) (setq len z)		
+		 (setq fill nil))		
+		(t (setq temp (cadr z))		
+		   (setq len (length temp))	
+		   (setq fill (append (last temp) (butlast temp)))))	
+	  (return
+	    `(funcall 'fillarray (make-array nil 'art-q ,len)	
+		      ',fill))))
+  
+(defmacro hunk args
+    `(let ((answer-hunk (make-hunk-of-size ',(length args))))
+       ,@(do ((al (append (last args) (butlast args)) (cdr al))
+	      (n 0 (+ n 1))
+	      (inits nil))
+	     ((null al)
+	      inits)
+	   (setq inits (cons `(aset ,(car al) answer-hunk ',n) inits)))
+       answer-hunk))
+  
+(defmacro cxr (n h)
+    `(aref ,h ,n))				
+  
+(defmacro rplacx (n h x)
+    `(aset ,x ,h ,n))				
+  
+(defmacro hunkp (h)
+    `(arrayp ,h))				
+  
+(defmacro hunksize (h)
+    `(array-length ,h))				;magic
+
+(defun sprinter (exp)			      
+    (grind-top-level exp))
+
+(defun sprin1 (form)
+    (grind-top-level form nil standard-output nil 'displaced nil))

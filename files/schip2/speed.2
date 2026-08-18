@@ -1,0 +1,55 @@
+       Estimating speed of the Grand Scheme of things
+
+	One of the the most critical timing paths on the chip occurs 
+during a Branch that tests the equality of a register to
+the bus.  For example the microinstruction in PRIMITIVE-EQ
+
+	((FROM *ARGS*) (BRANCH =BUS-VAL ...))
+
+The path is:
+	from PH1 
+	Regcell driver for FROM-ARGS
+	ARGS gated onto bus
+	bus compared with VAL, driving the BUS=VAL line
+	the condition selected by the BRANCH mux
+	the OR of the BRANCH mux and the NEXT LSB.
+	through the Micro PC switchyard
+	through the MICRO PLA (*)
+	through the NANO PLA (*)
+
+	(*)  The Micro PLA inputs are the last part of the
+	path that is gated by PH1, so some portion of the PLA
+	delays can be overlapped with PH2.
+
+	We will estimate each of the delay elements assuming
+a process similar to NSIL II.
+
+	The basic delay model is from Mead and Conway:
+
+	Gate Delay = kt * Cl/Cg
+	
+	where k is the pullup/pulldown ratio (usually 4)
+	      t is the transit time across the channel
+		(.2 - .4 ns depending upon the process)
+	      Cl is the load capacitance
+	      Cg is the gate capacitance
+
+	Some interesting parameters for the 2um lambda process are:
+	
+	Gate oxide capacitance		.5 fF/um**2
+	Diffusion capacitance		.015 fF/um**2  with substrate bias
+	Sidewall capacitance		.25 fF/um**2
+	Field capacitance		.05 fF/um**2
+	Poly sheet resistance		30 ohms/sq
+	Diffusion sheet resistance	25 ohms/sq
+	Metal sheet resistance		.05 ohms/sq
+
+	Assuming a 2um lambda, Cg for a minimum size gate is
+
+	16um**2 * .5fF/um**2  =	8 fF
+
+Regcell driver
+--------------
+
+	The driver ANDs the FROM-ARG output of the NANO PLA
+with PH1 and runs through a super buffer.

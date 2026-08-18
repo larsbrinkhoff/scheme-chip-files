@@ -1,0 +1,371 @@
+;;; -*- Mode:Lisp; Base:10.;package:layout; -*-
+
+;;; load if-for-maclisp etc. 
+;(DECLARE (COND ((STATUS FEATURE LISPM))			;Do nothing on LISP machine.
+;	       ((NULL (GET 'IF-FOR-MACLISP 'MACRO))
+;		(LOAD '(MACROS > DSK LISPM2))
+;		(LOAD '(DEFMAC FASL DSK LISPM2))
+;		(LOAD '(LMMAC > DSK LISPM2))
+;		(MACROS T)		  ;Send over the rest of the macros in this file
+;)))
+
+#+MACLISP (DEFMACRO IF-FOR-MACLISP (&REST FORMS)
+    (COND ((AND (NOT (STATUS FEATURE LISPM))		;IN MACLISP
+		(OR (NOT (BOUNDP 'COMPILING-FOR-LISPM))
+		    (NULL COMPILING-FOR-LISPM)))
+	   `(PROGN 'COMPILE . ,FORMS))))
+
+#+MACLISP (DEFMACRO IF-FOR-LISPM (&REST FORMS)
+    (COND ((OR (STATUS FEATURE LISPM)
+	       (AND (BOUNDP 'COMPILING-FOR-LISPM)
+		    COMPILING-FOR-LISPM))
+	   `(COMPILER-LET ((RUN-IN-MACLISP-SWITCH NIL))
+			  (PROGN 'COMPILE . ,FORMS)))))
+;Lisp-machine macros
+
+(if-for-lispm
+
+(defmacro caseq (&rest x) `(selectq . ,x))
+
+;  (let* ((a 3) (b a)) body) --> ((lambda (a) ((lambda (b) body) a)) 3)
+;  Maclisp has this already.
+
+(defun construct-let* (binding-forms body)
+   (cond ((null binding-forms)
+	  (cond ((null (cdr body)) (car body))
+		(t `(progn . ,body))))
+	 (t (construct-let*
+	     (cdr binding-forms)
+	     (cond
+	      ;;(let* (a b) x) --> ((lambda (a) ((lambda (b) x) nil)) nil)
+	      ((atom (car binding-forms))
+	       `(((lambda (,(car binding-forms)) . ,body) nil)))
+	      ;;(let* ((a) (b)) x) --> ((lambda (a) ((lambda (b) x) nil)) nil)
+	      ((null (cdar binding-forms))
+	       `(((lambda (,(caar binding-forms)) . ,body) nil)))
+	      ;;(let* ((a 3) (b 4)) x) --> ((lambda (a) ((lambda (b) x) 4)) 3)
+	      (t `(((lambda (,(caar binding-forms)) . ,body)
+		    ,(cadar binding-forms)))))))))
+
+(defmacro let* (binding-forms &rest body)
+   (do ((l binding-forms (cdr l))
+	vars
+	pairs)
+       ((null l) `(let ,vars (setq . ,(nreverse pairs)) . ,body))
+     (cond ((atom (car l))
+	    (setq vars (cons (car l) vars)
+		  pairs `(nil ,(car l) . ,pairs)))
+	   (t (setq vars (cons (caar l) vars)
+		    pairs `(,(cadar l) ,(caar l) . ,pairs))))))
+
+(comment
+(defmacro let* (binding-forms &rest body)
+	   (construct-let* (reverse binding-forms) body))
+)
+
+(defun mergef (f1 f2)
+    (si:file-unspread-path (si:file-merge-paths (make-path f1) (make-path f2))))
+
+(defun defaultf (f)
+    (si:file-unspread-path (si:file-default-path (make-path f))))
+
+(defun make-path (p)
+   (cond ((listp p)
+	  (mapcar #'(lambda (x) (if (eq x '*) nil (string x)))
+		  (list (and (listp (car p)) (cdar p) (caar p))
+			(and (listp (car p)) (if (cdar p) (cadar p)
+						 (caar p)))
+			(if (listp (car p)) (second p) (first p))
+			(if (listp (car p)) (third p) (second p)))))
+	 (t (si:file-spread-pathname p))))
+
+);if-for-lispm
+
+;;;macros
+(if-for-maclisp
+
+(EVAL-WHEN (EVAL COMPILE LOAD)
+;#Q <SEXP> or #q <SEXP> MAKES SEXP EXIST FOR LISPM VERSION
+;#M <SEXP> or #m <SEXP> MAKES SEXP EXIST FOR MACLISP VERSION
+
+;#+<FEATURE> <SEXP> makes <SEXP> exist if (STATUS FEATURE <FEATURE>) is T
+;#+(NOT <FEATURE>) <SEXP> makes <SEXP> exist if (STATUS FEATURE <FEATURE>) is NIL
+;#+(OR F1 F2 ...) <SEXP> makes <SEXP> exist of any one of F1,F2,... are in
+;			 the (STATUS FEATURES) list.
+;#+(AND F1 F2 ...) works similarly except all must be present in the list.
+;#-<FEATURE> <SEXP> is the same as #+(NOT <FEATURE>)
+;AND, OR, and NOT can be used recursively following #+ or #-.
+
+;## CH IS OLD WAY OF GETTING NUMERICAL CHARACTER CODES -- SPACE AFTER "##"
+;   IS NEEDED
+;#/CH IS NEW WAY OF GETTING NUMERICAL CHARACTER CODES
+;#\SYMBOL GETS NUMERICAL CHARACTER CODES FOR NON-PRINTING CHARACTERS
+;#' IS TO FUNCTION AS ' IS TO QUOTE
+;#, IS HAIRY EVALED CONSTANT FEATURE
+
+(SETSYNTAX '/# 'SPLICING '(LAMBDA ()
+  (PROG (TO-MODE IN-MODE CH FROB SHARP-ARG)
+	(SETQ SHARP-ARG 0)
+     MORE
+	(SETQ CH (TYI))
+	(COND ((MEMBER CH '(60 61 62 63 64 65 66 67 70 71))
+	       (SETQ SHARP-ARG (+ (* SHARP-ARG 10.) (- CH 60)))
+	       (GO MORE))
+	      ((MEMBER CH '(2 3 6))
+	       (SETQ SHARP-ARG (COND ((= CH 2) 1) ((= CH 3) 2) (T 6)))
+	       (GO MORE))
+	      ((OR (= CH 121)			;Q
+		   (= CH 161))			;q
+	       (SETQ TO-MODE 'LISPM))
+	      ((OR (= CH 115)		        ;M
+		   (= CH 155))			;m
+		(SETQ TO-MODE 'MACLISP))
+
+	      ((= CH 53)			;+
+	       (SETQ FROB (READ))
+	       (COND ((NOT (FEATURE-PRESENT FROB)) (READ)))
+	       (RETURN NIL))
+
+	      ((= CH 55)			;-
+	       (SETQ FROB (READ))
+	       (COND ((FEATURE-PRESENT FROB) (READ)))
+	       (RETURN NIL))
+
+	      ((= CH 43)			;#
+		(TYI)				;FLUSH FOLLOWING SPACE
+		(RETURN (LIST (TYI))))		;RETURN NUMERIC VALUE OF CHAR
+						;LIST BECAUSE SPLICING
+	      ((= CH 57)			;/
+	       (RETURN (LIST (+ (LSH SHARP-ARG 8) (TYI))))) ;RETURN NUMERIC VALUE OF CHAR
+						;LIST BECAUSE SPLICING
+	      ((= CH 47)			;'
+	       (RETURN (LIST (LIST 'FUNCTION (READ)))))
+	      ((= CH 54)			;,
+	       (RETURN (LIST (COND ((AND (BOUNDP 'QC-FILE-READ-IN-PROGRESS)
+					 QC-FILE-READ-IN-PROGRESS)
+				    (CONS '**EXECUTION-CONTEXT-EVAL** (READ)))
+				   (T (EVAL (READ)))))))
+	      ((= CH 134)			;\
+	       (SETQ FROB (READ))		;Get symbolic name of character
+	       (SETQ CH
+		     (CDR (ASSQ FROB
+				(COND ((AND (BOUNDP 'COMPILING-FOR-LISPM)
+					    COMPILING-FOR-LISPM)
+				       LISPM-SYMBOLIC-CHARACTER-NAMES)
+				      (T MACLISP-SYMBOLIC-CHARACTER-NAMES)))))
+	       (OR CH (ERROR '|Illegal character name in #\| FROB))
+	       (RETURN (LIST (+ (LSH SHARP-ARG 8) CH))))
+
+	      (T (ERROR '|bad character after #| (ASCII CH))))
+
+	(SETQ IN-MODE 
+	      (COND ((AND (BOUNDP 'COMPILING-FOR-LISPM) COMPILING-FOR-LISPM)
+		     'LISPM)
+		    (T 'MACLISP)))
+	(OR (EQ TO-MODE IN-MODE)
+	    (READ))
+	(RETURN NIL))))
+)
+
+(EVAL-WHEN (EVAL LOAD COMPILE)
+
+(SETQ MACLISP-SYMBOLIC-CHARACTER-NAMES
+      '((BS . 10) (BACKSPACE . 10)
+        (TAB . 11) (LF . 12) (LINEFEED . 12)
+	(FF . 14) (FORM . 14) (RETURN . 15) (CR . 15)
+	(ALT . 33) (ESC . 33)
+	(SP . 40) (SPACE . 40)
+	(RUBOUT . 177) (HELP . 4110)))
+
+(SETQ LISPM-SYMBOLIC-CHARACTER-NAMES
+      '( (BRK . 201) (BREAK . 201)
+	 (CLR . 202) (CLEAR . 202)
+	 (CALL . 203) (ESC . 204) (ESCAPE . 204)
+	 (BACK-NEXT . 205) (HELP . 206)
+	 (RUBOUT . 207) (BS . 210) (TAB . 211)
+	 (LF . 212) (LINE . 212) (LINEFEED . 212)
+	 (VT . 213) (FF . 214) (FORM . 214)
+	 (CR . 215) (RETURN . 215)
+	 (SP . 40) (SPACE . 40) (ALT . 33)
+	 (LAMBDA . 10) (GAMMA . 11) (DELTA . 12)
+	 (UPARROW . 13) (PLUS-MINUS . 14)
+	 (CIRCLE-PLUS . 15) (INTEGRAL . 177)
+	 (NULL . 200) (BACKSPACE . 210)
+	 (MOUSE-1-1 . 2000) (MOUSE-1-2 . 2010)
+	 (MOUSE-2-1 . 2001) (MOUSE-2-2 . 2011)
+	 (MOUSE-3-1 . 2002) (MOUSE-3-2 . 2012)))
+
+(DEFUN FEATURE-PRESENT (FEATURE)
+       (COND ((ATOM FEATURE)
+	      (COND ((NULL FEATURE) NIL)
+		    ((EQ FEATURE T) T)
+		    ((MEMQ FEATURE (STATUS FEATURES)) T)
+		    (T NIL)))
+	     ((EQ (CAR FEATURE) 'NOT)
+	      (NOT (FEATURE-PRESENT (CADR FEATURE))))
+	     ((EQ (CAR FEATURE) 'AND)
+	      (DO ((LIST (CDR FEATURE) (CDR LIST)))
+		  ((NULL LIST) T)
+		  (COND ((NOT (FEATURE-PRESENT (CAR LIST)))
+			 (RETURN NIL)))))
+	     ((EQ (CAR FEATURE) 'OR)
+	      (DO ((LIST (CDR FEATURE) (CDR LIST)))
+		  ((NULL LIST) NIL)
+		  (COND ((FEATURE-PRESENT (CAR LIST))
+			 (RETURN T)))))
+	     (T (ERROR '|unknown form after #+ or #-| FEATURE 'FAIL-ACT))))
+
+) ;;End of EVAL-WHEN
+
+(declare (macros t))
+(putprop 'debug '((dsk liblsp) debug fasl) 'autoload)
+
+(defmacro defvar (variable &optional initial-value)
+	  `(progn 'compile
+		  (declare (special ,variable))
+		  (or (boundp ',variable) (setq ,variable ,initial-value))))
+ (defmacro + args `(plus . ,args))		;sigh
+ (defmacro - args `(difference . ,args))
+ (defmacro * args `(times . ,args))
+ (defmacro // args `(quotient . ,args))
+ 
+ (defmacro >= args `(not (< . ,args)))
+ (defmacro / args `(not (< . ,args)))
+ (defmacro <= args `(not (> . ,args)))
+ (defmacro / args `(not (> . ,args)))
+ (defmacro neq args `(not (eq . ,args)))
+ (defmacro / args `(not (= . ,args)))
+ 
+ (macro first (x) (displace x `(car ,(cadr x))))
+ (macro second (x) (displace x `(cadr ,(cadr x)))) 
+ (macro third (x) (displace x `(caddr ,(cadr x)))) 
+ (macro fourth (x) (displace x `(cadddr ,(cadr x))))
+ (macro fifth (x) (displace x `(car (cddddr ,(cadr x)))))
+ (macro sixth (x) (displace x `(cadr (cddddr ,(cadr x)))))
+ (macro seventh (x) (displace x `(caddr (cddddr ,(cadr x)))))
+ 
+ (macro rest1 (x) (displace x `(cdr ,(cadr x))))
+ (macro rest2 (x) (displace x `(cddr ,(cadr x))))
+ (macro rest3 (x) (displace x `(cdddr ,(cadr x))))
+ (macro rest4 (x) (displace x `(cddddr ,(cadr x))))
+ 
+ (defmacro if (p c . a)
+   `(cond (,p ,c)
+	  (t . ,a)))
+ 
+ 
+ ;MAPC with a prog body instead of a function.  <form> evaluates to a list,
+ ;and <body> is executed with <var> bound to successive elements of the list.
+ (DEFMACRO DOLIST ((VAR FORM) &REST BODY)
+   (LET ((DUMMY (GENSYM))) 
+     `(DO ((,DUMMY ,FORM (CDR ,DUMMY))
+	   (,VAR))
+	  ((NULL ,DUMMY))
+	(SETQ ,VAR (CAR ,DUMMY))
+	. ,BODY)))
+ 
+ ;;;Repeat a number of times.  <form> evaluates to the number of times,
+ ;;;and <body> is executed with <var> bound to 0, 1, ...
+ (defmacro dotimes ((var form) &rest body)
+   (let ((dummy (gensym)))
+     `(do ((,var 0 (1+ ,var))
+	   (,dummy ,form))
+	  ((>= ,var ,dummy))
+	. ,body)))
+ 
+  
+  (defmacro logand (x y)
+     `(boole 1 ,x ,y))
+
+(DEFUN FIND-POSITION-IN-LIST (ITEM IN-LIST)
+    (DO ((L IN-LIST (CDR L))
+	 (C 0 (1+ C)))
+	((NULL L))
+      (AND (eq ITEM (CAR L)) (RETURN C))))
+
+;;; end of maclisp conditional
+)
+
+;Layout system macros
+
+(defmacro pt (x y) `(list* 'pt ,x ,y))
+(defmacro pt? (x) `(and (not (atom ,x)) (eq (car ,x) 'pt)))
+(defmacro x-of (x) `(cadr ,x))
+(defmacro y-of (y) `(cddr ,y))
+
+(defmacro the path
+   `(the-1 ',path))
+
+(defmacro the-pt path
+  `(the-pt-1 *instance* (reverse ',path)))
+
+(defmacro the-x path `(x-of (the-pt . ,path)))
+(defmacro the-y path `(y-of (the-pt . ,path)))
+
+(defmacro objectify stuff
+	  `(let ((new-object (make-object)))
+		(addprop *instance* new-object 'parts)
+		(putprop new-object *instance* 'parent)
+		(let ((*instance* new-object)
+		      (*boxlist* nil)
+		      (*genvar* 0))
+		     ,@stuff
+		     (and *boxlist* (putprop new-object *boxlist* 'boxlist))
+		     new-object)))
+
+
+;   (call* (proto . args) . xfrms)
+
+(defmacro call* (proto . xfrms)
+   (let ((fn (if (atom proto) proto (car proto)))
+	 (args (if (atom proto) nil `(list . ,(cdr proto))))
+	 (xlist (convert-xfrm-syntax xfrms)))
+	`(call ',fn ,args . ,xlist)))
+
+; (boxes {layer,(layer width)} starting-pt . transform-list) - creates string of boxes
+
+(defmacro boxes (layer pt . rest)
+   (let ((layer (if (atom layer) layer (car layer)))
+	 (width (if (atom layer) (get layer 'default-width) (cadr layer)))
+	 (path (decode-path-list rest)))
+	`(boxes-1 ',layer ,width ,pt . ,path)))
+
+; like (boxes ...) except objectifies the string of boxes
+
+(defmacro wire (layer pt . rest)
+   (let ((layer (if (atom layer) layer (car layer)))
+	 (width (if (atom layer) (get layer 'default-width) (cadr layer)))
+	 (path (decode-path-list rest)))
+	`(wire-1 ',layer ,width ,pt . ,path)))
+
+(defmacro contact (shape type pt)
+   (caseq shape
+      (S `(contact-1 ',type 2 2 ,pt))
+      (V `(contact-1 ',type 2 4 ,pt))
+      (H `(contact-1 ',type 4 2 ,pt))))
+
+(eval-when (load compile eval)
+(defun convert-xfrm-syntax (xfrms)
+    (and xfrms (caseq (caar xfrms)
+		      (TRANS					;TRANS pt
+		       `('TRANS ,(cadar xfrms) . ,(convert-xfrm-syntax (cdr xfrms))))
+		      (MIRROR
+		       `('MIRROR ',(cadar xfrms) . ,(convert-xfrm-syntax (cdr xfrms))))
+		      (ROT
+		       `('ROT (list ,(cadar xfrms) ,(caddar xfrms))
+			      . ,(convert-xfrm-syntax (cdr xfrms)))))))
+
+(defun decode-path-list (path)
+   (and path `(',(caar path) ,(if (eq (cadar path) '*) ''* (cadar path))
+			      . ,(decode-path-list (cdr path)))))
+)
+
+
+(declare (special *instance* *boxlist* *genvar*
+		  *X *Y *XY *origin *inf
+		  *poly-overhang* *diffusion-overhang*))
+
+
+(declare (*fexpr the-pt deflayout layout poly diff metal cuts implant)
+	 (*fexpr rightmost leftmost defflashes))
+(declare (*lexpr call boxes-1 concat))

@@ -1,0 +1,29 @@
+       Estimating speed of the Grand Scheme of things
+
+	One of the the most critical timing paths on the chip occurs 
+during a Branch that tests the equality of a register to
+the bus.  For example the microinstruction in PRIMITIVE-EQ
+
+	((FROM *ARGS*) (BRANCH =BUS-VAL ...))
+
+The path is:
+	from PH1 
+	Regcell driver for FROM-ARGS
+	ARGS gated onto bus
+	bus compared with VAL, driving the BUS=VAL line
+	the condition selected by the BRANCH mux
+	the OR of the BRANCH mux and the NEXT LSB.
+	through the Micro PC switchyard
+	through the MICRO PLA (*)
+	through the NANO PLA (*)
+
+	(*)  The Micro PLA inputs are the last part of the
+	path that is gated by PH1, so some portion of the PLA
+	delays can be overlapped with PH2.
+
+	We will estimate each of the delay elements assuming
+a process similar to NSIL II.
+
+Regcell driver
+--------------
+

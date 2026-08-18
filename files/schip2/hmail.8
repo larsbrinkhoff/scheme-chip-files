@@ -1,0 +1,69 @@
+
+H@MIT-AI 06/29/79 01:14:40
+To: GJS at MIT-AI, NLM at MIT-AI
+CC: H at MIT-AI
+I was thinking that there should be better primitives for referencing
+IO address than just &CAR and &RPLACA.  The trouble is that you
+can have an untyped pointer lying around and then get a GC which
+can get pretty confused.  Perhaps a (&read-as-type <type>|0 non-pointer|addr)
+which takes &car of addr, and does a &set-type as an atomic operation.
+
+For writes, it might be nice to have (&32-bit-write non-pointer|addr <?>|x <?>|y)
+which stores low-8-bits(x):pointer(y) into addr.  This requires the
+ability to move bits from the low part of some register into the type
+part of the bus.
+
+You could also have the inverse (&32-bit-read <type>|0 non-pointer|addr)
+which returns the contents of the location's high 8 bits, address as a
+CONS of two typed goodies.  (This requires the inverse data path capability).
+
+Also, have you thought of what is needed if you want to run more than one
+SCHIP communicating?  It seems to me that they will have to have
+completely disjoint heaps, because of the unfriendly nature of the GC mark,
+so that there is no way of passing objects other than numbers
+between the processors.  I suspect there is some way of replacing
+the top-level of a SCHIP with a PV type operation so that when a GC
+is needed, all SCHIPs place themselves on a queue waiting for all to
+become idle, and then the first guy that sees that everbody is waiting
+seizes a lock and does the GC.
+   
+H@MIT-AI 06/29/79 03:05:16
+To: GJS at MIT-AI
+CC: H at MIT-AI
+I added *val*=bus as a capability in SCHSIM.
+   
+H@MIT-AI 06/29/79 03:57:38
+To: GJS at MIT-AI
+CC: H at MIT-AI
+I changed SAV-CDR-AND-EVAL-CAR in SCHSIM to a defmicromacro.
+    
+H@MIT-AI 06/29/79 04:11:15
+To: GJS at MIT-AI
+CC: H at MIT-AI
+I changed SAVE and RESTORE from micromacros to macros because
+they are known as statements to the compiler (and compile into
+one micro-instruction!).
+
+H@MIT-AI 06/29/79 04:15:05
+To: GJS at MIT-AI
+CC: H at MIT-AI
+Repaired a typo - *VAL** in PRIMITIVE-TYPE!
+  
+H@MIT-AI 06/29/79 04:20:34
+To: GJS at MIT-AI, NLM at MIT-AI, H at MIT-AI
+Don't forget that the type of *SCAN-UP* (i.e. *NEWCELL*) has
+to be wired to GC-SPECIAL-TYPE.
+   
+H@MIT-AI 06/29/79 04:35:07
+To: GJS at MIT-AI, H at MIT-AI
+I htink that process interrupt should get a number from the
+interrupting device, not a pointer to a routine.  The
+number points to low core, where there is a table of
+interrupt rountines stored.  An extra &CAR at the
+end of process interrupt should do.
+ 
+H@MIT-AI 06/29/79 08:54:03
+To: GJS at MIT-AI, H at MIT-AI
+Software single stepping by external device.
+
+

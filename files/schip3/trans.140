@@ -1,0 +1,768 @@
+;;;  -*- mode: LISP; package: SCHIP -*-
+;;; Translator from SCHEME to SCODE list representation by HANSON
+;;;
+;;; After loading this file, typing
+;;;
+;;; (translate <exp>)
+;;;
+;;; where <exp> evaluates to the list representation of a SCHEME expression,
+;;; will return an expression suitable for input to the SCHEME SCODE interpreter.
+;;;
+
+(defun translate (x) (cvtss x nil))
+(defun cvtss (x env)
+  (cond ((null x) '())
+	((eq x 't) t)
+	((symbolp x) (lr x env))
+	((fixp x) x)
+	((magic? (car x)) (funcall (magic-function (car x)) x env))
+	((prim0? (car x)) (prim-value (car x)))
+	((prim1? (car x))
+	 `(primitive-apply-1 (cons-address ,(cvtss (cadr x) env)
+					   ,(prim-value (car x)))))
+
+	;reversal of args facilitates list* later
+	((prim2? (car x))
+	 `(sequence (cons-address ,(cvtss (caddr x) env)
+				  (primitive-apply-2 (cons-address ,(cvtss (cadr x) env)
+								   ,(prim-value (car x)))))))
+	((prim3? (car x))
+	 `(first-argument
+	    (cons-address ,(cvtss (cadddr x) env)
+		  (next-argument (cons-address ,(cvtss (caddr x) env)
+				       (primitive-apply-N (cons-address ,(cvtss (cadr x) env)
+								,(prim-value (car x)))))))))
+	((= (length x) 1)
+	 `(apply-no-args (cons-address ,(cvtss (car x) env) nil)))
+	((= (length x) 2)
+	 `(apply-1-arg (cons-address ,(cvtss (cadr x) env)
+				     ,(cvtss (car x) env))))
+
+	;this accounts for reversed arglists made on chip
+	(t (let ((revexp (reverse (cddr x))))
+		`(first-argument
+		  (cons-address ,(cvtss (car revexp) env)
+				,(cvt-comb (cdr revexp)
+					   env
+					   `(last-argument
+					     (cons-address ,(cvtss (cadr x) env)
+							   ,(cvtss (car x) env))))))))))
+
+(defun cvt-comb (x env tail)
+  (if (null x) tail
+      `(next-argument (cons-address ,(cvtss (car x) env)
+				    ,(cvt-comb (cdr x) env tail)))))
+
+;;;
+;;; Variable reference and side-effect
+;;;
+
+;;;
+;;; This macro makes these functions nice.  NORMAL-COND-FORM
+;;; also handles the SCHEME cases.
+;;;
+
+(eval-when (eval compile load)
+
+(defmacro cond* cond*-clauses
+  `(cond ,@(normal-cond-form cond*-clauses)))
+
+(defun normal-cond-form (clauses)
+  (cond ((null clauses) nil)
+	((memq (car clauses) '(let let* labels))
+	 `((t (,(car clauses) ,(cadr clauses)
+			     (cond ,@(normal-cond-form (cddr clauses)))))))
+	(t (cons (car clauses)
+		 (normal-cond-form (cdr clauses))))))
+
+)							;end cond* definition
+;;;
+;;; LR = Lexical Reference
+;;;
+
+(defun lr (symbol env)
+       (let ((chain (lr1 symbol env)))
+	    (cond ((not (null chain)) `(local ,chain ,symbol))
+		  (t `(global (global-address ,symbol))))))
+
+(defun lr1 (symbol env)
+       (cond* ((eq symbol env) 1)
+	      ((atom env) 'nil)
+	      let ((chain (lr1 symbol (car env))))
+	      ((not (null chain)) (+ (lsh chain 1) 1))
+	      let ((chain (lr1 symbol (cdr env))))
+	      ((not (null chain)) (lsh chain 1))
+	      (t 'nil)))
+
+;;;
+;;; SF = lexical Side-eFfect
+;;;
+
+(defun sf (symbol env)
+       (let ((chain (sf1 symbol env)))
+	    (cond ((not (null chain)) `(,(car chain) ,(cdr chain) ,symbol))
+		  (t `(set-global (global-address ,symbol))))))
+
+(defun mubq (symbol env)
+       (let ((chain (sf1 symbol env)))
+	    (cond ((not (null chain))
+		   `(,(cond ((eq (car chain) 'set-car-local)
+			     'makunbound-car-local)
+			    ((eq (cdr chain) 'set-cdr-local)
+			     'makunbound-cdr-local))
+		     ,(cdr chain)
+		     ,symbol))
+		  (t `(makunbound-global (global-address ,symbol))))))
+
+(defun sf1 (symbol env)
+       (cond* ((atom env) 'nil)
+	      ((eq symbol (car env)) '(set-car-local . 1))
+	      ((eq symbol (cdr env)) '(set-cdr-local . 1))
+	      let ((chain (sf1 symbol (car env))))
+	      ((not (null chain))
+	       (cons (car chain) (+ (lsh (cdr chain) 1) 1)))
+	      let ((chain (sf1 symbol (cdr env))))
+	      ((not (null chain))
+	       (cons (car chain) (lsh (cdr chain) 1)))
+	      (t 'nil)))
+
+;;;
+;;; Primitive operations
+;;;
+
+(defun prim0? (x)
+  (equal 0 (get x '*primitive-nargs*)))
+
+(defun prim1? (x)
+  (equal 1 (get x '*primitive-nargs*)))
+
+(defun prim2? (x)
+  (equal 2 (get x '*primitive-nargs*)))
+
+(defun prim3? (x)
+  (equal 3 (get x '*primitive-nargs*)))
+
+(defun prim-value (x)
+  (get x '*primitive-object*))
+
+(defmacro defprimitive (scheme-name scode-name nargs)
+  `(progn (defprop ,scheme-name
+		   (,scode-name)
+		   *primitive-object*)
+	  (defprop ,scheme-name
+		   ,nargs
+		   *primitive-nargs*)))
+
+(defprimitive car primitive-car 1)
+(defprimitive cdr primitive-cdr 1)
+(defprimitive general-car-cdr primitive-general-car-cdr 1)
+(defprimitive rplaca primitive-rplaca 2)
+(defprimitive rplacd primitive-rplacd 2)
+(defprimitive general-rplaca primitive-general-rplaca 2)
+(defprimitive general-rplacd primitive-general-rplacd 2)
+(defprimitive cons primitive-cons 2)
+(defprimitive eq primitive-eq 2)
+
+(defprimitive ptype primitive-type 1)
+(defprimitive set-type primitive-set-type 2)
+(defprimitive set-memtop primitive-set-memtop 1)
+(defprimitive set-free primitive-set-free 1)
+(defprimitive set-machine-number primitive-set-machine-number 1)
+(defprimitive garbage-collect primitive-garbage-collect 1)
+(defprimitive set-interrupt-enables set-interrupt-enables 1)
+(defprimitive halt halt 0)
+
+(defprimitive lsh-0 primitive-lsh-0 1)
+(defprimitive lsh-1 primitive-lsh-1 1)
+(defprimitive zerop primitive-zerop 1)
+(defprimitive sub1 primitive-sub1 1)
+(defprimitive 1- primitive-sub1 1)
+(defprimitive add1 primitive-add1 1)
+(defprimitive 1+ primitive-add1 1)
+(defprimitive zerop primitive-zerop 1)
+(defprimitive minusp primitive-minusp 1)
+(defprimitive minus primitive-minus 2)
+
+(defprimitive array-cons primitive-array-cons 2)
+(defprimitive array-ref-immediate primitive-array-ref-immediate 1)
+(defprimitive array-ref primitive-array-ref 2)
+(defprimitive array-set-immediate primitive-array-set-immediate 2)
+(defprimitive array-set primitive-array-set 3)
+(defprimitive array-size primitive-array-size 1)
+
+;;;
+;;; Magic Operations
+;;;
+
+(defmacro defmagic (name . body)
+  `(defprop ,name (lambda (exp env) ,@body) magic))
+
+(defun magic? (x) 
+  (and (symbolp x)
+       (not (null (get x 'magic)))))
+
+(defun magic-function (x) (get x 'magic))
+
+(defmagic aset `(sequence (cons-address ,(cvtss (caddr exp) env) ,(sf (cadadr exp) env))))
+
+(defmagic setq `(sequence (cons-address ,(cvtss (caddr exp) env) ,(sf (cadr exp) env))))
+
+(defmagic makunboundq (mubq (cadr exp) env))
+
+
+(defmagic if `(sequence (cons-address ,(cvtss (cadr exp) env)
+				      (conditional (cons-address ,(cvtss (caddr exp) env)
+								 ,(cvtss (cadddr exp) env))))))
+
+(defmagic block (block-iter (cdr exp) env))
+
+(defun block-iter (exp env)
+  (cond ((null (cdr exp)) (cvtss (car exp) env))
+	(t `(sequence (cons-address ,(cvtss (car exp) env)
+				    ,(block-iter (cdr exp) env))))))
+
+(defmagic get-control-point
+  `(get-control-point (cons-address ,(sf (cadr exp) env)
+				    ,(cvtss (blockify (cddr exp)) env))))
+
+(defmagic dynamic-wind
+  `(dynamic-wind (cons-address (list (cons-address ,(cvtss (cadr exp) env)
+						   ,(cvtss (cadddr exp) env)))
+			       ,(cvtss (caddr exp) env))))
+
+(defun blockify (x)
+       (cond ((null (cdr x)) (car x))
+	     (t (cons 'block x))))
+
+(defmagic lambda
+	  `(procedure (cons-address ,(enquote (cadr exp))
+				    ,(cvtss (blockify (cddr exp))
+					    (cons (cadr exp)
+						  (cons '*my-script*
+							env))))))
+
+(defmagic quote (enquote (cadr exp)))
+
+(defun enquote (x)
+  (cond ((null x) ())
+	((eq x 't) t)
+	((symbolp x)
+	 (cond ((get x '+INTERNAL-STRING-POINTER)
+		`(character-string (string-address ,x)))
+	       (t `(symbol (symbol-address ,x)))))
+	((fixp x) x)
+	((atom x) (error '|illegal data object -- ENQUOTE| x))
+	(t `(list (cons-address ,(enquote (car x)) ,(enquote (cdr x)))))))
+
+
+(defmagic define
+  (let ((the-binding (defambiguate (cdr exp))))
+       `(sequence
+	 (cons-address
+	  (sequence (cons-address ,(cvtss (cdr the-binding) env)
+				  ,(sf (car the-binding) env)))
+	  ,(enquote (cadr exp))))))
+
+(defun defambiguate (defn)
+       (cond ((null (cdr defn)) (cons (car defn) nil))	;crock for DEFINE
+	     ((not (atom (car defn)))
+	      (cons (caar defn) `(lambda ,(cdar defn) . ,(cdr defn))))
+	     ((null (cddr defn)) (cons (car defn) (cadr defn)))
+	     (t (cons (car defn) `(lambda ,(cadr defn) . ,(cddr defn))))))
+
+(defmagic scheme-apply `(spread-argument (cons-address ,(cvtss (cadr exp) env)
+						       ,(cvtss (caddr exp) env))))
+
+(defmagic list*
+  (let ((revargs (reverse (cdr exp))))
+       `(first-argument (cons-address ,(cvtss (cadr revargs) env)
+				      ,(cvt-comb (cddr revargs)
+						 env
+						 `(primitive-apply-2
+						   (cons-address ,(cvtss (car revargs) env)
+								 ,(prim-value 'cons))))))))
+
+;;;
+;;; Macro definitions
+;;;
+
+(defun schmac-macro (exp env)
+       (cvtss (funcall (get (car exp) 'amacro) exp) env))
+
+(defun macro-macro (exp env)
+       (cvtss `(scheme-apply ,(symeval (get (car exp) 'smacro)) ,(list exp)) env))       
+
+(declare (/@define schmac |scheme macro|) #M(macros t))
+
+(defun schmac macro (x)			;define SCHEME macro
+       ((lambda (newname)
+		`(progn 'compile
+			(defprop ,(cadr x) schmac-macro magic)
+			(defprop ,(cadr x) ,newname amacro)
+			(defun ,newname (*z*)
+			       ((lambda ,(do ((a (caddr x) (cdr a))
+					      (b nil (cons (car a) b)))
+					     ((or (null a)
+						  (eq (typep a) 'symbol))
+					      (cond ((null a) (nreverse b))
+						    (t (nreverse
+							(cons a b))))))
+					,(cadddr x))
+				,@(do ((a (caddr x) (cdr a))
+				       (b '(cdr *z*) `(cdr ,b))
+				       (c nil (cons `(car ,b) c)))
+				      (nil)
+				      (cond ((null a) (return (nreverse c)))
+					    ((eq (typep a) 'symbol)
+					     (return
+					      (nreverse (cons b c))))))))))
+	(implode (append (explodec (cadr x)) '(- a m a c r o)))))
+
+;;; The macro MACRO must itself be a SCHMAC, not a LISP macro, so that
+;;; it will have higher priority in the SCHEME interpreter than the MACRO macro
+;;; used in the LISP DEFMACRO package.
+
+(schmac macro (name vars body)
+       ((lambda (newname)
+		`(progn 'compile
+			(defprop ,name macro-macro magic)
+			(defprop ,name ,newname smacro)
+			(define ,newname (*z*)
+				((lambda ,(do ((a vars (cdr a))
+					       (b nil (cons (car a) b)))
+					      ((or (null a)
+						   (eq (typep a) 'symbol))
+					       (cond ((null a) (nreverse b))
+						     (t (nreverse
+							 (cons a b))))))
+					 ,body)
+				 ,@(do ((a vars (cdr a))
+					(b '(cdr *z*) `(cdr ,b))
+					(c nil (cons `(car ,b) c)))
+				       (nil)
+				       (cond ((null a) (return (nreverse c)))
+					     ((eq (typep a) 'symbol)
+					      (return
+					       (nreverse (cons b c))))))))))
+	(implode (append (explodec name) '(- s m a c r o)))))
+
+;;;
+;;; The basic macros
+;;;
+
+(schmac apply x `(scheme-apply ,@x))
+
+(schmac cond* cond*-clauses
+  `(cond ,@(normal-cond-form cond*-clauses)))
+
+(schmac let (clauses . body)
+  (cond ((null clauses) (blockify body))
+	((atom (car clauses))
+	 (let ((binding-pair (split-clause clauses)))
+	      `((lambda ,(car binding-pair) ,(blockify body))
+		,@(cdr binding-pair))))
+	(t `((lambda ,(mapcar 'car clauses) ,(blockify body))
+	     ,@(mapcar 'cadr clauses)))))
+
+(schmac let* (clauses . body)
+  (cond* ((null clauses) (blockify body))
+	 let ((binding-pair (split-clause clauses)))
+	 ((atom (car clauses))
+	  `((lambda ,(car binding-pair) ,(blockify body))
+	    ,@(cdr binding-pair)))
+	 (t `((lambda ,(car binding-pair)
+		      (let* ,(cdr clauses) ,@body))
+	      ,@(cdr binding-pair)))))
+
+(schmac labels (defs . body)
+  (let* ((vars (vars-defined defs))
+	 (genvars (mapcar (function (lambda (x) (gensym))) vars))
+	 (vals (vals-defined defs)))
+	`((lambda ,vars
+		  (block ,@(mapcar (function (lambda (x) `(makunboundq ,x))) vars)
+			 ((lambda ,genvars
+				  (block ,@(mapcar (function (lambda (x y) `(setq ,x ,y)))
+						   vars
+						   genvars)))
+			  ,@vals)
+			 ,@body))
+	  ,@(mapcar (function (lambda (x) nil)) vars))))
+
+(defun vars-defined (defs)
+       (cond ((null defs) nil)
+	     ((symbolp (car defs))
+	      (cons (car defs) (vars-defined (cddr defs))))
+	     (t (cons (caar defs) (vars-defined (cdr defs))))))
+
+(defun vals-defined (defs)
+       (cond ((null defs) nil)
+	     ((symbolp (car defs))
+	      (cons (cadr defs) (vals-defined (cddr defs))))
+	     (t (cons (cadar defs) (vals-defined (cdr defs))))))
+
+(defun split-clause (clause) (sc1 clause nil nil))
+
+(defun sc1 (clause names exps)
+  (cond ((null clause) (cons (nreverse names)
+			     (nreverse exps)))
+	(t (sc1 (cddr clause)
+		(cons (car clause) names)
+		(cons (cadr clause) names)))))
+
+(declare (special **doname** **dobody**))
+
+(setq **doname** (maknam (explodec '*doloop*)))
+
+(schmac do (specs end . body)
+	`(labels ((,**doname**
+		   (lambda ,(mapcar 'car specs)
+			    (if ,(car end)
+				,(blockify (cdr end))
+				,(blockify
+				    (append body
+					`((,**doname** 
+					  ,@(mapcar '(lambda (y)
+							     (cond ((and (cdr y)
+									 (cddr y))
+								    (caddr y))
+								   (t (car y))))
+						    specs)))))))))
+		 (,**doname** ,@(mapcar '(lambda (y) (and (cdr y) (cadr y))) specs))))
+
+
+(schmac iterate (name varinits . body)
+	`(labels ((,name (lambda ,(mapcar 'car varinits) ,(blockify body))))
+		 (,name . ,(mapcar 'cadr varinits))))
+
+(schmac test (pred fn alt)
+	`((lambda (p f a)
+		  (if p ((f) p) (a)))
+	  ,pred
+	  (lambda () ,fn)
+	  (lambda () ,alt)))
+
+(schmac cond clauses
+	(cond ((null clauses) nil)
+	      ((eq (caar clauses) 't)
+	       (blockify (cdar clauses)))		;bum
+	      ((null (cdar clauses))
+	       `(or ,(caar clauses)
+		     (cond . ,(cdr clauses))))
+	      ((eq (cadar clauses) '=>)
+	       `(test ,(caar clauses)
+		       ,(caddar clauses)
+		       (cond . ,(cdr clauses))))
+	      (t `(if ,(caar clauses)
+		       ,(blockify (cdar clauses))
+		       (cond . ,(cdr clauses))))))
+
+(schmac or args
+	(cond ((null args) nil)
+	      ((null (cdr args)) (car args))
+	      (t `((lambda (p r) (if p p (r)))
+		    ,(car args)
+		    (lambda () (or . ,(cdr args)))))))
+
+(schmac and args
+	(cond ((null args) t)
+	      ((null (cdr args)) (car args))
+	      (t `(if ,(car args) (and . ,(cdr args)) nil))))
+
+(defun orify (x)
+       (cond ((null x) nil)
+	     ((null (cdr x)) (car x))
+	     (t (cons 'or x))))
+
+(schmac catch (var . body) `(let ((,var nil)) (get-control-point ,var ,@body)))
+
+(schmac defun (name bvl . body) `(define ,name (lambda ,bvl ,(blockify body))))
+
+(schmac fluid-let (varspecs . body)
+  (let ((vars (mapcar 'car varspecs))
+	(vals (mapcar 'cadr varspecs))
+	(ovs (mapcar '(lambda (x) (gensym)) varspecs))
+	(nvs (mapcar '(lambda (x) (gensym)) varspecs)))
+     `((lambda (,@ovs ,@nvs)
+	       (dynamic-wind (block ,@(mapcar '(lambda (v nv)
+						       `(setq ,v ,nv))
+					      vars nvs))
+			     (block ,@body)
+			     (block ,@(mapcar '(lambda (nv v)
+						       `(setq ,nv ,v))
+					      nvs vars)
+				    ,@(mapcar '(lambda (v ov)
+						       `(setq ,v ,ov))
+					      vars ovs))))
+       ,@vars ,@vals)))
+
+(schmac mapcar (fn . arglists)
+	((lambda (fnname result names)
+		 `(do ((,fnname ,fn)
+		       ,@(mapcar '(lambda (y n) `(,n ,y (cdr ,n)))
+				 arglists
+				 names)
+		       (,result
+			nil
+			(cons (,fnname ,@(mapcar '(lambda (y) `(car ,y))
+						 names))
+			      ,result)))
+		      (,(orify (mapcar '(lambda (n) `(null ,n)) names))
+		       (nreverse ,result))))
+	 (gensym)
+	 (gensym)
+	 (mapcar '(lambda (x) (gensym)) arglists)))
+
+(schmac maplist (fn . arglists)
+	((lambda (fnname result names)
+		 `(do ((,fnname ,fn)
+		       ,@(mapcar '(lambda (y n) `(,n ,y (cdr ,n)))
+				 arglists
+				 names)
+		       (,result nil (cons (,fnname ,@names) ,result)))
+		      (,(orify (mapcar '(lambda (n) `(null ,n)) names))
+		       (nreverse ,result))))
+	 (gensym)
+	 (gensym)
+	 (mapcar '(lambda (x) (gensym)) arglists)))
+
+(schmac mapc (fn . arglists)
+	((lambda (fnname names)
+		 `(do ((,fnname ,fn)
+		       ,@(mapcar '(lambda (y n) `(,n ,y (cdr ,n)))
+				 arglists
+				 names))
+		      (,(orify (mapcar '(lambda (n) `(null ,n)) names))
+		       nil)
+		      (,fnname ,@(mapcar '(lambda (y) `(car ,y))
+					 names))))
+	 (gensym)
+	 (mapcar '(lambda (x) (gensym)) arglists)))
+
+(schmac mapcan (fn . arglists)
+  (let ((fn-name (gensym))
+	(result-name (gensym))
+	(tail-name (gensym))
+	(arg-names (mapcar '(lambda (x) (gensym)) arglists)))
+       `(let ((,fn-name ,fn))
+	     (iterate mapcan-loop
+		      ,(mapcar '(lambda (x y) (list x y))
+			       arg-names
+			       arglists)
+		      (cond* (,(orify (mapcar '(lambda (x) `(null ,x))
+					      arg-names))
+			      nil)
+			     let ((,result-name
+				   (,fn-name
+				    ,@(mapcar '(lambda (x) `(car ,x))
+					      arg-names)))
+				  (,tail-name
+				   (mapcan-loop
+				    ,@(mapcar '(lambda (x) `(cdr ,x))
+					      arg-names))))
+			     ((null ,result-name) ,tail-name)
+			     (t (rplacd (last ,result-name)
+					,tail-name)
+				,result-name))))))
+
+;;;
+;;; List support macros
+;;;
+
+(schmac null (x) `(eq nil ,x))
+(schmac not (x) `(eq nil ,x))
+
+(schmac caar (x) `(car (car ,x)))
+(schmac cadr (x) `(car (car ,x)))
+(schmac cdar (x) `(cdr (car ,x)))
+(schmac cddr (x) `(cdr (cdr ,x)))
+
+(schmac caaar (x) `(car (car (car ,x))))
+(schmac caadr (x) `(car (car (cdr ,x))))
+(schmac cadar (x) `(car (cdr (car ,x))))
+(schmac caddr (x) `(car (cdr (cdr ,x))))
+(schmac cdaar (x) `(cdr (car (car ,x))))
+(schmac cdadr (x) `(cdr (car (cdr ,x))))
+(schmac cddar (x) `(cdr (cdr (car ,x))))
+(schmac cdddr (x) `(cdr (cdr (cdr ,x))))
+
+(schmac caaaar (x) `(car (car (car (car ,x)))))
+(schmac caaadr (x) `(car (car (car (cdr ,x)))))
+(schmac caadar (x) `(car (car (cdr (car ,x)))))
+(schmac caaddr (x) `(car (car (cdr (cdr ,x)))))
+(schmac cadaar (x) `(car (cdr (car (car ,x)))))
+(schmac cadadr (x) `(car (cdr (car (cdr ,x)))))
+(schmac caddar (x) `(car (cdr (cdr (car ,x)))))
+(schmac cadddr (x) `(car (cdr (cdr (cdr ,x)))))
+(schmac cdaaar (x) `(cdr (car (car (car ,x)))))
+(schmac cdaadr (x) `(cdr (car (car (cdr ,x)))))
+(schmac cdadar (x) `(cdr (car (cdr (car ,x)))))
+(schmac cdaddr (x) `(cdr (car (cdr (cdr ,x)))))
+(schmac cddaar (x) `(cdr (cdr (car (car ,x)))))
+(schmac cddadr (x) `(cdr (cdr (car (cdr ,x)))))
+(schmac cdddar (x) `(cdr (cdr (cdr (car ,x)))))
+(schmac cddddr (x) `(cdr (cdr (cdr (cdr ,x)))))
+
+(schmac first (x) `(car ,x))
+(schmac second (x) `(cadr ,x))
+(schmac third (x) `(caddr ,x))
+(schmac fourth (x) `(cadddr ,x))
+(schmac fifth (x) `(car (cddddr ,x)))
+(schmac sixth (x) `(cadr (cddddr ,x)))
+(schmac seventh (x) `(caddr (cddddr ,x)))
+(schmac eighth (x) `(cadddr (cddddr ,x)))
+
+(schmac rest-1 (x) `(cdr ,x))
+(schmac rest-2 (x) `(cddr ,x))
+(schmac rest-3 (x) `(cdddr ,x))
+(schmac rest-4 (x) `(cddddr ,x))
+
+(schmac ncons (x) `(cons ,x nil))
+(schmac xcons (x y) `(cons ,y ,x))
+
+(schmac last (x)
+  `(iterate last-loop ((y ,x))
+      (if (or (atom y)
+	      (null (cdr y)))
+	  y
+	  (last-loop (cdr y)))))
+
+(schmac list x
+  (cond ((null x) nil)
+	((null (cdr x)) `(cons ,(car x) nil))
+	(t `(list* ,@x nil))))
+
+
+
+(schmac append x
+  (if (null x) nil
+      `(iterate copy-loop ((b ,(car x)))
+		(if (atom b) (append ,@(cdr x))
+		    (cons (car b)
+			  (copy-loop (cdr b)))))))
+
+(declare (special list))
+
+(schmac atom (x) `(not (= ,list (ptype ,x))))
+(schmac natom (x) `(= ,list (ptype ,x)))
+
+(schmac listp (x) `(or (null ,x) (natom ,x)))
+(schmac nlistp (x) `(not (listp ,x)))
+
+(schmac length (x)
+  `(iterate count-loop ((counter 0)
+			(list-marker ,x))
+	    (if (atom list-marker) counter
+		(count-loop (1+ counter)
+			    (cdr list-marker)))))
+
+(schmac nth (n x)
+  `(iterate count-loop ((counter ,n)
+			(list-marker ,x))
+	    (cond ((atom list-marker) nil)
+		  ((zerop counter) (car list-marker))
+		  (t (count-loop (1- counter)
+				 (cdr list-marker))))))
+
+(schmac nthcdr (n x)
+  (if (zerop n) x
+      `(iterate count-loop ((counter ,n)
+			    (list-marker (cdr ,x)))
+		(cond ((zerop counter) list-marker)
+		      ((atom list-marker) nil)
+		      (t (count-loop (1- counter)
+				     (cdr list-marker)))))))
+
+(schmac circular-list x
+  `(let ((x (list ,@x)))
+	(rplacd (last x) x)
+	x))
+
+(schmac reverse (x)
+  `(iterate rev-loop ((list-marker ,x)
+		      (newlist nil))
+	    (if (atom list-marker) newlist
+		(rev-loop (cdr list-marker)
+			  (cons (car list-marker newlist))))))
+
+(schmac nreverse (the-list)
+  `(iterate nreverse-loop ((the-list ,the-list)
+			   (the-output nil))
+	    (if (null the-list) the-output
+		(let ((next-list (cdr the-list)))
+		     (rplacd the-list the-output)
+		     (nreverse-loop next-list the-list)))))
+
+(schmac nconc x
+  (if (null x) nil
+      `(let ((the-first ,(car x)))
+	    (rplacd (last the-first) (ncond ,@(cdr x)))
+	    the-first)))
+
+
+(schmac memq (x y)
+  `(iterate memq-loop ((list-marker ,y))
+	    (if (or (atom list-marker)
+		    (eq (car list-marker) ,x))
+		list-marker
+		(memq-loop (cdr list-marker)))))
+
+(schmac assq (x y)
+  `(iterate assq-loop ((alist-marker ,y))
+	    (cond ((null alist-marker) nil)
+		  ((eq (caar alist-marker) ,x)
+		   (car alist-marker))
+		  (t (assq-loop (cdr alist-marker))))))
+
+(schmac equal (x y)
+  `(iterate equal-loop ((x ,x) (y ,y))
+	    (or (eq x y)
+		(and (natom x)
+		     (natom y)
+		     (equal (car x) (car y))
+		     (equal (cdr x) (cdr y))))))
+
+;;;
+;;; Property list support macros
+;;;
+
+(schmac plist (x)
+  `(let ((x ,x))
+	(if (atom x) nil
+	    (cdr x))))
+
+(schmac setplist (x y)
+  `(let ((x ,x))
+	(if (atom x) nil
+	    (rplacd x ,y))))
+
+(schmac get (x y)
+  `(iterate get-loop ((plist-marker (plist ,x)))
+	    (if (or (null plist-marker)
+		    (eq (car plist-marker) ,y))
+		(cadr plist-marker)
+		(get-loop (cddr plist-marker)))))
+
+(schmac getl (x y)
+  `(iterate getl-loop ((plist-marker (plist ,x)))
+	    (if (or (null plist-marker)
+		    (memq (car plist-marker) ,y))
+		plist-marker
+		(getl-loop (cddr plist-marker)))))
+
+(schmac remprop (x y)
+  `(iterate search-loop ((plist-marker (plist ,x)))
+	    (if (null plist-marker) nil
+		(let ((next-marker (cddr plist-marker)))
+		     (if (eq (cadr plist-marker) ,y)
+			 (block (rplacd plist-marker
+					(cdr plist-marker))
+				next-marker)
+			 (search-loop next-marker))))))
+
+(schmac putprop (x y z)
+  `(let ((x ,x) (y ,y) (z ,z))
+	(block (remprop x z)
+	       (setplist x (cons z (cons y (plist x))))
+	       y)))
+
+(schmac defprop (x y z) `(putprop ',x ',y ',z))

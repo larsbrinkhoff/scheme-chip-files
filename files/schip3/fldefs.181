@@ -1,0 +1,765 @@
+;;; -*- mode: LISP -*-
+
+;;; Field specifications for SCHEME-81 PLAs
+
+;;;; CONTROL-PLA
+
+(define-field control-pla-output
+
+  (field pc-explicit-ns
+    numeric folded (width 9.) (side 'bottom) (driver 'sb))  
+  (field true-explicit-ns
+    numeric folded (width 9.) (side 'bottom) (driver 'sb))
+  (field false-explicit-ns
+    numeric folded (width 9) (side 'bottom) (driver 'sb))
+
+  (field op-decoder
+    numeric folded (width 5) (side 'both) (driver '(sb sb-np)))
+  
+  (field read-source folded (side 'top) (driver 'sb)
+	 (bit explicit)
+	 (bit arg1-stack)
+	 (bit arg2-stack))
+  
+  (field load-source folded (side 'top) (driver 'sb)
+	 (bit explicit)
+	 (bit target-stack))
+  
+  (field arg1-data numeric (width 6) (side 'top) (driver 'inv))
+  (field arg2-data numeric (width 6) (side 'top) (driver 'inv))
+  (field target-data numeric (width 6) (side 'top) (driver 'inv))
+  
+  (field explicit-read-uarg
+    numeric folded (width 6) (side 'top) (driver 'sb))
+  (field explicit-load-uarg
+    numeric folded (width 6) (side 'top) (driver 'sb))
+  
+  (field non-uarg-register-operations
+    numeric folded (width 6) (side 'top) (driver 'sb))
+  
+  (field constant-source 
+    numeric folded (width 5) (side 'top) (driver 'sb))
+
+  (field random-signals folded (side 'top) (driver 'sb)
+	 (bit cons-server-interrupt-grant)
+	 (bit dma-interrupt-grant)
+	 (bit external-interrupt-grant)
+	 (bit halted)
+	 (bit carry-chain))
+
+  (field predicate-select
+    numeric folded (width 5) (side 'bottom) (driver 'sb))
+	 
+  (field gc-flags (side 'bottom) (driver 'sb) folded
+	 (field i-am-ready-to-gc (bit set))
+	 (field flag-bit-value numeric (width 1))
+	 (field i-need-gc
+	   (bit set)
+	   (bit set-if)))
+
+  (field memory-wait folded (side 'bottom) (driver 'sb)
+	 (bit relocate-requested-or-returned?)
+	 (bit wait-for-memdone)))
+
+(define-field control-pla-input
+  (field body numeric (width 9.)))
+
+(define-field disp-input
+  (field body numeric (width 7)))
+
+(define-field disp-output
+  (field user-type numeric (width 9))
+  (field extra-type-cont numeric (width 9)))
+
+
+;;; Main Register Array
+
+(define-field registers
+  (field main-registers
+    (field cont
+      (include-field 'shadow)
+      (include-field 'register))
+    (field thargs 
+      (include-field 'shadow)
+      (include-field 'register))
+    (field env
+      (include-field 'shadow)
+      (include-field 'register))
+    (field env-stack
+      (include-field 'shadow)
+      (include-field 'register)
+      (field count
+	(field increment (bit read-local))
+	(field decrement (bit read-local))))
+    (field cont-stack
+      (include-field 'shadow)
+      (include-field 'cdr-bit)
+      (include-field 'datum)
+      (include-field 'type))
+    (field thargs-stack
+      (include-field 'shadow)
+      (include-field 'cdr-bit)
+      (include-field 'word))
+    (field exp
+      (include-field 'shadow)
+      (include-field 'datum)
+      (include-field 'type)
+      (field right-shift-0 (bit read-local))
+      (field index-preparer
+	(bit shift)
+	(bit negate)))
+    (field index-adder
+      (bit read-global))
+    (field val
+      reversed
+      (include-field 'shadow)
+      (include-field 'type)
+      (include-field 'datum)
+      (field increment (bit read-local))
+      (field decrement (bit read-local))
+      (field left-shift-0 (bit read-local))
+      (field left-shift-1 (bit read-local))
+      (field type-to-datum (bit read-local))
+      (bit cdr-bit))
+    (field wind-forms
+      (include-field 'shadow)
+      (include-field 'register))
+    (field temporary
+      (include-field 'datum)
+      (include-field 'type)
+      (field increment (bit read-local)))
+    (field machine-number
+      reversed
+      (include-field 'register))
+    (field free
+      (include-field 'datum)
+      (include-field 'type)
+      (field increment (bit read-local)))
+    (field memtop
+      reversed
+      (include-field 'register))
+    (field errcode
+      (include-field 'register))
+    (field interrupt-enables
+      (include-field 'register))
+    (field scan
+      (include-field 'register)
+      (field increment (bit read-local)))
+    (field temp-reg-0
+      (include-field 'datum)
+      (include-field 'type))
+    (field cdr-bit			
+      (field one (bit read-global))
+      (field zero (bit read-global)))
+    (field constant-register-0
+      (field datum
+	(bit read-global))
+      (field type
+	(bit read-global)))
+    (field constant-register-1
+      (field datum
+	(bit read-global))
+      (field type
+	(bit read-global)))
+    (field constant-register-2
+      (bit read-global))
+    (field datum-source
+      (bit read-global)
+      (field value numeric (width 3)))
+    (field type-source
+      (bit read-global)
+      (field value numeric (width 7))))
+  (field external-registers
+    (field write-mbr (bit load-global))
+    (field read-mbr (bit read-global))
+    (field write-mar (bit load-global))
+    (field read-mar (bit load-global))
+    (field sbus-input-relocate-request (bit read-global))
+    (field sbus-output-relocate-request (bit load-global))
+    (field sbus-input-relocated-value (bit read-global))
+    (field sbus-output-relocated-value (bit load-global))
+    (field sbus-output-cons (bit load-global))
+    (field sbus-error-code (bit read-global))
+    (field interrupt-number (bit read-global))
+    (bit enable-input)
+    (bit enable-output)))
+
+
+
+
+(define-field shadow
+  (field shadow
+	    (bit load)
+	    (bit read-local)))
+
+(define-field cdr-bit
+  (field cdr-bit
+	    (include-field 'register)))
+
+(define-field datum
+  (field datum
+	    (include-field 'register)))
+
+(define-field type
+  (field type
+	    (include-field 'register)))
+
+(define-field word
+  (field word
+	    (include-field 'register)))
+
+(define-field register
+  (bit load-local)
+  (bit load-global)
+  (bit read-global))
+
+
+;;;; dpath names
+
+(define-field dpath
+  (field cont
+    (include-field 'dpath-shadow)
+    (include-field 'dpath-register))
+  (field thargs 
+    (include-field 'dpath-shadow)
+    (include-field 'dpath-register))
+  (field env
+    (include-field 'dpath-shadow)
+    (include-field 'dpath-register))
+  (field env-stack
+    (include-field 'dpath-shadow)
+    (include-field 'dpath-register)
+    (field increment-count (bit input))
+    (field decrement-count (bit input)))
+  (field cont-stack
+    (include-field 'dpath-shadow)
+    (include-field 'cdr-bit)
+    (include-field 'datum)
+    (include-field 'type))
+  (field thargs-stack
+    (include-field 'dpath-shadow)
+    (include-field 'cdr-bit)
+    (include-field 'word))
+  (field exp
+    (include-field 'dpath-shadow)
+    (include-field 'datum)
+    (include-field 'type)
+    (field right-shift-0 (bit read))
+    (field index-preparer
+      (bit shift)
+      (bit negate)))
+  (field array-index-adder (bit read))
+  (field val
+    reversed
+    (include-field 'dpath-shadow)
+    (include-field 'type)
+    (include-field 'datum)
+    (field increment (bit input))
+    (field decrement (bit input))
+    (field left-shift-0 (bit read))
+    (field left-shift-1 (bit read))
+    (field type-to-datum (bit read))
+    (field cdr-bit (bit cdr-bit)))
+  (field wind-forms
+    (include-field 'dpath-shadow)
+    (include-field 'dpath-register))
+  (field temporary
+    (include-field 'datum)
+    (include-field 'type)
+    (field increment (bit input)))
+  (field machine-number
+    reversed
+    (include-field 'dpath-register))
+  (field free
+    (include-field 'datum)
+    (include-field 'type)
+    (field increment (bit input)))
+  (field memtop
+    reversed
+    (include-field 'dpath-register))
+  (field errcode
+    (include-field 'dpath-register))
+  (field interrupt-enables
+    (include-field 'dpath-register))
+  (field scan
+    (include-field 'dpath-register)
+    (field increment (bit input)))
+  (field temp-reg-0
+    (include-field 'datum)
+    (include-field 'type))
+  (field cdr-bit
+    (bit input-1)			  ; 1 = cdr
+    (bit input-2))			  ; 0 = car
+  (field constant-register-0
+    (field datum
+      (bit read))
+    (field type
+      (bit read)))
+  (field constant-register-1
+    (field datum
+      (bit read))
+    (field type
+      (bit read)))
+  (field constant-register-2
+    (bit read))
+  (field datum-source
+    (bit read))
+  ;;; 3 bits wide)
+  (field type-source
+    (bit read))
+  ;;; 7 bits wide
+  )
+
+(define-field dpath-register
+  (bit load-local)
+  (bit load-global)
+  (bit read))
+
+(define-field dpath-shadow
+  (field shadow
+	    (bit load)
+	    (bit read)))
+
+
+;;;; UARGs
+
+(define-field read-uargs
+  (field main-registers
+    (bit wind-forms)
+    (field constant-register-0
+      (bit type)
+      (bit datum))
+    (bit env-stack)
+    (bit thargs)
+    (bit errcode)
+    (field exp
+      (bit datum)
+      (bit type))
+    (bit constant-register-2)
+    (field temp-reg-0
+      (bit type)
+      (bit datum))
+    (field constant-register-1
+      (bit datum)
+      (bit type))
+    (bit machine-number)
+    (bit memtop)
+    (bit env)
+    (bit interrupt-enables)
+    (bit cont)
+    (field cont-stack
+      (bit datum)
+      (bit type)
+      (bit cdr-bit))
+    (field thargs-stack
+      (bit word)
+      (bit cdr-bit))
+    (bit scan)
+    (field val
+      (bit type)
+      (bit datum))
+    (field free
+       (bit type)
+      (bit datum))
+    (field temporary
+      (bit datum)
+      (bit type))))
+
+(define-field load-uargs
+  (field main-registers
+    (bit wind-forms)
+    (bit env-stack)
+    (bit thargs)
+    (bit errcode)
+    (field exp
+      (bit datum)
+      (bit type))
+    (field temp-reg-0
+      (bit type)
+      (bit datum))
+    (bit machine-number)
+    (bit memtop)
+    (bit env)
+    (bit interrupt-enables)
+    (bit cont)
+    (field cont-stack
+      (bit datum)
+      (bit type)
+      (bit cdr-bit))
+    (field thargs-stack
+      (bit word)
+      (bit cdr-bit))
+    (bit scan)
+    (field val
+      (bit type)
+      (bit datum))
+    (field free
+      (bit type)
+      (bit datum))
+    (field temporary
+      (bit datum)
+      (bit type))))
+
+(define-field uarg-read-input
+  (field body numeric (width 6)))
+
+(define-field uarg-load-input
+  (field body numeric reversed (width 6)))
+
+
+;;;; non-uargs
+
+(define-field non-uargs
+  (field main-registers
+    (field temporary
+      (field increment (bit read-local))
+      (field datum
+	(bit load-local)))
+    (field free
+      (field increment (bit read-local))
+      (field datum
+        (bit load-local)))
+    (field scan
+      (bit load-local)
+      (field increment (bit read-local)))
+    (field wind-forms
+      (field shadow
+        (bit read-local)
+        (bit load))
+      (bit load-local))
+    (field thargs
+      (field shadow
+        (bit read-local)
+        (bit load))
+      (bit load-local))
+    (field cont
+      (bit load-local)
+      (field shadow
+        (bit read-local)
+        (bit load)))
+    (field cont-stack
+      (field type
+        (bit load-local))
+      (field cdr-bit
+        (bit load-local))
+      (field shadow
+        (bit read-local)
+        (bit load))
+      (field datum
+        (bit load-local)))
+    (field exp
+      (field type
+        (bit load-local))
+      (field datum
+        (bit load-local))
+      (field right-shift-0
+	(bit read-local))
+      (field shadow
+	(bit read-local)
+	(bit load))
+      (field index-preparer
+	(bit negate)
+	(bit shift)))
+    (field val
+      (field shadow
+	(bit read-local)
+	(bit load))
+      (field datum
+	(bit load-local))
+      (field left-shift-1
+	(bit read-local))
+      (field left-shift-0
+	(bit read-local))
+      (field decrement
+	(bit read-local))
+      (field increment
+	(bit read-local))
+      (field type
+	(bit load-local))
+      (field type-to-datum
+	(bit read-local))
+      (bit cdr-bit))
+    (field thargs-stack
+      (field shadow
+	(bit read-local)
+	(bit load))
+      (field word
+	(bit load-local))
+      (field cdr-bit
+	(bit load-local)))
+    (field env
+      (bit load-local)
+      (field shadow
+	(bit read-local)
+	(bit load)))
+    (field env-stack
+      (field shadow
+	(bit read-local)
+	(bit load))
+      (bit load-local)
+      (field count
+	(field increment
+	  (bit read-local))
+	(field decrement
+	  (bit read-local))))
+    (field cdr-bit
+      (field one
+	(bit read-global))
+      (field zero
+	(bit read-global)))
+    (field index-adder
+      (bit read-global))
+    (field type-source
+      (bit read-global))
+    (field datum-source
+      (bit read-global)))
+  (field external-registers
+    (field write-mbr (bit load-global))
+    (field read-mbr (bit read-global))
+    (field write-mar (bit load-global))
+    (field read-mar (bit load-global))
+    (field sbus-input-relocate-request (bit read-global))
+    (field sbus-output-relocate-request (bit load-global))
+    (field sbus-input-relocated-value (bit read-global))
+    (field sbus-output-relocated-value (bit load-global))
+    (field sbus-output-cons (bit load-global))
+    (field sbus-error-code (bit read-global))
+    (field interrupt-number (bit read-global))
+    (bit enable-input)
+    (bit enable-output)))
+
+(define-field non-uarg-input
+  (field body numeric reversed (width 6)))
+
+(define-field constant-decoder-input
+  (field body numeric (width 5)))
+
+(define-field constant-decoder-output
+  (field datum-source numeric (width 3))
+  (field type-source numeric (width 7)))
+
+
+
+;;;; NS-MACHINE
+
+(define-field ns-op-output
+  (field next-state-machine
+    (field false-explicit-ns (bit read))
+    (field true-explicit-ns (bit read))
+    (field pc-stack
+      (bit push-arg-stack)
+      (bit read)
+      (bit pop-arg-stack))
+    (field user-type (bit read))
+    (field extra-type-cont (bit read))))
+
+(define-field ns-op-input
+  (bit freeze)
+  (field code reversed numeric (width 5))
+  (bit true))
+
+
+
+;;;; UARG-MACHINE
+
+(define-field uarg-op-output
+  (field uarg-stacks
+
+    (field target-stack
+      reversed
+      (field push-source
+	(field uarg-data (bit load))
+	(field transfer-bus (bit load))
+	;; (field self (bit load))
+	)
+      (bit load-local)
+      (field transfer-bus (bit read))
+      (bit push-arg-stack)
+      (bit pop-arg-stack))
+    
+    (field arg2-stack
+      (field push-source
+	(field uarg-data (bit load))
+	(field transfer-bus (bit load))
+	;; (field self (bit load))
+	)
+      (bit load-local)
+      (field transfer-bus (bit read))
+      (bit push-arg-stack)
+      (bit pop-arg-stack))
+
+    (field arg1-stack
+      (field push-source
+	(field uarg-data (bit load))
+	(field transfer-bus (bit load))
+	;; (field self (bit load))
+	)
+      (bit load-local)
+      (field transfer-bus (bit read))  ;; not needed, but I'll use it anyway
+      (bit push-arg-stack)
+      (bit pop-arg-stack))))
+
+(define-field uarg-op-input
+  (field code numeric (width 5))
+  (bit true))
+
+
+
+;;;; Programming for PRED PLA
+
+(define-field pred
+  (field pad-senses reversed
+	 (field control-inputs
+	   (bit relocate-request-to-me)
+	   (bit -somebody-needs-gc)
+	   (bit -somebody-isnt-ready-to-gc))	
+	 (field external-predicates
+	   (bit external-interrupt-request)
+	   (bit dma-interrupt-request)
+	   (bit cons-server-interrupt-request)
+	   (bit sbus-error-flag)))
+  (field data-senses reversed
+	 (field env-stack
+	   (field count
+	     (bit =0)
+	     (bit =36)))
+	 (field cont-stack
+	   (bit cdr-bit))
+	 (field thargs-stack
+	   (bit cdr-bit))
+	 (field exp
+	   (field datum
+	     (bit low-bit)
+	     (field high-bits
+	       (bit =0))
+	     (bit sign-bit))
+	   (field type
+	     (bit =2)))
+	 (field array-index-adder
+	   (bit sign-bit))
+	 (field val
+	   (field type
+	     (bit bus=))
+	   (field datum
+	     (bit bus=)
+	     (bit sign-bit)))
+	 (field temporary
+	   (field datum
+	     (field machine-number
+	       (bit =-1))))
+	 (bit temporary=machine-number)
+	 (bit free=memtop)
+	 (field interrupt-enables
+	   (bit gc)
+	   (bit cons-server)
+	   (bit dma)
+	   (bit external))
+	 (field scan
+	   (bit bus=))
+	 (field main-bus
+	   (field datum
+	     (bit =0))
+	   (field type
+	     (bit =0))
+	   (field class
+	     (bit =17))
+	   (bit pointer-bit)))
+    (field select reversed numeric (width 5)))
+
+
+
+;;;; Pad fields
+
+(define-field top-pads
+  (bit top-power (driver 'padvdd))
+  (bit top-left-ground (driver 'padground))
+  (bit -data-bus-enable (driver 'padoutnor))
+  (field top-data-bus (driver 'iopadbuffered) numeric (width 9.))
+  (field external-registers
+    (field write-mbr (bit load-global) (driver 'pulldown-pad))
+    (field read-mbr (bit read-global) (driver 'pulldown-pad))
+    (field write-mar (bit load-global) (driver 'pulldown-pad))
+    (field read-mar (bit load-global) (driver 'pulldown-pad))
+    (field sbus-input-relocate-request (bit read-global) (driver 'padout))
+    (field sbus-output-relocate-request (bit load-global) (driver 'padout))
+    (field sbus-input-relocated-value (bit read-global) (driver 'padout))
+    (field sbus-output-relocated-value (bit load-global) (driver 'padout))
+    (field sbus-output-cons (bit load-global) (driver 'padout))
+    (field sbus-error-code (bit read-global) (driver 'pulldown-pad))
+    (field interrupt-number (bit read-global) (driver 'padout)))
+  (field random-signals (driver 'padout)
+	 reversed
+    (bit cons-server-interrupt-grant)
+    (bit dma-interrupt-grant)
+    (bit external-interrupt-grant)
+    (bit halted)
+    (bit carry-chain))
+  (bit phi-2 (driver 'padin))
+  (bit top-right-ground (driver 'padground)))
+
+(define-field side-pads
+  (field side-data-bus (driver 'iopadbuffered) numeric (width 22)))
+
+(define-field bottom-pads
+  (bit bottom-left-ground (driver 'padground))
+  (bit bottom-vdd (driver 'padvdd))
+  (bit data-out (driver 'padout))
+  (field bottom-data-bus (driver 'iopadbuffered) numeric (width 6))
+  (field control-inputs
+    (bit -memory-done (driver 'padinbuffered))
+    (bit freeze (driver 'freeze-pad))
+    (bit relocate-request-from-me-acknowledged (driver 'padinbuffered))
+    (bit relocate-request-to-me (driver 'padinbuffered))
+    (bit -somebody-needs-gc (driver 'need-gc))
+    (bit -somebody-isnt-ready-to-gc (driver 'ready-gc))
+    (bit load-state (driver 'load-state-pad)))
+  (field external-predicates (driver 'padinbuffered)
+    (bit external-interrupt-request)
+    (bit dma-interrupt-request)
+    (bit cons-server-interrupt-request)
+    (bit sbus-error-flag))
+  (field state (driver 'iopadbuffered) numeric (width 9))
+  (bit phi-1 (driver 'padin))
+  (bit bottom-right-ground (driver 'padground)))
+
+  
+;;;; testor
+
+(define-field testor
+  
+  (field predicate-select
+    numeric folded (width 5) (side 'top) (driver 'sb))
+  
+  (field explicit-load-uarg
+    numeric folded (width 6) (side 'bottom) (driver 'sb))
+  
+  (field load-source folded (side 'bottom) (driver 'sb)
+	 (bit explicit)
+	 (bit target-stack))
+  
+  (field op-decoder
+    numeric folded (width 5) (side 'both) (driver '(sb sb-np)))
+  
+  
+  (field arg2-data numeric (width 6) (side 'bottom) (driver 'inv))
+  (field target-data numeric (width 6) (side 'bottom) (driver 'inv))
+  
+  (field non-uarg-register-operations
+    numeric folded (width 6) (side 'bottom) (driver 'sb))
+  
+  (field constant-source 
+    numeric folded (width 5) (side 'bottom) (driver 'sb))
+  
+  (field pads folded (side 'top) (driver 'sb)
+	 
+	 (field gc-flags
+	   (field flag-bit-value numeric (width 1))
+	   (field i-am-ready-to-gc (bit set))
+	   (field i-need-gc
+	     (bit set)
+	     (bit set-if))))
+  
+  (field memory-wait folded (side 'bottom) (driver 'sb)
+	 (bit relocate-requested-or-returned?)
+	 (bit wait-for-memdone)))
+

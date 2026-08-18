@@ -1,0 +1,118 @@
+;;; -*- mode:LISP; package:HANSON -*-
+;;; the HANSON codewalker.
+
+;;; this program will walk lisp-style code, looking for forms that
+;;; have atomic CARs, and transforming the code based on certain
+;;; properties of that atom.  there are several interesting properties:
+
+;;; the *MACRO-HANDLER-PROP* contains a function that should be applied
+;;; on a piece of code before anything else happens to it.  the value
+;;; it returns replaces the original code as the codewalker is walking
+;;; DOWN the tree, much the same way that lisp macros do.  however the
+;;; macro is not displacing, but works by copying.  a form is continually
+;;; macroexpanded until it can no longer be expanded.
+
+;;; the *TRANSFORM-HANDLER-PROP* contains a function that should be
+;;; applied on a piece of code that has already been codewalked.
+;;; this is done on the way UP the tree, so it is guaranteed when it
+;;; is called that all of the subforms of the current form have
+;;; already been walked.
+
+;;; the *QUOTED-FORM-PROP*, if non-nil, means do not codewalk the
+;;; form in any way, just return it.
+
+(defvar *me* nil)
+
+;;; this variable is guaranteed to contain the same (EQ) form that
+;;; you are currently walking, in any handler.
+
+;;; in addition to the purely local transformations that can be
+;;; performed using these properties, it is possible to get a
+;;; hook on your context in the following way.
+
+;;; when the subforms of a given form are walked, they have a
+;;; global variable which is initialized to nil, called
+
+(defvar *modify-enclosing-form* nil)
+
+;;; this variable will have a common value among all of the
+;;; subforms of a given form, but not among their subforms,
+;;; or with the form itself.  thus this variable can be set
+;;; to a value that is examined when the ENCLOSING form of
+;;; the current *ME* is itself transformed.  the codewalked
+;;; will examine this value, and if it is non-nil, then it
+;;; is assumed to be a list whose car is a function of two
+;;; variables, and whose cdr is some arbitrary object.
+;;; the function is called with the object as its first
+;;; argument and the form as its second, and the value
+;;; is returned in place of the enclosing form.
+;;; (this fancy hack implements closures, which are necessary).
+
+;;; note that since only a single function can be supplied,
+;;; contention among the subforms for its use must be solved externally.
+
+;;; this is the guy to call from your program.  this is the preferred
+;;; method of usage as then several codewalking passes can coexist in
+;;; the same file, sharing the codewalker and just using separate
+;;; sets of properties; this is very useful for multipass compilers.
+
+(defvar *quoted-form-prop*)
+(defvar *macro-handler-prop*)
+(defvar *transform-handler-prop*)
+
+(defvar *old-m-e-c* nil)	;needed to ensure bindings in CWALK work.
+
+(defun hansons-codewalker (form *quoted-form-prop*
+				*macro-handler-prop*
+				*transform-handler-prop*)
+  (let ((*old-m-e-c* nil)) (cwalk form)))
+
+;;; this macro is used to isolate the various quoted cases of forms.
+
+(eval-when (eval compile)
+  (defmacro qc (var &rest forms)
+    `(cond ((atom ,var) ,var)
+	   ((and (symbolp (car ,var))
+		 (get (car ,var) *quoted-form-prop*)) ,var)
+	   (t ,@forms))))
+
+;;; CWALK is the recursive kernel of the codewalker.
+
+#M(eval-when (eval compile) (defmacro copylist (x) `(append ,x nil)))
+
+(defun cwalk (form)
+  (qc form
+      (let ((*modify-enclosing-form* *old-m-e-c*))
+	(setq form
+	      (mapcar #'(lambda (subform)
+			  (let ((*old-m-e-c* nil)) (cwalk subform)))
+		      (cmacroexpand (copylist form))))
+	(setq *old-m-e-c* *modify-enclosing-form*))
+      (if (not *old-m-e-c*) (ctransform form)
+	  (funcall (car *old-m-e-c*)
+		   (cdr *old-m-e-c*)
+		   form))))
+
+;;; this will do a top-level transform from within a handler.
+;;; no macroexpansion or recursive transformation will take place.
+
+(defun ctransform (form) (qc form (capply *transform-handler-prop* form)))
+
+;;; this will do just a top-level macroexpansion from within a handler.
+;;; no transformation or recursive macroexpansion will take place.
+
+(defun cmacroexpand (form)
+  (qc form
+      (let ((form* (capply *macro-handler-prop* form)))
+	(if (eq form* form) form*
+	    (cmacroexpand form*)))))
+
+;;; all of the functions referred to here as HANDLERs are applied
+;;; to their respective forms using CAPPLY, thus allowing the lambda
+;;; list to be used to identify interesting parts of the form.
+
+(defun capply (handler-property *me*)
+  (let ((handler-function (and (symbolp (car *me*))
+			       (get (car *me*) handler-property))))
+    (if (null handler-function) *me*
+	(apply handler-function (cdr *me*)))))
