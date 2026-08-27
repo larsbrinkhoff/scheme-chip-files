@@ -1,0 +1,78 @@
+From:
+https://www.artsy.net/article/ruse-laboratories-gerald-jay-sussman-creator-of-scheme
+
+In January 1978 many members of the MIT Electrical Engineering &
+Computer Sciences (EECS) department attended a class taught by Charles
+Botchek on the physical electronics of Very-large-scale integration
+(VLSI) technology.  I was one of those faculty members.  It was pretty
+exciting, because we felt that we could influence the way that
+discipline was evolving.  The class ended on 6 February 1978--the day
+of the famous Blizzard of '78-- so many of us were stuck at MIT for a
+while.
+
+We had heard that Lynn Conway from Xerox and Carver Mead from Caltech
+were making real progress on making it possible for people who were
+not at a chip-fab facility to specify chips for experimental
+designs. In the Spring of '78 we invited Lynn Conway to teach the
+class on VLSI design that she was working on with Carver Mead.  Just a
+few years earlier Guy L. Steele Jr., (then my graduate student) and I
+invented a simplified but elegant version of the LISP family of
+languages that we called Scheme.  Guy and I wrote a number of internal
+memos (Lambda the Ultimate...) that later became famous.  Guy enrolled
+in Lynn's class. For his term project he designed and fabricated a
+direct interpreter for Scheme, called Scheme-78.  It didn't quite work
+(because of three missing wires); it didn't have a garbage collector;
+and it was too small to do anything impressive; but it encouraged us
+to try again. Over the next few months Guy Steele, Jack Holloway, and
+I designed a new interpreter that we thought could actually be run on
+a real memory and tested with real programs.  I designed the register
+array, Guy and I developed the microcode.  Jack made a PLA generator
+that could hold the microcode, and we roped Alan Bell of Xerox PARC
+into assembling the Scheme-79 Chip.  We pulled this off in a few
+man-months of time and it worked!  Scheme-79 had a mark-sweep garbage
+collector with a Deutsch-Schorr-Waite mark algorithm and a two-finger
+compacting sweep. It also had a two-level microcode: The main PLA
+contained rather high-level microcode instructions that were further
+elaborated by a nanocode PLA that operated the register array.
+
+Further encouraged, I started a new project to make a chip that was
+actually big enough and fast enough to be useful to run real research
+programs.  This was the Scheme-81 chip.  It was a 32-bit machine, with
+6 bits of type code and 26 bits of address.  It had microcode support
+for everything required to make a Scheme computer operating system,
+including a stop-and-copy garbage collector, a coprocessor bus, and an
+interrupt system. For Scheme-81 the microcode was written by Richard
+Stallman, Chris Hanson, and me.  (Steele had graduated and moved on to
+CMU as faculty.)
+
+Howie Shrobe (my former student) and I led a pretty big effort to
+apply artificial intelligence technology to the computer-aided design
+of integrated circuits.  Students involved were Neil Mayle, John
+Batali, Ned Goodhue, and Jon Taft.  We developed LISPIC, a Lisp-based
+integrated-circuit design system that supported the design of
+Scheme-81.  I worked with Shrobe, Mayle, and Batali to build a
+Design-Procedure Language for describing the layout of chips in terms
+of high-level abstractions.  Batali wrote an elegant PLA generator;
+Shrobe wrote a data-path generator, and the Daedalus graphics-editing
+system for the MIT Lisp Machines, which we used for this
+project. Goodhue worked with me on the initial interpretation of the
+microcode, and he ported Clark Baker's design-rule checker to the
+LISPIC system. Mayle and Taft designed and built the boards that
+plugged into the Lisp Machine for testing the chips.  Batali did the
+final layout, routing, and assembly of the Scheme-81 chip using the
+LISPIC software.
+
+The only run of Scheme-81 chips produced chips that worked, but
+unreliably, due to an over-long diffusion wire (that was my
+fault!). We got it to work by carefully adjusting the substrate bias,
+and it worked long enough to run the doubly-recursive fibonacci
+program at amazing speeds.  Phil Agre designed and built an ASSQ
+coprocessor chip to sit on the Scheme-81 bus and provide high-speed
+access to linear tables and lists.  It was apparent that with another
+run and a few tiny edits we could have high-performance Scheme
+machines.  But at this point we ran out of energy, so we declared a
+success and stopped building more of these chips.
+
+Overall, this was a fun set of projects for the time (from 1978 to
+1982).  However, it diverted me and many of my friends from doing some
+more fundamental AI work that we really wanted to do.
