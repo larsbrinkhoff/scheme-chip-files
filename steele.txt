@@ -1,0 +1,41 @@
+Here’s the story behind the subway map:
+
+When I was working on the Scheme-78 chip (part of the first
+multiproject chip for the Fall 1978 Mead-Conway VLSI course at MIT),
+for the last few weeks I was working _very_ long hours and not getting
+much sleep. Late one evening, as I was riding home on the MBTA, I was
+blearily staring at the subway map on the wall of the subway car, this
+thought crossed my mind: “How about that? Park Street [station] is a
+transistor!” (Because that is where the MBTA Red Line crosses the
+Green Line, and in the Mead-Conway CMOS design formalism lines in the
+diffusion layer are coded green and lines of polysilicon are coded
+red, and transistors are formed where a run of polysilicon crosses a
+run of diffusion.)
+
+When we did the Scheme-79 chip, the other three designers did all the
+essential layout work (I was too busy working on my PhD dissertation),
+but they did kindly offer me the opportunity to contribute the
+identifying logo artwork. I wanted of course to identify What, Who,
+When, and Where:
+
+What: Scheme chip
+
+Who: the four designers and their affiliations at MIT and Xerox
+
+When: July 1979
+
+Where: well, I couldn’t resist the opportunity to actually render Park
+Street as a transistor, so I drew the entire Boston subway map as it
+was in 1979 (I had to use red for both Red Line and Orange Line). If
+you look carefully, you will see one extra dot of blue on the left,
+between Central Square and Kendall Square, indicating the location of
+545 Technology Square, where Gerry and Jack and I had offices.
+
+I believe I briefly considered also trying to render the California
+BART map, but it didn't really extend anywhere close to the Xerox PARC
+building, so I gave up on that idea.
+
+I also have a vague memory that Jack and Alan had to temporarily
+delete the logo from the layout because the fact that Park Street was
+a lone transistor that didn’t connect sensibly to anything else upset
+the design-rule-checking software. :-)
